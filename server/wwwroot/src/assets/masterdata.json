@@ -1,0 +1,303 @@
+{
+  "motors": {
+    "motorTypes": [
+      "linear",
+      "stepper",
+      "solenoid"
+    ],
+    "motorRoles": [
+      "leftArm",
+      "rightArm",
+      "general"
+    ]
+  },
+  "pins": [
+    {
+      "index": 0,
+      "name": "Dummy GPIO",
+      "isGPIO": true,
+      "isSPI": false,
+      "isPWM": false
+    },
+    {
+      "index": 1,
+      "name": "3v3 Power",
+      "isGPIO": false,
+      "isSPI": false,
+      "isPWM": false
+    },
+    {
+      "index": 2,
+      "name": "5v Power",
+      "isGPIO": false,
+      "isSPI": false,
+      "isPWM": false
+    },
+    {
+      "index": 3,
+      "name": "GPIO 2 (I2C SDA)",
+      "isGPIO": true,
+      "isSPI": false,
+      "isPWM": false
+    },
+    {
+      "index": 4,
+      "name": "5v Power",
+      "isGPIO": false,
+      "isSPI": false,
+      "isPWM": false
+    },
+    {
+      "index": 5,
+      "name": "GPIO 3 (I2C SCL)",
+      "isGPIO": true,
+      "isSPI": false,
+      "isPWM": false
+    },
+    {
+      "index": 6,
+      "name": "GND",
+      "isGPIO": false,
+      "isSPI": false,
+      "isPWM": false
+    },
+    {
+      "index": 7,
+      "name": "GPIO 4",
+      "isGPIO": true,
+      "isSPI": false,
+      "isPWM": false
+    },
+    {
+      "index": 8,
+      "name": "GPIO 14 (TXD)",
+      "isGPIO": true,
+      "isSPI": false,
+      "isPWM": false
+    },
+    {
+      "index": 9,
+      "name": "GND",
+      "isGPIO": false,
+      "isSPI": false,
+      "isPWM": false
+    },
+    {
+      "index": 10,
+      "name": "GPIO 15 (RXD)",
+      "isGPIO": true,
+      "isSPI": false,
+      "isPWM": false
+    },
+    {
+      "index": 11,
+      "name": "GPIO 17",
+      "isGPIO": true,
+      "isSPI": false,
+      "isPWM": false
+    },
+    {
+      "index": 12,
+      "name": "GPIO 18 (PWM0)",
+      "isGPIO": true,
+      "isSPI": false,
+      "isPWM": true
+    },
+    {
+      "index": 13,
+      "name": "GPIO 27",
+      "isGPIO": true,
+      "isSPI": false,
+      "isPWM": false
+    },
+    {
+      "index": 14,
+      "name": "GND",
+      "isGPIO": false,
+      "isSPI": false,
+      "isPWM": false
+    },
+    {
+      "index": 15,
+      "name": "GPIO 22",
+      "isGPIO": true,
+      "isSPI": false,
+      "isPWM": false
+    },
+    {
+      "index": 16,
+      "name": "GPIO 23",
+      "isGPIO": true,
+      "isSPI": false,
+      "isPWM": false
+    },
+    {
+      "index": 17,
+      "name": "3v3 Power",
+      "isGPIO": false,
+      "isSPI": false,
+      "isPWM": false
+    },
+    {
+      "index": 18,
+      "name": "GPIO 24",
+      "isGPIO": true,
+      "isSPI": false,
+      "isPWM": false
+    },
+    {
+      "index": 19,
+      "name": "GPIO 10 (SPI0 MOSI) - Reserved for SPI",
+      "isGPIO": true,
+      "isSPI": true,
+      "isPWM": false
+    },
+    {
+      "index": 20,
+      "name": "GND",
+      "isGPIO": false,
+      "isSPI": false,
+      "isPWM": false
+    },
+    {
+      "index": 21,
+      "name": "GPIO 9 (SPI0 MISO) - Reserved for SPI",
+      "isGPIO": true,
+      "isSPI": true,
+      "isPWM": false
+    },
+    {
+      "index": 22,
+      "name": "GPIO 25",
+      "isGPIO": true,
+      "isSPI": false,
+      "isPWM": false
+    },
+    {
+      "index": 23,
+      "name": "GPIO 11 (SPI0 SCLK)",
+      "isGPIO": true,
+      "isSPI": true,
+      "isPWM": false
+    },
+    {
+      "index": 24,
+      "name": "GPIO 8 (SPI0 CE0) - Reserved for SPI",
+      "isGPIO": true,
+      "isSPI": true,
+      "isPWM": false
+    },
+    {
+      "index": 25,
+      "name": "GND",
+      "isGPIO": false,
+      "isSPI": false,
+      "isPWM": false
+    },
+    {
+      "index": 26,
+      "name": "GPIO 7 (SPI0 CE1) - Reserved for SPI",
+      "isGPIO": true,
+      "isSPI": true,
+      "isPWM": false
+    },
+    {
+      "index": 27,
+      "name": "GPIO 0 (I2C SDA)",
+      "isGPIO": false,
+      "isSPI": false,
+      "isPWM": false
+    },
+    {
+      "index": 28,
+      "name": "GPIO 1 (I2C SCL)",
+      "isGPIO": false,
+      "isSPI": false,
+      "isPWM": false
+    },
+    {
+      "index": 29,
+      "name": "GPIO 5",
+      "isGPIO": true,
+      "isSPI": false,
+      "isPWM": false
+    },
+    {
+      "index": 30,
+      "name": "GND",
+      "isGPIO": false,
+      "isSPI": false,
+      "isPWM": false
+    },
+    {
+      "index": 31,
+      "name": "GPIO 6",
+      "isGPIO": true,
+      "isSPI": false,
+      "isPWM": false
+    },
+    {
+      "index": 32,
+      "name": "GPIO 12 (PWM0)",
+      "isGPIO": true,
+      "isSPI": false,
+      "isPWM": true
+    },
+    {
+      "index": 33,
+      "name": "GPIO 13 (PWM1)",
+      "isGPIO": true,
+      "isSPI": false,
+      "isPWM": true
+    },
+    {
+      "index": 34,
+      "name": "GND",
+      "isGPIO": false,
+      "isSPI": false,
+      "isPWM": false
+    },
+    {
+      "index": 35,
+      "name": "GPIO 19 (PWM1)",
+      "isGPIO": true,
+      "isSPI": false,
+      "isPWM": true
+    },
+    {
+      "index": 36,
+      "name": "GPIO 16",
+      "isGPIO": true,
+      "isSPI": false,
+      "isPWM": false
+    },
+    {
+      "index": 37,
+      "name": "GPIO 26",
+      "isGPIO": true,
+      "isSPI": false,
+      "isPWM": false
+    },
+    {
+      "index": 38,
+      "name": "GPIO 20",
+      "isGPIO": true,
+      "isSPI": false,
+      "isPWM": false
+    },
+    {
+      "index": 39,
+      "name": "GND",
+      "isGPIO": false,
+      "isSPI": false,
+      "isPWM": false
+    },
+    {
+      "index": 40,
+      "name": "GPIO 21",
+      "isGPIO": true,
+      "isSPI": false,
+      "isPWM": false
+    }
+  ]
+}

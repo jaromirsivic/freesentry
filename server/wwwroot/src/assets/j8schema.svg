@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-45 0 356 700" width="356" height="700">
+  <title>Raspberry Pi - J8 GPIO Header</title>
+  <defs>
+    <style>
+      .pin-power { fill: #c00; }
+      .pin-gnd { fill: #000; }
+      .pin-gpio { fill: #d3d3d3; }
+      .pin-pwm { fill: #90ee90; }
+      .pin-label { font: 9px sans-serif; }
+      .pin-label.pin-power { fill: #fff; }
+      .pin-label.pin-gnd { fill: #fff; }
+      .pin-label.pin-gpio { fill: #000; }
+      .pin-label.pin-pwm { fill: #000; }
+      .title { font: bold 14px sans-serif; fill: #333; }
+      .pin-5v { fill: #8b0000; }
+      .pin-label.pin-5v { fill: #fff; }
+      .usb-label { font: bold 16px sans-serif; fill: #333; }
+    </style>
+  </defs>
+  <rect x="-45" y="0" width="356" height="700" fill="#f8f8f8"/>
+  <text x="133" y="24" text-anchor="middle" class="title">Raspberry Pi - J8 (40-pin GPIO)</text>
+
+  <!-- Left column: circle cx=118 (113-123), rect x=-29 width=132 (ends 103), text x=37. Right column: circle cx=148 (143-153), rect x=163 width=132, text x=229. Gap 20px. -->
+  <!-- Pin 1 --> <circle cx="118" cy="48" r="5" fill="#333"/> <rect x="-29" y="38" width="132" height="20" rx="2" class="pin-power"/> <text x="37" y="52" text-anchor="middle" class="pin-label pin-power">1 - 3v3 Power</text>
+  <!-- Pin 2 --> <circle cx="148" cy="48" r="5" fill="#333"/> <rect x="163" y="38" width="132" height="20" rx="2" class="pin-5v"/> <text x="229" y="52" text-anchor="middle" class="pin-label pin-5v">2 - 5v Power</text>
+  <!-- Pin 3 --> <circle cx="118" cy="76" r="5" fill="#333"/> <rect x="-29" y="66" width="132" height="20" rx="2" class="pin-gpio"/> <text x="37" y="80" text-anchor="middle" class="pin-label pin-gpio">3 - GPIO 2 (I2C SDA)</text>
+  <!-- Pin 4 --> <circle cx="148" cy="76" r="5" fill="#333"/> <rect x="163" y="66" width="132" height="20" rx="2" class="pin-5v"/> <text x="229" y="80" text-anchor="middle" class="pin-label pin-5v">4 - 5v Power</text>
+  <!-- Pin 5 --> <circle cx="118" cy="104" r="5" fill="#333"/> <rect x="-29" y="94" width="132" height="20" rx="2" class="pin-gpio"/> <text x="37" y="108" text-anchor="middle" class="pin-label pin-gpio">5 - GPIO 3 (I2C SCL)</text>
+  <!-- Pin 6 --> <circle cx="148" cy="104" r="5" fill="#333"/> <rect x="163" y="94" width="132" height="20" rx="2" class="pin-gnd"/> <text x="229" y="108" text-anchor="middle" class="pin-label pin-gnd">6 - GND</text>
+  <!-- Pin 7 --> <circle cx="118" cy="132" r="5" fill="#333"/> <rect x="-29" y="122" width="132" height="20" rx="2" class="pin-gpio"/> <text x="37" y="136" text-anchor="middle" class="pin-label pin-gpio">7 - GPIO 4</text>
+  <!-- Pin 8 --> <circle cx="148" cy="132" r="5" fill="#333"/> <rect x="163" y="122" width="132" height="20" rx="2" class="pin-gpio"/> <text x="229" y="136" text-anchor="middle" class="pin-label pin-gpio">8 - GPIO 14 (TXD)</text>
+  <!-- Pin 9 --> <circle cx="118" cy="160" r="5" fill="#333"/> <rect x="-29" y="150" width="132" height="20" rx="2" class="pin-gnd"/> <text x="37" y="164" text-anchor="middle" class="pin-label pin-gnd">9 - GND</text>
+  <!-- Pin 10 --> <circle cx="148" cy="160" r="5" fill="#333"/> <rect x="163" y="150" width="132" height="20" rx="2" class="pin-gpio"/> <text x="229" y="164" text-anchor="middle" class="pin-label pin-gpio">10 - GPIO 15 (RXD)</text>
+  <!-- Pin 11 --> <circle cx="118" cy="188" r="5" fill="#333"/> <rect x="-29" y="178" width="132" height="20" rx="2" class="pin-gpio"/> <text x="37" y="192" text-anchor="middle" class="pin-label pin-gpio">11 - GPIO 17</text>
+  <!-- Pin 12 --> <circle cx="148" cy="188" r="5" fill="#333"/> <rect x="163" y="178" width="132" height="20" rx="2" class="pin-pwm"/> <text x="229" y="192" text-anchor="middle" class="pin-label pin-pwm">12 - GPIO 18 (PWM0)</text>
+  <!-- Pin 13 --> <circle cx="118" cy="216" r="5" fill="#333"/> <rect x="-29" y="206" width="132" height="20" rx="2" class="pin-gpio"/> <text x="37" y="220" text-anchor="middle" class="pin-label pin-gpio">13 - GPIO 27</text>
+  <!-- Pin 14 --> <circle cx="148" cy="216" r="5" fill="#333"/> <rect x="163" y="206" width="132" height="20" rx="2" class="pin-gnd"/> <text x="229" y="220" text-anchor="middle" class="pin-label pin-gnd">14 - GND</text>
+  <!-- Pin 15 --> <circle cx="118" cy="244" r="5" fill="#333"/> <rect x="-29" y="234" width="132" height="20" rx="2" class="pin-gpio"/> <text x="37" y="248" text-anchor="middle" class="pin-label pin-gpio">15 - GPIO 22</text>
+  <!-- Pin 16 --> <circle cx="148" cy="244" r="5" fill="#333"/> <rect x="163" y="234" width="132" height="20" rx="2" class="pin-gpio"/> <text x="229" y="248" text-anchor="middle" class="pin-label pin-gpio">16 - GPIO 23</text>
+  <!-- Pin 17 --> <circle cx="118" cy="272" r="5" fill="#333"/> <rect x="-29" y="262" width="132" height="20" rx="2" class="pin-power"/> <text x="37" y="276" text-anchor="middle" class="pin-label pin-power">17 - 3v3 Power</text>
+  <!-- Pin 18 --> <circle cx="148" cy="272" r="5" fill="#333"/> <rect x="163" y="262" width="132" height="20" rx="2" class="pin-gpio"/> <text x="229" y="276" text-anchor="middle" class="pin-label pin-gpio">18 - GPIO 24</text>
+  <!-- Pin 19 --> <circle cx="118" cy="300" r="5" fill="#333"/> <rect x="-29" y="290" width="132" height="20" rx="2" class="pin-gpio"/> <text x="37" y="304" text-anchor="middle" class="pin-label pin-gpio">19 - GPIO 10 (SPI0 MOSI)</text>
+  <!-- Pin 20 --> <circle cx="148" cy="300" r="5" fill="#333"/> <rect x="163" y="290" width="132" height="20" rx="2" class="pin-gnd"/> <text x="229" y="304" text-anchor="middle" class="pin-label pin-gnd">20 - GND</text>
+  <!-- Pin 21 --> <circle cx="118" cy="328" r="5" fill="#333"/> <rect x="-29" y="318" width="132" height="20" rx="2" class="pin-gpio"/> <text x="37" y="332" text-anchor="middle" class="pin-label pin-gpio">21 - GPIO 9 (SPI0 MISO)</text>
+  <!-- Pin 22 --> <circle cx="148" cy="328" r="5" fill="#333"/> <rect x="163" y="318" width="132" height="20" rx="2" class="pin-gpio"/> <text x="229" y="332" text-anchor="middle" class="pin-label pin-gpio">22 - GPIO 25</text>
+  <!-- Pin 23 --> <circle cx="118" cy="356" r="5" fill="#333"/> <rect x="-29" y="346" width="132" height="20" rx="2" class="pin-gpio"/> <text x="37" y="360" text-anchor="middle" class="pin-label pin-gpio">23 - GPIO 11 (SPI0 SCLK)</text>
+  <!-- Pin 24 --> <circle cx="148" cy="356" r="5" fill="#333"/> <rect x="163" y="346" width="132" height="20" rx="2" class="pin-gpio"/> <text x="229" y="360" text-anchor="middle" class="pin-label pin-gpio">24 - GPIO 8 (SPI0 CE0)</text>
+  <!-- Pin 25 --> <circle cx="118" cy="384" r="5" fill="#333"/> <rect x="-29" y="374" width="132" height="20" rx="2" class="pin-gnd"/> <text x="37" y="388" text-anchor="middle" class="pin-label pin-gnd">25 - GND</text>
+  <!-- Pin 26 --> <circle cx="148" cy="384" r="5" fill="#333"/> <rect x="163" y="374" width="132" height="20" rx="2" class="pin-gpio"/> <text x="229" y="388" text-anchor="middle" class="pin-label pin-gpio">26 - GPIO 7 (SPI0 CE1)</text>
+  <!-- Pin 27 --> <circle cx="118" cy="412" r="5" fill="#333"/> <rect x="-29" y="402" width="132" height="20" rx="2" class="pin-gpio"/> <text x="37" y="416" text-anchor="middle" class="pin-label pin-gpio">27 - GPIO 0 (I2C SDA)</text>
+  <!-- Pin 28 --> <circle cx="148" cy="412" r="5" fill="#333"/> <rect x="163" y="402" width="132" height="20" rx="2" class="pin-gpio"/> <text x="229" y="416" text-anchor="middle" class="pin-label pin-gpio">28 - GPIO 1 (I2C SCL)</text>
+  <!-- Pin 29 --> <circle cx="118" cy="440" r="5" fill="#333"/> <rect x="-29" y="430" width="132" height="20" rx="2" class="pin-gpio"/> <text x="37" y="444" text-anchor="middle" class="pin-label pin-gpio">29 - GPIO 5</text>
+  <!-- Pin 30 --> <circle cx="148" cy="440" r="5" fill="#333"/> <rect x="163" y="430" width="132" height="20" rx="2" class="pin-gnd"/> <text x="229" y="444" text-anchor="middle" class="pin-label pin-gnd">30 - GND</text>
+  <!-- Pin 31 --> <circle cx="118" cy="468" r="5" fill="#333"/> <rect x="-29" y="458" width="132" height="20" rx="2" class="pin-gpio"/> <text x="37" y="472" text-anchor="middle" class="pin-label pin-gpio">31 - GPIO 6</text>
+  <!-- Pin 32 --> <circle cx="148" cy="468" r="5" fill="#333"/> <rect x="163" y="458" width="132" height="20" rx="2" class="pin-pwm"/> <text x="229" y="472" text-anchor="middle" class="pin-label pin-pwm">32 - GPIO 12 (PWM0)</text>
+  <!-- Pin 33 --> <circle cx="118" cy="496" r="5" fill="#333"/> <rect x="-29" y="486" width="132" height="20" rx="2" class="pin-pwm"/> <text x="37" y="500" text-anchor="middle" class="pin-label pin-pwm">33 - GPIO 13 (PWM1)</text>
+  <!-- Pin 34 --> <circle cx="148" cy="496" r="5" fill="#333"/> <rect x="163" y="486" width="132" height="20" rx="2" class="pin-gnd"/> <text x="229" y="500" text-anchor="middle" class="pin-label pin-gnd">34 - GND</text>
+  <!-- Pin 35 --> <circle cx="118" cy="524" r="5" fill="#333"/> <rect x="-29" y="514" width="132" height="20" rx="2" class="pin-pwm"/> <text x="37" y="528" text-anchor="middle" class="pin-label pin-pwm">35 - GPIO 19 (PWM1)</text>
+  <!-- Pin 36 --> <circle cx="148" cy="524" r="5" fill="#333"/> <rect x="163" y="514" width="132" height="20" rx="2" class="pin-gpio"/> <text x="229" y="528" text-anchor="middle" class="pin-label pin-gpio">36 - GPIO 16</text>
+  <!-- Pin 37 --> <circle cx="118" cy="552" r="5" fill="#333"/> <rect x="-29" y="542" width="132" height="20" rx="2" class="pin-gpio"/> <text x="37" y="556" text-anchor="middle" class="pin-label pin-gpio">37 - GPIO 26</text>
+  <!-- Pin 38 --> <circle cx="148" cy="552" r="5" fill="#333"/> <rect x="163" y="542" width="132" height="20" rx="2" class="pin-gpio"/> <text x="229" y="556" text-anchor="middle" class="pin-label pin-gpio">38 - GPIO 20</text>
+  <!-- Pin 39 --> <circle cx="118" cy="580" r="5" fill="#333"/> <rect x="-29" y="570" width="132" height="20" rx="2" class="pin-gnd"/> <text x="37" y="584" text-anchor="middle" class="pin-label pin-gnd">39 - GND</text>
+  <!-- Pin 40 --> <circle cx="148" cy="580" r="5" fill="#333"/> <rect x="163" y="570" width="132" height="20" rx="2" class="pin-gpio"/> <text x="229" y="584" text-anchor="middle" class="pin-label pin-gpio">40 - GPIO 21</text>
+
+  <!-- Blue triangle below pins: moved down by pin rect height (20); top 612, bottom 652 -->
+  <path d="M -29 612 L 295 612 L 133 652 Z" fill="#0066cc" stroke="#004499" stroke-width="1"/>
+  <text x="133" y="678" text-anchor="middle" class="usb-label">USB Ports and Ethernet Port</text>
+</svg>

@@ -1,0 +1,5 @@
+---
+alwaysApply: true
+---
+Code must be clear and well-documented. Documentation must be short, but clear. Every method in Python must use explicit parameters policy (each method of every class will be written as: “def method(self, *, param1, param2, …)”).
+Important: try to fix things at the cause, not the symptom!

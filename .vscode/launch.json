@@ -1,0 +1,60 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        // {
+        //     "name": "Python Debugger: Current File",
+        //     "type": "debugpy",
+        //     "request": "launch",
+        //     "program": "main.py",
+        //     "console": "integratedTerminal",
+        //     "env": {
+        //         "PIGPIO_ADDR": "192.168.68.53",
+        //         "GPIOZERO_PIN_FACTORY": "pigpio"
+        //     }
+        // },
+        {
+            "name": "Python Debugger: fastapi",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "uvicorn",
+            "args": [
+                "server.main:app",
+                "--reload",
+                "--host",
+                "0.0.0.0",
+                "--port",
+                "80"
+            ],
+            "jinja": true,
+            "preLaunchTask": "compile",
+        },
+        // {
+        //     "name": "Python Debugger: Current File",
+        //     "type": "debugpy",
+        //     "request": "launch",
+        //     "program": "testcamera.py",
+        //     "console": "integratedTerminal"
+        // },
+        // {
+        //     "name": "Python Debugger: Current File",
+        //     "type": "debugpy",
+        //     "request": "launch",
+        //     "program": "testpolygon.py",
+        //     "console": "integratedTerminal"
+        // },
+        // {
+        //     "name": "Python Debugger: Current File",
+        //     "type": "debugpy",
+        //     "request": "launch",
+        //     "program": "testcamera_v1.py",
+        //     "console": "integratedTerminal"
+        // },
+        // {
+        //     "name": "Python Debugger: Current File",
+        //     "type": "debugpy",
+        //     "request": "launch",
+        //     "program": "testcamera_v2.py",
+        //     "console": "integratedTerminal"
+        // },
+    ]
+}

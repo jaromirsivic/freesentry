@@ -1,0 +1,897 @@
+{
+    "motors": [
+        {
+            "enabled": true,
+            "name": "Left Arm",
+            "color": "#ef4444",
+            "type": "linear",
+            "role": "leftArm",
+            "forwardPin": 12,
+            "reversePin": 32,
+            "mcp3008ForwardPin": 1,
+            "mcp3008ReversePin": 2,
+            "dutyCycle": {
+                "enabled": true,
+                "maxRunningTimeSeconds": 90,
+                "minRestTimeSeconds": 810
+            },
+            "inertia": 0.5,
+            "histogram": [
+                {
+                    "pwmMultiplier": 0,
+                    "forwardSeconds": 0,
+                    "reverseSeconds": 0
+                },
+                {
+                    "pwmMultiplier": 0.1,
+                    "forwardSeconds": 150,
+                    "reverseSeconds": 150
+                },
+                {
+                    "pwmMultiplier": 0.5,
+                    "forwardSeconds": 55,
+                    "reverseSeconds": 55
+                },
+                {
+                    "pwmMultiplier": 0.75,
+                    "forwardSeconds": 40,
+                    "reverseSeconds": 40
+                },
+                {
+                    "pwmMultiplier": 1,
+                    "forwardSeconds": 25,
+                    "reverseSeconds": 25
+                }
+            ],
+            "automaticCalibrationEnabled": true,
+            "speedHistogram": {
+                "pwmMultiplier": 0.8,
+                "defaultState": "stop",
+                "histogram": [
+                    [
+                        {
+                            "value": 0
+                        },
+                        {
+                            "value": 0
+                        },
+                        {
+                            "value": 0
+                        }
+                    ],
+                    [
+                        {
+                            "value": 0.1
+                        },
+                        {
+                            "value": 150
+                        },
+                        {
+                            "value": 150
+                        }
+                    ],
+                    [
+                        {
+                            "value": 0.5
+                        },
+                        {
+                            "value": 55
+                        },
+                        {
+                            "value": 55
+                        }
+                    ],
+                    [
+                        {
+                            "value": 0.75
+                        },
+                        {
+                            "value": 40
+                        },
+                        {
+                            "value": 40
+                        }
+                    ],
+                    [
+                        {
+                            "value": 1
+                        },
+                        {
+                            "value": 25
+                        },
+                        {
+                            "value": 25
+                        }
+                    ]
+                ]
+            },
+            "pwmFrequency": 4000,
+            "strokeLength": 30,
+            "forwardEnablePin": 16,
+            "reverseEnablePin": 18
+        },
+        {
+            "enabled": true,
+            "name": "Right Arm",
+            "color": "#22c55e",
+            "type": "linear",
+            "role": "rightArm",
+            "forwardPin": 33,
+            "reversePin": 35,
+            "mcp3008ForwardPin": 3,
+            "mcp3008ReversePin": 4,
+            "dutyCycle": {
+                "enabled": true,
+                "maxRunningTimeSeconds": 90,
+                "minRestTimeSeconds": 810
+            },
+            "inertia": 0.1,
+            "histogram": [
+                {
+                    "pwmMultiplier": 0,
+                    "forwardSeconds": 0,
+                    "reverseSeconds": 0
+                },
+                {
+                    "pwmMultiplier": 0.1,
+                    "forwardSeconds": 0,
+                    "reverseSeconds": 0
+                },
+                {
+                    "pwmMultiplier": 0.5,
+                    "forwardSeconds": 55,
+                    "reverseSeconds": 55
+                },
+                {
+                    "pwmMultiplier": 0.75,
+                    "forwardSeconds": 40,
+                    "reverseSeconds": 40
+                },
+                {
+                    "pwmMultiplier": 1,
+                    "forwardSeconds": 25,
+                    "reverseSeconds": 25
+                }
+            ],
+            "automaticCalibrationEnabled": true,
+            "speedHistogram": {
+                "pwmMultiplier": 1,
+                "defaultState": "stop",
+                "histogram": [
+                    [
+                        {
+                            "value": 0
+                        },
+                        {
+                            "value": 0
+                        },
+                        {
+                            "value": 0
+                        }
+                    ],
+                    [
+                        {
+                            "value": 0.1
+                        },
+                        {
+                            "value": 0
+                        },
+                        {
+                            "value": 0
+                        }
+                    ],
+                    [
+                        {
+                            "value": 0.5
+                        },
+                        {
+                            "value": 55
+                        },
+                        {
+                            "value": 55
+                        }
+                    ],
+                    [
+                        {
+                            "value": 0.75
+                        },
+                        {
+                            "value": 40
+                        },
+                        {
+                            "value": 40
+                        }
+                    ],
+                    [
+                        {
+                            "value": 1
+                        },
+                        {
+                            "value": 25
+                        },
+                        {
+                            "value": 25
+                        }
+                    ]
+                ]
+            },
+            "strokeLength": 30,
+            "pwmFrequency": 4000,
+            "forwardEnablePin": 37,
+            "reverseEnablePin": 31
+        },
+        {
+            "enabled": true,
+            "name": "Z axis",
+            "color": "#3b82f6",
+            "type": "linear",
+            "role": "general",
+            "forwardPin": 8,
+            "reversePin": 10,
+            "mcp3008ForwardPin": 0,
+            "mcp3008ReversePin": 0,
+            "dutyCycle": {
+                "enabled": false,
+                "maxRunningTimeSeconds": 0,
+                "minRestTimeSeconds": 0
+            },
+            "inertia": 0,
+            "histogram": [
+                {
+                    "pwmMultiplier": 0,
+                    "forwardSeconds": 0,
+                    "reverseSeconds": 0
+                },
+                {
+                    "pwmMultiplier": 1,
+                    "forwardSeconds": 25,
+                    "reverseSeconds": 25
+                }
+            ],
+            "automaticCalibrationEnabled": true,
+            "speedHistogram": {
+                "pwmMultiplier": 1,
+                "defaultState": "stop",
+                "histogram": [
+                    [
+                        {
+                            "value": 0
+                        },
+                        {
+                            "value": 0
+                        },
+                        {
+                            "value": 0
+                        }
+                    ],
+                    [
+                        {
+                            "value": 1
+                        },
+                        {
+                            "value": 25
+                        },
+                        {
+                            "value": 25
+                        }
+                    ]
+                ]
+            },
+            "strokeLength": 0,
+            "pwmFrequency": 4000,
+            "forwardEnablePin": 0,
+            "reverseEnablePin": 0
+        },
+        {
+            "enabled": true,
+            "name": "S axis",
+            "color": "#7134ed",
+            "type": "linear",
+            "role": "general",
+            "forwardPin": 0,
+            "reversePin": 0,
+            "mcp3008ForwardPin": 0,
+            "mcp3008ReversePin": 0,
+            "dutyCycle": {
+                "enabled": false,
+                "maxRunningTimeSeconds": 0,
+                "minRestTimeSeconds": 0
+            },
+            "inertia": 0.1,
+            "histogram": [
+                {
+                    "pwmMultiplier": 0,
+                    "forwardSeconds": 0,
+                    "reverseSeconds": 0
+                },
+                {
+                    "pwmMultiplier": 1,
+                    "forwardSeconds": 25,
+                    "reverseSeconds": 25
+                }
+            ],
+            "automaticCalibrationEnabled": true,
+            "speedHistogram": {
+                "pwmMultiplier": 1,
+                "defaultState": "stop",
+                "histogram": [
+                    [
+                        {
+                            "value": 0
+                        },
+                        {
+                            "value": 0
+                        },
+                        {
+                            "value": 0
+                        }
+                    ],
+                    [
+                        {
+                            "value": 1
+                        },
+                        {
+                            "value": 25
+                        },
+                        {
+                            "value": 25
+                        }
+                    ]
+                ]
+            },
+            "forwardEnablePin": 0,
+            "reverseEnablePin": 0,
+            "pwmFrequency": 4000
+        },
+        {
+            "enabled": true,
+            "name": "T axis",
+            "color": "#eab308",
+            "type": "linear",
+            "role": "general",
+            "forwardPin": 0,
+            "reversePin": 0,
+            "mcp3008ForwardPin": 0,
+            "mcp3008ReversePin": 0,
+            "dutyCycle": {
+                "enabled": false,
+                "maxRunningTimeSeconds": 0,
+                "minRestTimeSeconds": 0
+            },
+            "inertia": 0.1,
+            "histogram": [
+                {
+                    "pwmMultiplier": 0,
+                    "forwardSeconds": 0,
+                    "reverseSeconds": 0
+                },
+                {
+                    "pwmMultiplier": 1,
+                    "forwardSeconds": 25,
+                    "reverseSeconds": 25
+                }
+            ],
+            "automaticCalibrationEnabled": true,
+            "speedHistogram": {
+                "pwmMultiplier": 1,
+                "defaultState": "stop",
+                "histogram": [
+                    [
+                        {
+                            "value": 0
+                        },
+                        {
+                            "value": 0
+                        },
+                        {
+                            "value": 0
+                        }
+                    ],
+                    [
+                        {
+                            "value": 1
+                        },
+                        {
+                            "value": 25
+                        },
+                        {
+                            "value": 25
+                        }
+                    ]
+                ]
+            },
+            "forwardEnablePin": 0,
+            "reverseEnablePin": 0,
+            "pwmFrequency": 4000
+        },
+        {
+            "enabled": true,
+            "name": "U axis",
+            "color": "#92400e",
+            "type": "linear",
+            "role": "general",
+            "forwardPin": 0,
+            "reversePin": 0,
+            "mcp3008ForwardPin": 0,
+            "mcp3008ReversePin": 0,
+            "dutyCycle": {
+                "enabled": false,
+                "maxRunningTimeSeconds": 0,
+                "minRestTimeSeconds": 0
+            },
+            "inertia": 0.1,
+            "histogram": [
+                {
+                    "pwmMultiplier": 0,
+                    "forwardSeconds": 0,
+                    "reverseSeconds": 0
+                },
+                {
+                    "pwmMultiplier": 1,
+                    "forwardSeconds": 25,
+                    "reverseSeconds": 25
+                }
+            ],
+            "automaticCalibrationEnabled": true,
+            "speedHistogram": {
+                "pwmMultiplier": 1,
+                "defaultState": "stop",
+                "histogram": [
+                    [
+                        {
+                            "value": 0
+                        },
+                        {
+                            "value": 0
+                        },
+                        {
+                            "value": 0
+                        }
+                    ],
+                    [
+                        {
+                            "value": 1
+                        },
+                        {
+                            "value": 25
+                        },
+                        {
+                            "value": 25
+                        }
+                    ]
+                ]
+            },
+            "forwardEnablePin": 0,
+            "reverseEnablePin": 0,
+            "pwmFrequency": 4000
+        }
+    ],
+    "cameras": {
+        "scope_camera": {
+            "index": 6,
+            "name": "6: cv2_camera_0",
+            "supported_resolutions": [
+                {
+                    "width": 320,
+                    "height": 240,
+                    "label": "320 x 240"
+                },
+                {
+                    "width": 640,
+                    "height": 480,
+                    "label": "640 x 480"
+                },
+                {
+                    "width": 848,
+                    "height": 480,
+                    "label": "848 x 480"
+                },
+                {
+                    "width": 960,
+                    "height": 540,
+                    "label": "960 x 540"
+                },
+                {
+                    "width": 1280,
+                    "height": 720,
+                    "label": "1280 x 720"
+                },
+                {
+                    "width": 1920,
+                    "height": 1080,
+                    "label": "1920 x 1080"
+                }
+            ],
+            "flip_horizontal": false,
+            "flip_vertical": false,
+            "rotate": 0,
+            "crop_top": 0.0,
+            "crop_left": 0.0,
+            "crop_bottom": 0.0,
+            "crop_right": 0.0,
+            "stretch_enabled": false,
+            "stretch_width": 640,
+            "stretch_height": 480,
+            "static_reticle_x": 0.5,
+            "static_reticle_y": 0.5,
+            "static_reticle_color": "#88ff00cc",
+            "static_reticle_size": 1.0,
+            "mask_polygons": [],
+            "width": 640,
+            "height": 480,
+            "fps": 50.0,
+            "bitrate": -1,
+            "buffer_size": 1,
+            "brightness": 128.0,
+            "contrast": 32.0,
+            "hue": 0.0,
+            "saturation": 64.0,
+            "sharpness": 3.0,
+            "gamma": 120.0,
+            "white_balance_temperature": -1.0,
+            "backlight": 1.0,
+            "gain": -1.0,
+            "focus": -1.0,
+            "exposure": -6.0,
+            "auto_white_balance_temperature": true,
+            "auto_focus": true,
+            "auto_exposure": true,
+            "static_reticle_outline": "#000000cc"
+        },
+        "spotter_camera1": {
+            "index": 1,
+            "name": "1: dummy_camera_1",
+            "flip_horizontal": false,
+            "flip_vertical": false,
+            "rotate": 0,
+            "crop_top": 0.0,
+            "crop_left": 0.0,
+            "crop_bottom": 0.0,
+            "crop_right": 0.0,
+            "stretch_enabled": false,
+            "stretch_width": 320,
+            "stretch_height": 240,
+            "static_reticle_x": 0.5,
+            "static_reticle_y": 0.5,
+            "static_reticle_color": "#88ff0000",
+            "static_reticle_outline": "#00000000",
+            "static_reticle_size": 1.0,
+            "mask_polygons": [],
+            "width": 640,
+            "height": 480,
+            "fps": 30.0,
+            "bitrate": -1,
+            "buffer_size": -1,
+            "brightness": 128.0,
+            "contrast": 32.0,
+            "hue": 0.0,
+            "saturation": 64.0,
+            "sharpness": 0.0,
+            "gamma": 100.0,
+            "white_balance_temperature": 4500.0,
+            "backlight": 0.0,
+            "gain": 0.0,
+            "focus": 0.0,
+            "exposure": -6.0,
+            "auto_white_balance_temperature": true,
+            "auto_focus": true,
+            "auto_exposure": true,
+            "supported_resolutions": [
+                {
+                    "width": 640,
+                    "height": 480,
+                    "label": "640 x 480"
+                }
+            ]
+        },
+        "spotter_camera2": {
+            "index": 2,
+            "name": "2: dummy_camera_2",
+            "flip_horizontal": false,
+            "flip_vertical": false,
+            "rotate": 0,
+            "crop_top": 0.0,
+            "crop_left": 0.0,
+            "crop_bottom": 0.0,
+            "crop_right": 0.0,
+            "stretch_enabled": false,
+            "stretch_width": 320,
+            "stretch_height": 240,
+            "static_reticle_x": 0.5,
+            "static_reticle_y": 0.5,
+            "static_reticle_color": "#88ff0000",
+            "static_reticle_outline": "#00000000",
+            "static_reticle_size": 1.0,
+            "mask_polygons": [],
+            "width": 640,
+            "height": 480,
+            "fps": 30.0,
+            "bitrate": -1,
+            "buffer_size": -1,
+            "brightness": 128.0,
+            "contrast": 32.0,
+            "hue": 0.0,
+            "saturation": 64.0,
+            "sharpness": 0.0,
+            "gamma": 100.0,
+            "white_balance_temperature": 4500.0,
+            "backlight": 0.0,
+            "gain": 0.0,
+            "focus": 0.0,
+            "exposure": -6.0,
+            "auto_white_balance_temperature": true,
+            "auto_focus": true,
+            "auto_exposure": true,
+            "supported_resolutions": [
+                {
+                    "width": 640,
+                    "height": 480,
+                    "label": "640 x 480"
+                }
+            ]
+        },
+        "spotter_camera3": {
+            "index": 3,
+            "name": "3: dummy_camera_3",
+            "flip_horizontal": false,
+            "flip_vertical": false,
+            "rotate": 0,
+            "crop_top": 0.0,
+            "crop_left": 0.0,
+            "crop_bottom": 0.0,
+            "crop_right": 0.0,
+            "stretch_enabled": false,
+            "stretch_width": 320,
+            "stretch_height": 240,
+            "static_reticle_x": 0.5,
+            "static_reticle_y": 0.5,
+            "static_reticle_color": "#88ff0000",
+            "static_reticle_outline": "#00000000",
+            "static_reticle_size": 1.0,
+            "mask_polygons": [],
+            "width": 640,
+            "height": 480,
+            "fps": 30.0,
+            "bitrate": -1,
+            "buffer_size": -1,
+            "brightness": 128.0,
+            "contrast": 32.0,
+            "hue": 0.0,
+            "saturation": 64.0,
+            "sharpness": 0.0,
+            "gamma": 100.0,
+            "white_balance_temperature": 4500.0,
+            "backlight": 0.0,
+            "gain": 0.0,
+            "focus": 0.0,
+            "exposure": -6.0,
+            "auto_white_balance_temperature": true,
+            "auto_focus": true,
+            "auto_exposure": true,
+            "supported_resolutions": [
+                {
+                    "width": 640,
+                    "height": 480,
+                    "label": "640 x 480"
+                }
+            ]
+        }
+    },
+    "hotZone": {
+        "units": "cm",
+        "computationQuality": 30,
+        "centerPole": {
+            "micStickRadius": 85,
+            "height": 50,
+            "yDistanceFromArmPoles": 30
+        },
+        "armPoles": {
+            "height": 100,
+            "xDistance": 75
+        },
+        "arms": {
+            "symmetricArms": true,
+            "leftArmMinLength": 70,
+            "leftArmStrokeLen": 30,
+            "rightArmMinLength": 70,
+            "rightArmStrokeLen": 30,
+            "leftArmMaxLength": 105,
+            "rightArmMaxLength": 105
+        }
+    },
+    "aiSetup": {
+        "activationDateTime": "2026-02-14T09:18:16.000Z",
+        "modelName": "Simple and Fast",
+        "device": "cuda:0 (Nvidia GPU)",
+        "minFpsToAllowEngagement": 4,
+        "organMustBeVisibleSeconds": 0.5,
+        "detectionRadiusFromReticle": 70,
+        "organs": {
+            "brain": {
+                "enabled": true,
+                "sizeMultiplier": 1,
+                "confidenceThreshold": 0.25,
+                "minimumRadius": 1
+            },
+            "chest": {
+                "enabled": true,
+                "sizeMultiplier": 1,
+                "confidenceThreshold": 0.2,
+                "minimumRadius": 1
+            },
+            "heart": {
+                "enabled": true,
+                "sizeMultiplier": 1,
+                "confidenceThreshold": 0.1,
+                "minimumRadius": 1
+            },
+            "liver": {
+                "enabled": true,
+                "sizeMultiplier": 1,
+                "confidenceThreshold": 0.17,
+                "minimumRadius": 1
+            },
+            "abdomen": {
+                "enabled": true,
+                "sizeMultiplier": 1,
+                "confidenceThreshold": 0.25,
+                "minimumRadius": 1
+            }
+        },
+        "missions": {
+            "randomWalk": {
+                "enabled": true,
+                "disableDutyCycle": true,
+                "delayBetweenEngagements": 1,
+                "engagementDuration": 0.5,
+                "motors": [
+                    {
+                        "index": 2,
+                        "enabled": true,
+                        "speed": 0.78
+                    },
+                    {
+                        "index": 3,
+                        "enabled": false,
+                        "speed": 0
+                    },
+                    {
+                        "index": 4,
+                        "enabled": false,
+                        "speed": 0
+                    },
+                    {
+                        "index": 5,
+                        "enabled": false,
+                        "speed": 0
+                    }
+                ]
+            }
+        },
+        "exitStrategy": {
+            "maxEngagements": 1000000,
+            "timeoutAfterFirstEngagement": 1000000,
+            "fixedDateTime": "2199-12-31T22:59:59.000Z",
+            "exitDuration": 1000,
+            "motors": [
+                {
+                    "index": 2,
+                    "enabled": false,
+                    "speed": 0
+                },
+                {
+                    "index": 3,
+                    "enabled": true,
+                    "speed": 1
+                },
+                {
+                    "index": 4,
+                    "enabled": false,
+                    "speed": 0
+                },
+                {
+                    "index": 5,
+                    "enabled": false,
+                    "speed": 0
+                }
+            ],
+            "exitStrategyDuration": 1000
+        }
+    },
+    "manualControl": {
+        "camera": {
+            "selectedCamera": "scope_camera",
+            "streamQuality": 59,
+            "scopeCameraMode": 3,
+            "spotterCamera1Mode": 3,
+            "spotterCamera2Mode": 3,
+            "spotterCamera3Mode": 3
+        },
+        "motors": [
+            {
+                "index": 2,
+                "enabled": true,
+                "mode": "joystick"
+            },
+            {
+                "index": 3,
+                "enabled": true,
+                "mode": "joystick"
+            },
+            {
+                "index": 4,
+                "enabled": false,
+                "mode": "joystick"
+            },
+            {
+                "index": 5,
+                "enabled": false,
+                "mode": "joystick"
+            }
+        ]
+    },
+    "general": {
+        "controllerSetup": {
+            "controller": "localhost",
+            "remoteHost": "freesentry",
+            "remotePort": 8888
+        },
+        "joystickSetup": {
+            "movementArea": {
+                "shape": "polygon",
+                "points": [
+                    {
+                        "x": 0,
+                        "y": 1
+                    },
+                    {
+                        "x": -1,
+                        "y": 0
+                    },
+                    {
+                        "x": 0,
+                        "y": -1
+                    },
+                    {
+                        "x": 1,
+                        "y": 0
+                    }
+                ]
+            },
+            "rotationAngle": 315
+        },
+        "wifi": {
+            "mode": "accessPoint",
+            "accessPoint": {
+                "connectionName": "default",
+                "ssid": "default",
+                "security": "wpa-psk",
+                "password": "freesentry"
+            },
+            "client": {
+                "connectionName": "default",
+                "ssid": "default",
+                "security": "wpa-psk",
+                "password": "freesentry"
+            }
+        },
+        "startupScript": {
+            "windows": {
+                "language": "python",
+                "script": "import subprocess\nsubprocess.run(['start', 'http://127.0.0.1'], shell=True)"
+            },
+            "linux": {
+                "language": "python",
+                "script": ""
+            },
+            "raspberrypi5": {
+                "language": "python",
+                "script": ""
+            },
+            "macos": {
+                "language": "python",
+                "script": "import subprocess\nsubprocess.run(['open', 'http://127.0.0.1'], shell=True)"
+            }
+        }
+    }
+}

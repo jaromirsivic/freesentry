@@ -1,0 +1,12 @@
+{
+    // "filewatcher.commands": [
+    //     {
+    //         "match": ".*",
+    //         "autoClearConsole": true,
+    //         "isAsync": true,
+    //         "shell": "c:\\git\\submoamoa\\",
+    //         "cmd": "c:\\git\\submoamoa\\win_00_compile.bat",
+    //         "event": "onFileChange"
+    //     }		
+    // ]
+}

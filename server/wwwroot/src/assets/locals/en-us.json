@@ -1,0 +1,65 @@
+{
+    "masterdata": {
+        "motors": {
+            "motorTypes": [
+                {
+                    "linear": "Linear Actuator"
+                },
+                {
+                    "stepper": "Stepper Motor"
+                }
+            ],
+            "motorRoles": [
+                {
+                    "leftArm": "Left Arm"
+                },
+                {
+                    "rightArm": "Right Arm"
+                },
+                {
+                    "general": "General"
+                },
+                {
+                    "notImplemented": "Not Implemented"
+                }
+            ]
+        }
+    },
+    "settings": {
+        "motor": {
+            "linear": {
+                "motorRole": "General",
+                "forwardPin": 11,
+                "reversePin": 13,
+                "mcp3008ForwardPin": 0,
+                "mcp3008ReversePin": 0,
+                "dutyCycle": {
+                    "enabled": false,
+                    "maxRunningTimeSeconds": 0,
+                    "minRestTimeSeconds": 0
+                },
+                "softness": 0.1,
+                "forwardSpeedHistogram": [
+                    {
+                        "speed": 0,
+                        "pwmMultiplier": 0
+                    },
+                    {
+                        "speed": 1,
+                        "pwmMultiplier": 1
+                    }
+                ],
+                "reverseSpeedHistogram": [
+                    {
+                        "speed": 0,
+                        "pwmMultiplier": 0
+                    },
+                    {
+                        "speed": 1,
+                        "pwmMultiplier": 1
+                    }
+                ]
+            }
+        }
+    }
+}
