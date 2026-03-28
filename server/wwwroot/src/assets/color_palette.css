@@ -1,0 +1,30 @@
+/* Semantic colors shared across the app (modals, controls, typography). */
+
+:root {
+    --blue_primary: #3b82f6;
+    --blue_primary_hover: #2563eb;
+    --blue_primary_border: #2563eb;
+    --blue_primary_disabled: #94a3b8;
+    --blue_secondary: #64748b;
+    --blue_secondary_disabled: #cbd5e1;
+
+    --color-primary: var(--blue_primary);
+    --color-primary-hover: var(--blue_primary_hover);
+    --color-primary-border: var(--blue_primary_border);
+
+    /* Destructive / Stop (AIAgent header), delete OK, mic listening */
+    --red_primary: #dc2626;
+    --red_primary_hover: #b91c1c;
+    --red_primary_border: #fca5a5;
+    --red_primary_disabled: #f87171;
+    --red_secondary: #ef4444;
+    --red_secondary_disabled: #9b5858;
+
+    /* Success / Update output (Data page modals), emerald accents */
+    --green_primary: #16a34a;
+    --green_primary_hover: #15803d;
+    --green_primary_border: #15803d;
+    --green_primary_disabled: #86efac;
+    --green_secondary: #10b981;
+    --green_secondary_disabled: #548365;
+}

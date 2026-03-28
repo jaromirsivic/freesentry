@@ -15,8 +15,11 @@ const ModalWindow = ({
     okDisabled = false,
     cancelDisabled = false,
     movable = true,
+    headerAction = null,
     customFooterButtons = [],
-    okButtonColor = null
+    okButtonColor = null,
+    resizable = false,
+    style = {},
 }) => {
     const [showTopShadow, setShowTopShadow] = useState(false);
     const [showBottomShadow, setShowBottomShadow] = useState(false);
@@ -40,6 +43,12 @@ const ModalWindow = ({
     const [isDragging, setIsDragging] = useState(false);
     const dragStartRef = useRef({ x: 0, y: 0, initialX: 0, initialY: 0 });
 
+    // Resizable state
+    const modalRef = useRef(null);
+    const [modalSize, setModalSize] = useState({ width: null, height: null });
+    const [isResizing, setIsResizing] = useState(false);
+    const resizeStartRef = useRef({ x: 0, y: 0, width: 0, height: 0 });
+
     const checkScroll = () => {
         if (bodyRef.current) {
             const { scrollTop, scrollHeight, clientHeight } = bodyRef.current;
@@ -55,8 +64,9 @@ const ModalWindow = ({
             window.addEventListener('resize', checkScroll);
             return () => window.removeEventListener('resize', checkScroll);
         } else {
-            // Reset position when closed
+            // Reset position and size when closed
             setPosition({ x: 0, y: 0 });
+            setModalSize({ width: null, height: null });
         }
     }, [isOpen, children]); // Re-check if children change
 
@@ -102,6 +112,44 @@ const ModalWindow = ({
         };
     };
 
+    // Resize handlers — applying 2× delta so the corner tracks the cursor exactly
+    // (the modal is flex-centered, so each 1px of growth shifts the corner only 0.5px)
+    const handleResizeMouseDown = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const rect = modalRef.current.getBoundingClientRect();
+        resizeStartRef.current = {
+            x: e.clientX,
+            y: e.clientY,
+            width: rect.width,
+            height: rect.height,
+        };
+        setIsResizing(true);
+    };
+
+    useEffect(() => {
+        const handleMouseMove = (e) => {
+            const dx = e.clientX - resizeStartRef.current.x;
+            const dy = e.clientY - resizeStartRef.current.y;
+            setModalSize({
+                width: Math.max(360, resizeStartRef.current.width + 2 * dx),
+                height: Math.max(280, resizeStartRef.current.height + 2 * dy),
+            });
+        };
+
+        const handleMouseUp = () => setIsResizing(false);
+
+        if (isResizing) {
+            window.addEventListener('mousemove', handleMouseMove);
+            window.addEventListener('mouseup', handleMouseUp);
+        }
+
+        return () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, [isResizing]);
+
     if (!isOpen) return null;
 
     const overlayStyle = {
@@ -125,9 +173,20 @@ const ModalWindow = ({
         maxWidth: '500px',
         display: 'flex',
         flexDirection: 'column',
-        maxHeight: modalMaxHeight,
-        position: 'relative', // For absolute positioning of warning popup if needed
-        transform: `translate(${position.x}px, ${position.y}px)`
+        maxHeight: resizable ? 'none' : modalMaxHeight,
+        position: 'relative',
+        transform: `translate(${position.x}px, ${position.y}px)`,
+        ...(resizable ? {
+            overflow: 'hidden',
+            minWidth: 360,
+            minHeight: 280,
+            maxWidth:  'calc(100vw - 1rem)',
+            maxHeight: 'calc(100vh - 1rem)',
+        } : {}),
+        ...style,
+        // modalSize must come after ...style so it overrides the parent's initial width/height
+        ...(resizable && modalSize.width  !== null ? { width:  modalSize.width  } : {}),
+        ...(resizable && modalSize.height !== null ? { height: modalSize.height } : {}),
     };
 
     const headerStyle = {
@@ -142,13 +201,15 @@ const ModalWindow = ({
         zIndex: 10,
         transition: 'box-shadow 0.2s ease',
         cursor: movable ? 'move' : 'default',
-        userSelect: 'none' // Prevent text selection while dragging
+        userSelect: 'none',
+        flexShrink: 0,
     };
 
     const bodyStyle = {
         padding: '1rem',
-        overflowY: 'auto',
-        flex: 1
+        flex: 1,
+        minHeight: 0,
+        ...(resizable ? { overflow: 'hidden' } : { overflowY: 'auto' }),
     };
 
     const footerStyle = {
@@ -159,7 +220,8 @@ const ModalWindow = ({
         gap: '1rem',
         boxShadow: showBottomShadow ? '0 -16px 24px -4px rgba(0, 0, 0, 0.2)' : 'none',
         zIndex: 10,
-        transition: 'box-shadow 0.2s ease'
+        transition: 'box-shadow 0.2s ease',
+        flexShrink: 0,
     };
 
     const warningPopupStyle = {
@@ -195,9 +257,17 @@ const ModalWindow = ({
 
     return (
         <div style={overlayStyle}>
-            <div style={modalStyle}>
+            <div style={modalStyle} ref={modalRef}>
                 <div style={headerStyle} onMouseDown={handleMouseDown}>
-                    <span>{title}</span>
+                    <span style={{ flex: 1, minWidth: 0 }}>{title}</span>
+                    {headerAction && (
+                        <div
+                            style={{ marginLeft: '1rem', display: 'flex', alignItems: 'center' }}
+                            onMouseDown={(e) => e.stopPropagation()}
+                        >
+                            {headerAction}
+                        </div>
+                    )}
                 </div>
 
                 <div
@@ -226,7 +296,7 @@ const ModalWindow = ({
                         <Button
                             label={cancelLabel}
                             onClick={onCancel}
-                            color={cancelDisabled ? '#94a3b8' : '#64748b'}
+                            color={cancelDisabled ? 'var(--blue_secondary_disabled)' : 'var(--blue_secondary)'}
                             disabled={cancelDisabled}
                             style={{ height: '40px', display: 'flex', alignItems: 'center' }}
                         />
@@ -236,12 +306,38 @@ const ModalWindow = ({
                         <Button
                             label={okLabel}
                             onClick={onOk}
-                            color={hasErrors || okDisabled ? '#94a3b8' : (okButtonColor ?? '#3b82f6')}
+                            color={hasErrors || okDisabled ? 'var(--blue_primary_disabled)' : (okButtonColor ?? 'var(--blue_primary)')}
                             disabled={hasErrors || okDisabled}
                             style={{ height: '40px', display: 'flex', alignItems: 'center' }}
                         />
                     )}
                 </div>
+
+                {resizable && (
+                    <div
+                        onMouseDown={handleResizeMouseDown}
+                        style={{
+                            position: 'absolute',
+                            bottom: 0,
+                            right: 0,
+                            width: 18,
+                            height: 18,
+                            cursor: 'se-resize',
+                            zIndex: 30,
+                            display: 'flex',
+                            alignItems: 'flex-end',
+                            justifyContent: 'flex-end',
+                            padding: '2px',
+                            opacity: 0.35,
+                            pointerEvents: 'auto',
+                        }}
+                    >
+                        <svg width="10" height="10" viewBox="0 0 10 10" style={{ display: 'block', pointerEvents: 'none' }}>
+                            <line x1="9" y1="1" x2="1" y2="9" stroke="#475569" strokeWidth="1.5" strokeLinecap="round"/>
+                            <line x1="9" y1="5" x2="5" y2="9" stroke="#475569" strokeWidth="1.5" strokeLinecap="round"/>
+                        </svg>
+                    </div>
+                )}
 
                 {showWarningPopup && (
                     <>
@@ -266,7 +362,7 @@ const ModalWindow = ({
                                 <Button
                                     label="OK"
                                     onClick={() => setShowWarningPopup(false)}
-                                    color="#3b82f6"
+                                    color="var(--blue_primary)"
                                 />
                             </div>
                         </div>

@@ -2629,3 +2629,12 @@ Volitelně koupit:
 3. Nastavit motory v Menu -> Setup -> Motors
 4. Nastavit kamery v Menu -> Setup -> Cameras
 5. Nastavit AI
+
+Ve složce /server/new_components/src/components jsou uloženy novější verze komponent
+než které se používají v /server/wwwroot/src/components. Identifikuj všechny změny,
+které bude nutné udělat pro přenos nových komponent do složky
+/server/wwwroot/src/components
+identifikuj všechny soubory, ve kterých bude nutné něco upravit, aby korektně
+pracovaly s novými komponentami.
+Pak komponenty přenes
+a změny aplikuj.

@@ -1,6 +1,6 @@
 import React from 'react';
 
-const HorizontalSeparator = ({ label, fullWidth = false, bleed = '1.5rem', color = '#3b82f6', help }) => {
+const HorizontalSeparator = ({ label, fullWidth = false, bleed = '1.5rem', color = 'var(--blue_primary)', help }) => {
     const containerStyle = {
         display: 'flex',
         alignItems: 'center',
@@ -18,7 +18,7 @@ const HorizontalSeparator = ({ label, fullWidth = false, bleed = '1.5rem', color
 
     return (
         <div style={containerStyle}>
-            <div style={{ width: fullWidth ? '1.5rem' : '1rem', height: '1px', backgroundColor: '#ddddddff' }}></div>
+            <div style={{ width: fullWidth ? '1.5rem' : '1rem', height: '1px', backgroundColor: color }}></div>
             {label && (
                 <span style={{ fontWeight: '500', color: color, whiteSpace: 'nowrap' }}>
                     {label}
@@ -37,7 +37,7 @@ const HorizontalSeparator = ({ label, fullWidth = false, bleed = '1.5rem', color
                     )}
                 </span>
             )}
-            <div style={{ flexGrow: 1, height: '1px', backgroundColor: '#ddddddff' }}></div>
+            <div style={{ flexGrow: 1, height: '1px', backgroundColor: color }}></div>
         </div>
     );
 };

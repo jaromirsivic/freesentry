@@ -221,10 +221,10 @@ const Chart2D = ({
         let nearestPoint = null;
         let nearestDistance = Infinity;
         let nearestDatasetIndex = -1;
-        let nearestColor = '#3b82f6';
+        let nearestColor = 'var(--blue_primary)';
 
         datasets.forEach((dataset, datasetIndex) => {
-            const { data = [], color = '#3b82f6' } = dataset;
+            const { data = [], color = 'var(--blue_primary)' } = dataset;
             
             data.forEach((point) => {
                 const svgX = toSVGX(point.x);
@@ -263,7 +263,7 @@ const Chart2D = ({
         return datasets.map((dataset, datasetIndex) => {
             const {
                 data = [],
-                color = '#3b82f6',
+                color = 'var(--blue_primary)',
                 label = `Dataset ${datasetIndex + 1}`,
                 lineWidth = 2,
                 lineStyle = 'solid'
@@ -436,7 +436,7 @@ const Chart2D = ({
                     rx={4}
                 />
                 {datasets.map((dataset, index) => {
-                    const { color = '#3b82f6', label = `Dataset ${index + 1}`, lineStyle = 'solid' } = dataset;
+                    const { color = 'var(--blue_primary)', label = `Dataset ${index + 1}`, lineStyle = 'solid' } = dataset;
                     const strokeDashArray = getStrokeDashArray(lineStyle);
                     return (
                         <g key={`legend-${index}`} transform={`translate(10, ${index * 25 + 18})`}>
@@ -472,7 +472,7 @@ const Chart2D = ({
                 paddingLeft: `${padding.left}px`
             }}>
                 {datasets.map((dataset, index) => {
-                    const { color = '#3b82f6', label = `Dataset ${index + 1}`, lineStyle = 'solid' } = dataset;
+                    const { color = 'var(--blue_primary)', label = `Dataset ${index + 1}`, lineStyle = 'solid' } = dataset;
                     return (
                         <div key={`legend-${index}`} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                             <div style={{

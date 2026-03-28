@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import ReactDOM from 'react-dom';
+import PopupMenu from './PopupMenu';
 
 const Table = ({
     width = '100%',
@@ -67,10 +67,9 @@ const Table = ({
     const [resizeRowStartHeight, setResizeRowStartHeight] = useState(0);
 
     const tableRef = useRef(null);
-    const inputRef = useRef(null);
+    const inputRef  = useRef(null);
     const scrollContainerRef = useRef(null);
     const headerScrollRef = useRef(null);
-    const contextMenuRef = useRef(null);
 
     // Default column width and row height
     const defaultColWidth = 100;
@@ -887,22 +886,6 @@ const Table = ({
         }
     }, [canDeleteColumns, selection, cells, numCols, updateCells, onDeleteColumn, updateSelection]);
 
-    // Context menu action handlers
-    const handleContextMenuCopy = () => {
-        copySelection();
-        closeContextMenu();
-    };
-
-    const handleContextMenuCut = () => {
-        cutSelection();
-        closeContextMenu();
-    };
-
-    const handleContextMenuPaste = () => {
-        pasteClipboard();
-        closeContextMenu();
-    };
-
     // Effect to focus input when editing
     useEffect(() => {
         if (editingCell && inputRef.current) {
@@ -928,19 +911,6 @@ const Table = ({
         document.addEventListener('mouseup', handleMouseUp);
         return () => document.removeEventListener('mouseup', handleMouseUp);
     }, [isFillDragging, fillDragStart, fillDragEnd]);
-
-    // Effect to close context menu on click outside
-    useEffect(() => {
-        const handleClickOutside = (e) => {
-            if (contextMenu.visible && tableRef.current &&
-                !tableRef.current.contains(e.target) &&
-                !(contextMenuRef.current && contextMenuRef.current.contains(e.target))) {
-                closeContextMenu();
-            }
-        };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, [contextMenu.visible]);
 
     // Effect to sync header scroll with cells scroll
     useEffect(() => {
@@ -1093,37 +1063,6 @@ const Table = ({
         zIndex: 5
     };
 
-    const contextMenuStyle = {
-        position: 'fixed',
-        left: `${contextMenu.x}px`,
-        top: `${contextMenu.y}px`,
-        backgroundColor: '#fff',
-        border: '1px solid #ccc',
-        borderRadius: '4px',
-        boxShadow: '0 4px 16px rgba(0,0,0,0.25)',
-        zIndex: 99999,
-        minWidth: '180px',
-        padding: '4px 0'
-    };
-
-    const contextMenuItemStyle = (disabled = false) => ({
-        padding: '8px 16px',
-        cursor: disabled ? 'default' : 'pointer',
-        backgroundColor: 'transparent',
-        border: 'none',
-        width: '100%',
-        textAlign: 'left',
-        fontSize: '14px',
-        color: disabled ? '#999' : '#333',
-        display: 'block'
-    });
-
-    const contextMenuSeparatorStyle = {
-        height: '1px',
-        backgroundColor: '#e0e0e0',
-        margin: '4px 0'
-    };
-
     // Get bounds info for context menu labels
     const bounds = getSelectionBounds();
     const selectedColCount = bounds ? bounds.maxCol - bounds.minCol + 1 : 1;
@@ -1154,92 +1093,12 @@ const Table = ({
 
     const fillHandlePosition = getSelectedCellPosition();
 
-    // Render context menu via portal
-    const renderContextMenu = () => {
-        if (!contextMenu.visible) return null;
-
-        return ReactDOM.createPortal(
-            <div
-                ref={contextMenuRef}
-                style={contextMenuStyle}
-                onClick={(e) => e.stopPropagation()}
-            >
-                <button
-                    style={contextMenuItemStyle(false)}
-                    onClick={handleContextMenuCopy}
-                    onMouseEnter={(e) => e.target.style.backgroundColor = '#f0f0f0'}
-                    onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
-                >
-                    Copy &nbsp;&nbsp;&nbsp;(Ctrl + C)
-                </button>
-                <button
-                    style={contextMenuItemStyle(!isAnySelectedCellEditable())}
-                    onClick={isAnySelectedCellEditable() ? handleContextMenuCut : undefined}
-                    disabled={!isAnySelectedCellEditable()}
-                    onMouseEnter={(e) => isAnySelectedCellEditable() && (e.target.style.backgroundColor = '#f0f0f0')}
-                    onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
-                >
-                    Cut &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(Ctrl + X)
-                </button>
-                <button
-                    style={contextMenuItemStyle(false)}
-                    onClick={handleContextMenuPaste}
-                    onMouseEnter={(e) => e.target.style.backgroundColor = '#f0f0f0'}
-                    onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
-                >
-                    Paste &nbsp;&nbsp;(Ctrl + V)
-                </button>
-
-                <div style={contextMenuSeparatorStyle} />
-
-                <button
-                    style={contextMenuItemStyle(!canAddColumns || (maxColumns && numCols + selectedColCount > maxColumns))}
-                    onClick={canAddColumns && (!maxColumns || numCols + selectedColCount <= maxColumns) ? addColumns : undefined}
-                    disabled={!canAddColumns || (maxColumns && numCols + selectedColCount > maxColumns)}
-                    onMouseEnter={(e) => canAddColumns && (!maxColumns || numCols + selectedColCount <= maxColumns) && (e.target.style.backgroundColor = '#f0f0f0')}
-                    onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
-                >
-                    Add Column{selectedColCount > 1 ? `s (${selectedColCount})` : ''}
-                </button>
-                <button
-                    style={contextMenuItemStyle(!canAddRows || (maxRows && cells.length + selectedRowCount > maxRows))}
-                    onClick={canAddRows && (!maxRows || cells.length + selectedRowCount <= maxRows) ? addRows : undefined}
-                    disabled={!canAddRows || (maxRows && cells.length + selectedRowCount > maxRows)}
-                    onMouseEnter={(e) => canAddRows && (!maxRows || cells.length + selectedRowCount <= maxRows) && (e.target.style.backgroundColor = '#f0f0f0')}
-                    onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
-                >
-                    Add Row{selectedRowCount > 1 ? `s (${selectedRowCount})` : ''}
-                </button>
-                <button
-                    style={contextMenuItemStyle(!canDeleteColumns || numCols - selectedColCount < 1)}
-                    onClick={canDeleteColumns && numCols - selectedColCount >= 1 ? deleteSelectedColumns : undefined}
-                    disabled={!canDeleteColumns || numCols - selectedColCount < 1}
-                    onMouseEnter={(e) => canDeleteColumns && numCols - selectedColCount >= 1 && (e.target.style.backgroundColor = '#f0f0f0')}
-                    onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
-                >
-                    Delete Column{selectedColCount > 1 ? `s (${selectedColCount})` : ''}
-                </button>
-                <button
-                    style={contextMenuItemStyle(!canDeleteRows || cells.length - selectedRowCount < 1)}
-                    onClick={canDeleteRows && cells.length - selectedRowCount >= 1 ? deleteSelectedRows : undefined}
-                    disabled={!canDeleteRows || cells.length - selectedRowCount < 1}
-                    onMouseEnter={(e) => canDeleteRows && cells.length - selectedRowCount >= 1 && (e.target.style.backgroundColor = '#f0f0f0')}
-                    onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
-                >
-                    Delete Row{selectedRowCount > 1 ? `s (${selectedRowCount})` : ''}
-                </button>
-            </div>,
-            document.body
-        );
-    };
-
     return (
         <div
             ref={tableRef}
             style={containerStyle}
             tabIndex={0}
             onContextMenu={handleContextMenu}
-            onClick={() => contextMenu.visible && closeContextMenu()}
         >
             {/* Column Headers */}
             {columnsHeaders && (
@@ -1354,8 +1213,25 @@ const Table = ({
                 </div>
             </div>
 
-            {/* Context Menu via Portal */}
-            {renderContextMenu()}
+            {/* Context Menu */}
+            {contextMenu.visible && (
+                <PopupMenu
+                    position={{ x: contextMenu.x, y: contextMenu.y }}
+                    onClose={closeContextMenu}
+                    borderColor="#e0e0e0"
+                    minWidth={190}
+                    items={[
+                        { label: 'Copy',  shortcut: 'Ctrl+C', onClick: copySelection },
+                        { label: 'Cut',   shortcut: 'Ctrl+X', disabled: !isAnySelectedCellEditable(), onClick: cutSelection },
+                        { label: 'Paste', shortcut: 'Ctrl+V', onClick: pasteClipboard },
+                        { type: 'separator' },
+                        { label: `Add Column${selectedColCount > 1 ? `s (${selectedColCount})` : ''}`,    disabled: !canAddColumns    || !!(maxColumns && numCols + selectedColCount > maxColumns),         onClick: addColumns },
+                        { label: `Add Row${selectedRowCount > 1 ? `s (${selectedRowCount})` : ''}`,       disabled: !canAddRows       || !!(maxRows    && cells.length + selectedRowCount > maxRows),        onClick: addRows },
+                        { label: `Delete Column${selectedColCount > 1 ? `s (${selectedColCount})` : ''}`, disabled: !canDeleteColumns || numCols - selectedColCount < 1,                                      onClick: deleteSelectedColumns },
+                        { label: `Delete Row${selectedRowCount > 1 ? `s (${selectedRowCount})` : ''}`,    disabled: !canDeleteRows    || cells.length - selectedRowCount < 1,                                  onClick: deleteSelectedRows },
+                    ]}
+                />
+            )}
         </div>
     );
 };

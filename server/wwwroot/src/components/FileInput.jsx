@@ -4,6 +4,7 @@ import { getOutlineStyle } from '../lib/outlineStyle';
 
 const FileInput = ({
     label,
+    labelPosition = 'left',
     onFileSelect,
     accept,
     disabled = false,
@@ -29,7 +30,7 @@ const FileInput = ({
     };
 
     return (
-        <div className="responsive-input-container" style={{ width: '100%', opacity: disabled ? 0.5 : 1, gap: '1rem', ...getOutlineStyle(outline), ...style }}>
+        <div className={`responsive-input-container ${labelPosition === 'top' ? 'top-label' : ''}`} style={{ width: '100%', opacity: disabled ? 0.5 : 1, gap: '1rem', ...getOutlineStyle(outline), ...style }}>
             {label && <span style={{ whiteSpace: 'nowrap', width: labelWidth, minWidth: labelWidth, display: labelWidth ? 'inline-block' : 'inline' }}>{label}</span>}
             <input
                 type="file"

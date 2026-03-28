@@ -1,0 +1,323 @@
+/* CodeEditor Component Styles */
+
+.code-editor-container {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.375rem;
+    overflow: hidden;
+    background-color: #ffffff;
+    transition: border-color 0.2s;
+}
+
+.code-editor-container.focused {
+    border-color: var(--blue_primary);
+}
+
+.code-editor-container.disabled {
+    opacity: 0.5;
+    pointer-events: none;
+    background-color: #f1f5f9;
+}
+
+/* CodeMirror Editor Area */
+.code-editor-content {
+    flex: 1;
+    overflow: auto;
+}
+
+.code-editor-content .cm-editor {
+    height: 100%;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 14px;
+}
+
+.code-editor-content .cm-editor.cm-focused {
+    outline: none;
+}
+
+.code-editor-content .cm-scroller {
+    overflow: auto;
+}
+
+/* Line numbers styling */
+.code-editor-content .cm-gutters {
+    background-color: #f8fafc;
+    border-right: 1px solid #e2e8f0;
+    color: var(--blue_primary_disabled);
+}
+
+.code-editor-content .cm-lineNumbers .cm-gutterElement {
+    padding: 0 8px 0 4px;
+    min-width: 32px;
+    text-align: right;
+}
+
+/*
+ * Active line highlight — must be semi-transparent so the selection layer
+ * rendered by drawSelection() (which sits behind cm-content) remains visible.
+ */
+.code-editor-content .cm-activeLine {
+    background-color: rgba(241, 245, 249, 0.5);
+}
+
+.code-editor-content .cm-activeLineGutter {
+    background-color: #e2e8f0;
+}
+
+/* Selection styling */
+.code-editor-content .cm-selectionBackground {
+    background: #bfdbfe !important;
+}
+
+.code-editor-content .cm-editor.cm-focused .cm-selectionBackground,
+.code-editor-content .cm-editor.cm-focused .cm-line .cm-selectionBackground {
+    background: #93c5fd !important;
+}
+
+/* Suppress native browser selection so CM6's drawn selection is the only one visible */
+.code-editor-content .cm-content ::selection {
+    background: transparent;
+}
+
+/* Cursor */
+.code-editor-content .cm-cursor {
+    border-left-color: #1e293b;
+}
+
+/* Syntax highlighting - matching design system colors */
+.code-editor-content .cm-content {
+    padding: 8px 0;
+}
+
+/* Status Bar */
+.code-editor-status-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 12px;
+    background-color: #f8fafc;
+    border-top: 1px solid #e2e8f0;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 12px;
+    color: var(--blue_secondary);
+}
+
+.code-editor-status-bar span {
+    white-space: nowrap;
+}
+
+.code-editor-status-interim {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: bold;
+    color: #990000;
+    padding-right: 0.5rem;
+}
+
+.code-editor-status-stats {
+    display: flex;
+    gap: 1.5rem;
+    flex-shrink: 0;
+}
+
+/* Microphone button */
+.code-editor-mic-btn {
+    position: absolute;
+    right: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    padding: 0;
+    background: var(--blue_primary);
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    z-index: 15;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+    transition: background 0.15s;
+}
+
+.code-editor-mic-btn:hover {
+    background: #2563eb;
+}
+
+.code-editor-mic-btn img {
+    width: 34px;
+    height: 34px;
+    display: block;
+    filter: brightness(0) invert(1);
+}
+
+.code-editor-mic-btn.listening {
+    background: var(--red_primary);
+    border: none;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+}
+
+.code-editor-mic-btn.listening:hover {
+    background: var(--red_primary_hover);
+}
+
+.code-editor-mic-btn.listening img {
+    filter: brightness(0) invert(1);
+}
+
+/* Readonly indicator */
+.code-editor-container.readonly .cm-content {
+    cursor: default;
+}
+
+/* Word wrap mode - line numbers should still align */
+.code-editor-content .cm-lineWrapping {
+    word-break: break-word;
+}
+
+/* Format error toast */
+.code-editor-format-error {
+    position: absolute;
+    bottom: 32px;
+    left: 8px;
+    right: 8px;
+    background-color: var(--red_secondary);
+    color: #fff;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    z-index: 10;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+    pointer-events: none;
+    animation: codeEditorFadeIn 0.2s ease-out;
+}
+
+@keyframes codeEditorFadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Find / Replace panel */
+.code-editor-find-panel {
+    position: absolute;
+    top: 0;
+    right: 0;
+    z-index: 20;
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-top: none;
+    border-right: none;
+    border-radius: 0 0 0 6px;
+    box-shadow: -2px 2px 8px rgba(0, 0, 0, 0.12);
+    padding: 6px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    animation: codeEditorFadeIn 0.15s ease-out;
+}
+
+.code-editor-find-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.code-editor-find-input {
+    flex: 1;
+    min-width: 160px;
+    height: 26px;
+    padding: 0 8px;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    font-size: 13px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    color: #1e293b;
+    background: #f8fafc;
+    outline: none;
+    transition: border-color 0.15s;
+}
+
+.code-editor-find-input:focus {
+    border-color: var(--blue_primary);
+    background: #ffffff;
+}
+
+.code-editor-find-count {
+    font-size: 12px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    color: var(--blue_secondary);
+    white-space: nowrap;
+    padding: 0 4px;
+    min-width: 64px;
+    text-align: right;
+}
+
+.code-editor-find-count.no-results {
+    color: var(--red_secondary);
+}
+
+.code-editor-find-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 26px;
+    min-width: 26px;
+    padding: 0 5px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    font-size: 13px;
+    color: #475569;
+    cursor: pointer;
+    transition: background 0.1s, border-color 0.1s, color 0.1s;
+}
+
+.code-editor-find-btn:hover:not(:disabled) {
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+    color: #1e293b;
+}
+
+.code-editor-find-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.code-editor-find-btn.close {
+    color: var(--blue_primary_disabled);
+    font-size: 11px;
+}
+
+.code-editor-find-btn.close:hover {
+    color: var(--red_secondary);
+    background: #fef2f2;
+    border-color: var(--red_primary_border);
+}
+
+.code-editor-find-btn.action {
+    font-size: 12px;
+    padding: 0 8px;
+    color: var(--blue_primary);
+    border-color: #bfdbfe;
+}
+
+.code-editor-find-btn.action:hover:not(:disabled) {
+    background: #eff6ff;
+    border-color: #93c5fd;
+    color: #2563eb;
+}
+
+/* Search match highlights */
+.cm-search-match {
+    background-color: #fef08a;
+    border-radius: 2px;
+}
+
+.cm-search-match-selected {
+    background-color: #fb923c !important;
+    border-radius: 2px;
+}

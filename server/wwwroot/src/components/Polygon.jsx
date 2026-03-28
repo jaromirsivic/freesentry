@@ -698,11 +698,12 @@ const Polygon = ({
         const screenDeltaX = currentCenterX - pinchCenterRef.current.x;
         const screenDeltaY = currentCenterY - pinchCenterRef.current.y;
 
-        // Convert screen delta to normalized delta, accounting for zoom level
-        // When zoomed in, a small screen movement should cause a smaller normalized movement
-        const effectiveZoom = newZoom;
-        const normalizedDeltaX = (screenDeltaX / rect.width) / effectiveZoom;
-        const normalizedDeltaY = (screenDeltaY / rect.height) / effectiveZoom;
+        // Convert screen delta to normalized delta.
+        // The transform is: screen = zoomCenter + (image - zoomCenter) * zoom
+        // Solving for the new zoomCenter that keeps the same image point under the pinch center:
+        //   c' = c - Δscreen / (zoom - 1)
+        const normalizedDeltaX = (screenDeltaX / rect.width) / (newZoom - 1);
+        const normalizedDeltaY = (screenDeltaY / rect.height) / (newZoom - 1);
 
         // Calculate new zoom center by subtracting the delta from the start position
         // Subtract because moving fingers right should move the view left (pan right)
@@ -749,9 +750,12 @@ const Polygon = ({
         const screenDeltaX = e.clientX - panStartRef.current.x;
         const screenDeltaY = e.clientY - panStartRef.current.y;
 
-        // Convert screen delta to normalized delta, accounting for zoom level
-        const normalizedDeltaX = (screenDeltaX / rect.width) / zoom;
-        const normalizedDeltaY = (screenDeltaY / rect.height) / zoom;
+        // Convert screen delta to normalized delta.
+        // The transform is: screen = zoomCenter + (image - zoomCenter) * zoom
+        // Solving for the new zoomCenter that keeps the same image point under the cursor:
+        //   c' = c - Δscreen / (zoom - 1)
+        const normalizedDeltaX = (screenDeltaX / rect.width) / (zoom - 1);
+        const normalizedDeltaY = (screenDeltaY / rect.height) / (zoom - 1);
 
         // Calculate new zoom center by subtracting the delta from the start position
         let newZoomCenterX = panStartZoomCenterRef.current.x - normalizedDeltaX;

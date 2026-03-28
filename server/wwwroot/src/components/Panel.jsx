@@ -6,6 +6,7 @@ const Panel = ({
     textColor,
     enabled = true,
     style = {},
+    contentStyle = {},
     title,
     headerAction
 }) => {
@@ -38,7 +39,7 @@ const Panel = ({
                     {headerAction && <div>{headerAction}</div>}
                 </div>
             )}
-            <div style={{ padding: '1.5rem' }}>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '1.5rem', overflow: 'hidden', ...contentStyle }}>
                 {children}
             </div>
         </div>

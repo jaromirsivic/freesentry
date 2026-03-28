@@ -254,14 +254,14 @@ const EditableChart = ({
                 </text>
 
                 {/* Line */}
-                <path d={generateLinePath()} stroke="#3b82f6" strokeWidth="2" fill="none" />
+                <path d={generateLinePath()} stroke="var(--blue_primary)" strokeWidth="2" fill="none" />
 
                 {/* Start point (fixed) */}
                 <circle
                     cx={toSVGX(startPoint.x)}
                     cy={toSVGY(startPoint.y)}
                     r="6"
-                    fill="#10b981"
+                    fill="var(--green_secondary)"
                     stroke="#fff"
                     strokeWidth="2"
                 />
@@ -271,7 +271,7 @@ const EditableChart = ({
                     cx={toSVGX(endPoint.x)}
                     cy={toSVGY(endPoint.y)}
                     r="6"
-                    fill="#10b981"
+                    fill="var(--green_secondary)"
                     stroke="#fff"
                     strokeWidth="2"
                 />
@@ -283,7 +283,7 @@ const EditableChart = ({
                         cx={toSVGX(point.x)}
                         cy={toSVGY(point.y)}
                         r="6"
-                        fill={selectedIndex === index ? "#3b82f6" : "#000"}
+                        fill={selectedIndex === index ? "var(--blue_primary)" : "#000"}
                         stroke="#fff"
                         strokeWidth="2"
                         style={{ cursor: 'move' }}

@@ -12,12 +12,20 @@ const MultiSwitch = ({
     textColor = '#333333',
     selectedTextColor = '#333333',
     borderRadius = '0.375rem',
+    forceButtonsSameWidth = true,
     style = {},
     outline = null
 }) => {
+    const isHorizontal = orientation === 'horizontal';
+    const useGrid = forceButtonsSameWidth && isHorizontal;
+
     const containerStyle = {
-        display: 'flex',
-        flexDirection: orientation === 'horizontal' ? 'row' : 'column',
+        display: useGrid ? 'grid' : 'flex',
+        ...(useGrid
+            ? { gridAutoFlow: 'column', gridAutoColumns: '1fr' }
+            : { flexDirection: isHorizontal ? 'row' : 'column' }
+        ),
+        width: 'fit-content',
         borderRadius: borderRadius,
         overflow: 'hidden',
         border: '1px solid #999999',
@@ -29,23 +37,22 @@ const MultiSwitch = ({
 
     const getOptionStyle = (option, index) => {
         const isSelected = option.value === value;
-        const isFirst = index === 0;
         const isLast = index === options.length - 1;
 
         return {
             backgroundColor: isSelected ? selectedColor : unselectedColor,
             color: isSelected ? selectedTextColor : textColor,
-            padding: '0.5rem 1rem',
+            padding: '0.5rem 0.5rem',
             border: 'none',
             cursor: disabled ? 'not-allowed' : 'pointer',
             fontWeight: isSelected ? 600 : 400,
             transition: 'background-color 0.2s, font-weight 0.2s',
-            borderRight: orientation === 'horizontal' && !isLast ? '1px solid #999999' : 'none',
-            borderBottom: orientation === 'vertical' && !isLast ? '1px solid #999999' : 'none',
-            flex: orientation === 'horizontal' ? 1 : 'none',
+            borderRight: isHorizontal && !isLast ? '1px solid #999999' : 'none',
+            borderBottom: !isHorizontal && !isLast ? '1px solid #999999' : 'none',
+            ...(!useGrid && { flex: isHorizontal ? 1 : 'none', minWidth: 'max-content' }),
             textAlign: 'center',
             whiteSpace: 'nowrap',
-            minWidth: orientation === 'horizontal' ? '0' : 'auto'
+            overflow: 'hidden',
         };
     };
 

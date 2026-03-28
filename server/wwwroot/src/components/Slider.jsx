@@ -4,6 +4,7 @@ import { getOutlineStyle } from '../lib/outlineStyle';
 
 const Slider = ({
     label,
+    labelPosition = 'left',
     value,
     onChange,
     onAfterChange,
@@ -148,7 +149,7 @@ const Slider = ({
         top: 0,
         height: '100%',
         width: `${percentage}%`,
-        backgroundColor: '#3b82f6',
+        backgroundColor: 'var(--blue_primary)',
         borderRadius: '2px'
     };
 
@@ -160,7 +161,7 @@ const Slider = ({
         width: '16px',
         height: '16px',
         backgroundColor: '#ffffff',
-        border: '2px solid #3b82f6',
+        border: '2px solid var(--blue_primary)',
         borderRadius: '50%',
         cursor: 'grab',
         boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
@@ -180,7 +181,7 @@ const Slider = ({
     };
 
     return (
-        <div className="custom-slider responsive-input-container" style={{ width: '100%', opacity: disabled ? 0.5 : 1, pointerEvents: disabled ? 'none' : 'auto', gap: '1rem', ...getOutlineStyle(outline), ...style }}>
+        <div className={`custom-slider responsive-input-container ${labelPosition === 'top' ? 'top-label' : ''}`} style={{ width: '100%', opacity: disabled ? 0.5 : 1, pointerEvents: disabled ? 'none' : 'auto', gap: '1rem', ...getOutlineStyle(outline), ...style }}>
             {label && <span style={{ whiteSpace: 'nowrap', width: labelWidth, minWidth: labelWidth, display: labelWidth ? 'inline-block' : 'inline' }}>{label}</span>}
             <div style={{ position: 'relative', flex: 1, height: '40px', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                 {isDragging && !allowManualInput && <div style={valueLabelStyle}>{value}</div>}

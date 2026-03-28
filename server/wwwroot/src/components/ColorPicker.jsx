@@ -7,6 +7,7 @@ import { getOutlineStyle } from '../lib/outlineStyle';
  */
 const ColorPicker = ({
     label,
+    labelPosition = 'left',
     color = '#ff0000',
     onChange,
     showHex = true,
@@ -221,7 +222,7 @@ const ColorPicker = ({
     const pureHueHex = hsvToHex(hsv.h, 1, 1, 1);
 
     return (
-        <div className="custom-color-picker responsive-input-container" ref={containerRef} style={{ position: 'relative', opacity: disabled ? 0.5 : 1, pointerEvents: disabled ? 'none' : 'auto', gap: '1rem', ...getOutlineStyle(outline), ...style }}>
+        <div className={`custom-color-picker responsive-input-container ${labelPosition === 'top' ? 'top-label' : ''}`} ref={containerRef} style={{ position: 'relative', opacity: disabled ? 0.5 : 1, pointerEvents: disabled ? 'none' : 'auto', gap: '1rem', ...getOutlineStyle(outline), ...style }}>
             {label && <span style={{ whiteSpace: 'nowrap', width: labelWidth, minWidth: labelWidth, display: labelWidth ? 'inline-block' : 'inline' }}>{label}</span>}
             {/* Trigger button (ComboBox style) */}
             <div

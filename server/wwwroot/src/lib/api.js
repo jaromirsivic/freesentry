@@ -286,6 +286,165 @@ export const rebootSystem = async () => {
     return post('/api/system/reboot', {}, 30000);
 };
 
+// ============================================
+// New-style authenticated fetch helpers
+// ============================================
+
+const TOKEN_KEY = 'token';
+
+function authHeaders() {
+    const token = localStorage.getItem(TOKEN_KEY);
+    return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+function notifyAuthExpired(status) {
+    if (status === 401 || status === 403) {
+        window.dispatchEvent(new CustomEvent('token:auth-expired'));
+    }
+}
+
+/** POST JSON body, return parsed JSON response. Throws on non-2xx. */
+export async function apiFetch(url, body) {
+    const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify(body),
+    });
+    if (!resp.ok) {
+        notifyAuthExpired(resp.status);
+        const data = await resp.json().catch(() => ({}));
+        const detail = data.detail;
+        const message = Array.isArray(detail)
+            ? detail.map(e => `${e.loc?.slice(-1)?.[0] ?? 'field'}: ${e.msg}`).join('; ')
+            : (detail ?? `Request failed (${resp.status})`);
+        throw new Error(message);
+    }
+    return resp.json();
+}
+
+/** GET plain text response. Throws on non-2xx. */
+export async function apiText(url, { headers = {}, signal } = {}) {
+    const resp = await fetch(url, {
+        method: 'GET',
+        headers: { ...authHeaders(), ...headers },
+        signal,
+    });
+    if (!resp.ok) {
+        notifyAuthExpired(resp.status);
+        const contentType = resp.headers.get('content-type') ?? '';
+        let message = '';
+        if (contentType.includes('application/json')) {
+            const data = await resp.json().catch(() => ({}));
+            const detail = data.detail;
+            message = Array.isArray(detail)
+                ? detail.map(e => `${e.loc?.slice(-1)?.[0] ?? 'field'}: ${e.msg}`).join('; ')
+                : (detail ?? '');
+        } else {
+            message = (await resp.text().catch(() => '')).trim();
+        }
+        throw new Error(message || `Request failed (${resp.status})`);
+    }
+    return resp.text();
+}
+
+/**
+ * POST FormData with XHR so upload progress can be tracked.
+ * Options: onProgress(percent), signal (AbortSignal)
+ */
+export function apiUploadWithProgress(url, formData, { onProgress, signal } = {}) {
+    return new Promise((resolve, reject) => {
+        if (signal?.aborted) {
+            reject(new DOMException('Upload cancelled', 'AbortError'));
+            return;
+        }
+        const xhr = new XMLHttpRequest();
+        signal?.addEventListener('abort', () => xhr.abort());
+        xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable && onProgress) {
+                onProgress(Math.round((e.loaded / e.total) * 100));
+            }
+        };
+        xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+                try { resolve(JSON.parse(xhr.responseText)); }
+                catch { resolve({}); }
+            } else {
+                notifyAuthExpired(xhr.status);
+                let message;
+                try {
+                    const data = JSON.parse(xhr.responseText);
+                    const detail = data.detail;
+                    message = Array.isArray(detail)
+                        ? detail.map(e => `${e.loc?.slice(-1)?.[0] ?? 'field'}: ${e.msg}`).join('; ')
+                        : (detail ?? `Upload failed (${xhr.status})`);
+                } catch { message = `Upload failed (${xhr.status})`; }
+                reject(new Error(message));
+            }
+        };
+        xhr.onerror = () => reject(new Error('Network error during upload'));
+        xhr.onabort = () => reject(new DOMException('Upload cancelled', 'AbortError'));
+        const token = localStorage.getItem(TOKEN_KEY);
+        xhr.open('POST', url);
+        if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+        xhr.send(formData);
+    });
+}
+
+/** POST FormData (file upload). Do NOT set Content-Type – browser does it. */
+export async function apiUpload(url, formData) {
+    const resp = await fetch(url, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: formData,
+    });
+    if (!resp.ok) {
+        notifyAuthExpired(resp.status);
+        const data = await resp.json().catch(() => ({}));
+        const detail = data.detail;
+        const message = Array.isArray(detail)
+            ? detail.map(e => `${e.loc?.slice(-1)?.[0] ?? 'field'}: ${e.msg}`).join('; ')
+            : (detail ?? `Upload failed (${resp.status})`);
+        throw new Error(message);
+    }
+    return resp.json();
+}
+
+/** POST JSON body, trigger a browser file download from the response blob. */
+export async function apiDownload(url, body, filename) {
+    const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify(body),
+    });
+    if (!resp.ok) {
+        notifyAuthExpired(resp.status);
+        throw new Error(`Download failed (${resp.status})`);
+    }
+    const blob = await resp.blob();
+    const href = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = href;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(href);
+}
+
+/** POST JSON body, return a temporary object URL for the response blob. */
+export async function apiBlob(url, body) {
+    const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify(body),
+    });
+    if (!resp.ok) {
+        notifyAuthExpired(resp.status);
+        throw new Error(`Fetch failed (${resp.status})`);
+    }
+    return URL.createObjectURL(await resp.blob());
+}
+
 // Export default object with all API functions
 export default {
 

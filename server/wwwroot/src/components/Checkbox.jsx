@@ -14,8 +14,8 @@ const Checkbox = ({
     const checkboxStyle = {
         width: '20px',
         height: '20px',
-        border: `2px solid ${value ? '#3b82f6' : '#cbd5e1'}`,
-        backgroundColor: value ? '#3b82f6' : 'transparent',
+        border: `2px solid ${value ? 'var(--blue_primary)' : '#cbd5e1'}`,
+        backgroundColor: value ? 'var(--blue_primary)' : 'transparent',
         borderRadius: '4px',
         display: 'flex',
         alignItems: 'center',

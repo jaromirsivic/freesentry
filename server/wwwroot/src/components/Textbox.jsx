@@ -23,7 +23,7 @@ const Textbox = ({
         width: '100%',
         transition: 'border-color 0.2s',
         backgroundColor: disabled ? '#f1f5f9' : '#ffffff',
-        borderColor: isFocused ? '#3b82f6' : '#cbd5e1'
+        borderColor: isFocused ? 'var(--blue_primary)' : '#cbd5e1'
     };
 
     const containerClass = `responsive-input-container ${labelPosition === 'top' ? 'top-label' : ''}`;

@@ -7,7 +7,7 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
  * @param {string} orientation - 'vertical' or 'horizontal' (default: 'vertical')
  * @param {string} mode - 'joystick' (snaps back to origin) or 'slider' (stays where released) (default: 'joystick')
  * @param {string} backgroundColor - Background color of the track area (default: 'transparent')
- * @param {string} rulerColor - Color of the ruler lines and text (default: '#3b82f6')
+ * @param {string} rulerColor - Color of the ruler lines and text (default: 'var(--blue_primary)')
  * @param {boolean} rulerShowText - Whether to show text labels on ruler (default: true)
  * @param {boolean} rulerVisible - Whether to show ruler lines and text (default: true)
  * @param {number} rulerLineDistance - Distance between major ruler lines in value units (default: 0.2)
@@ -31,7 +31,7 @@ const Joystick1D = ({
     orientation = 'vertical',
     mode = 'joystick',
     backgroundColor = 'transparent',
-    rulerColor = '#3b82f6',
+    rulerColor = 'var(--blue_primary)',
     rulerShowText = true,
     rulerVisible = true,
     rulerLineDistance = 0.2,

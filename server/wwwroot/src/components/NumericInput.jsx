@@ -3,7 +3,7 @@ import { getOutlineStyle } from '../lib/outlineStyle';
 
 const NumericInput = ({
     label,
-    labelPosition = 'top',
+    labelPosition = 'left',
     value,
     onChange,
     min,
@@ -226,7 +226,7 @@ const NumericInput = ({
         backgroundColor: 'transparent',
         cursor: disabled ? 'default' : 'pointer',
         fontSize: '0.6rem',
-        color: '#64748b'
+        color: 'var(--blue_secondary)'
     };
 
     const topSpinnerStyle = {

@@ -20,6 +20,7 @@ import { getOutlineStyle } from '../lib/outlineStyle';
  */
 const DateTimePicker = ({
     label,
+    labelPosition = 'left',
     timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone,
     value,
     minValue,
@@ -628,7 +629,7 @@ const DateTimePicker = ({
                                 border: 'none',
                                 borderRadius: '4px',
                                 cursor: inBounds ? 'pointer' : 'not-allowed',
-                                backgroundColor: isSelectedYear ? '#3b82f6' : 'transparent',
+                                backgroundColor: isSelectedYear ? 'var(--blue_primary)' : 'transparent',
                                 color: isSelectedYear ? '#fff' : inBounds ? '#374151' : '#9ca3af',
                                 fontWeight: isSelectedYear ? '600' : '400',
                                 fontSize: '0.85rem',
@@ -704,7 +705,7 @@ const DateTimePicker = ({
                                 border: 'none',
                                 borderRadius: '4px',
                                 cursor: inBounds ? 'pointer' : 'not-allowed',
-                                backgroundColor: isSelectedMonth ? '#3b82f6' : 'transparent',
+                                backgroundColor: isSelectedMonth ? 'var(--blue_primary)' : 'transparent',
                                 color: isSelectedMonth ? '#fff' : inBounds ? '#374151' : '#9ca3af',
                                 fontWeight: isSelectedMonth ? '600' : '400',
                                 fontSize: '0.85rem',
@@ -958,10 +959,10 @@ const DateTimePicker = ({
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                border: todayCheck && !selected ? '2px solid #3b82f6' : 'none',
+                                border: todayCheck && !selected ? '2px solid var(--blue_primary)' : 'none',
                                 borderRadius: '50%',
                                 cursor: inBounds ? 'pointer' : 'not-allowed',
-                                backgroundColor: selected ? '#3b82f6' : 'transparent',
+                                backgroundColor: selected ? 'var(--blue_primary)' : 'transparent',
                                 color: selected 
                                     ? '#fff' 
                                     : !inBounds 
@@ -1019,7 +1020,7 @@ const DateTimePicker = ({
 
     return (
         <div 
-            className="custom-date-time-picker responsive-input-container" 
+            className={`custom-date-time-picker responsive-input-container ${labelPosition === 'top' ? 'top-label' : ''}`}
             ref={containerRef} 
             style={{ 
                 position: 'relative', 
@@ -1132,22 +1133,22 @@ const DateTimePicker = ({
                             onClick={goToNow}
                             style={{
                                 padding: '6px 16px',
-                                border: '1px solid #3b82f6',
+                                border: '1px solid var(--blue_primary)',
                                 borderRadius: '4px',
                                 backgroundColor: 'transparent',
-                                color: '#3b82f6',
+                                color: 'var(--blue_primary)',
                                 cursor: 'pointer',
                                 fontSize: '0.85rem',
                                 fontWeight: '500',
                                 transition: 'all 0.15s'
                             }}
                             onMouseOver={(e) => { 
-                                e.target.style.backgroundColor = '#3b82f6'; 
+                                e.target.style.backgroundColor = 'var(--blue_primary)'; 
                                 e.target.style.color = '#fff';
                             }}
                             onMouseOut={(e) => { 
                                 e.target.style.backgroundColor = 'transparent'; 
-                                e.target.style.color = '#3b82f6';
+                                e.target.style.color = 'var(--blue_primary)';
                             }}
                         >
                             {getNowButtonLabel()}
@@ -1157,9 +1158,9 @@ const DateTimePicker = ({
                                 onClick={() => setIsOpen(false)}
                                 style={{
                                     padding: '6px 16px',
-                                    border: '1px solid #10b981',
+                                    border: '1px solid var(--green_secondary)',
                                     borderRadius: '4px',
-                                    backgroundColor: '#10b981',
+                                    backgroundColor: 'var(--green_secondary)',
                                     color: '#fff',
                                     cursor: 'pointer',
                                     fontSize: '0.85rem',
@@ -1167,10 +1168,10 @@ const DateTimePicker = ({
                                     transition: 'all 0.15s'
                                 }}
                                 onMouseOver={(e) => { 
-                                    e.target.style.backgroundColor = '#059669'; 
+                                    e.target.style.backgroundColor = 'var(--green_primary)'; 
                                 }}
                                 onMouseOut={(e) => { 
-                                    e.target.style.backgroundColor = '#10b981'; 
+                                    e.target.style.backgroundColor = 'var(--green_secondary)'; 
                                 }}
                             >
                                 Done

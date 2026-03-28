@@ -3,6 +3,7 @@ import { getOutlineStyle } from '../lib/outlineStyle';
 
 const ComboBox = ({
     label,
+    labelPosition = 'left',
     items = [],
     value,
     onChange,
@@ -11,6 +12,7 @@ const ComboBox = ({
     style = {},
     outline = null
 }) => {
+    const containerClass = `custom-combobox responsive-input-container ${labelPosition === 'top' ? 'top-label' : ''}`;
     const selectStyle = {
         padding: '0.5rem',
         borderRadius: '0.375rem',
@@ -22,7 +24,7 @@ const ComboBox = ({
     };
 
     return (
-        <div className="custom-combobox responsive-input-container" style={{ width: '100%', opacity: disabled ? 0.5 : 1, gap: '1rem', ...getOutlineStyle(outline), ...style }}>
+        <div className={containerClass} style={{ width: '100%', opacity: disabled ? 0.5 : 1, gap: '1rem', ...getOutlineStyle(outline), ...style }}>
             {label && <label className="combobox-label" style={{ display: labelWidth ? 'inline-block' : 'block', width: labelWidth, minWidth: labelWidth, marginBottom: '0.25rem', whiteSpace: 'nowrap' }}>{label}</label>}
             <select
                 value={value}
@@ -38,7 +40,7 @@ const ComboBox = ({
                         style={{
                             backgroundColor: item.color || (item.disabled ? '#f1f5f9' : '#ffffff'),
                             textDecoration: item.disabled ? 'line-through' : 'none',
-                            color: item.disabled ? '#94a3b8' : 'inherit'
+                            color: item.disabled ? 'var(--blue_primary_disabled)' : 'inherit'
                         }}
                     >
                         {item.label}

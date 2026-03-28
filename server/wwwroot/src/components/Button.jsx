@@ -4,10 +4,11 @@ import { getOutlineStyle } from '../lib/outlineStyle';
 const Button = ({
     label,
     onClick,
-    color = '#3b82f6',
+    color = 'var(--blue_primary)',
     disabled = false,
     style = {},
-    outline = null
+    outline = null,
+    hint = null
 }) => {
     const [isHovered, setIsHovered] = React.useState(false);
 
@@ -36,6 +37,7 @@ const Button = ({
             className="custom-button"
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
+            title={hint}
         >
             {label}
         </button>

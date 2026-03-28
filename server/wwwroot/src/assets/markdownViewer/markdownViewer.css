@@ -1,0 +1,168 @@
+/* MarkdownViewer — prose styling for rendered Markdown */
+
+.markdown-viewer {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 0.9375rem;
+    line-height: 1.75;
+    color: #1e293b;
+    overflow-y: auto;
+    min-height: 0;
+    padding: 0.25rem 0.25rem;
+}
+
+.markdown-viewer h1,
+.markdown-viewer h2,
+.markdown-viewer h3,
+.markdown-viewer h4,
+.markdown-viewer h5,
+.markdown-viewer h6 {
+    color: #0f172a;
+    font-weight: 700;
+    margin-top: 1.5rem;
+    margin-bottom: 0.5rem;
+    line-height: 1.3;
+}
+
+.markdown-viewer h1 { font-size: 1.75rem; border-bottom: 2px solid #e2e8f0; padding-bottom: 0.4rem; }
+.markdown-viewer h2 { font-size: 1.375rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.3rem; }
+.markdown-viewer h3 { font-size: 1.125rem; }
+.markdown-viewer h4 { font-size: 1rem; }
+
+.markdown-viewer p {
+    margin: 0 0 1rem;
+}
+
+.markdown-viewer a {
+    color: #2563eb;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.markdown-viewer a:hover {
+    color: #1d4ed8;
+}
+
+.markdown-viewer code {
+    background: #f1f5f9;
+    padding: 0.15em 0.4em;
+    border-radius: 3px;
+    font-family: Consolas, 'Courier New', monospace;
+    font-size: 0.875em;
+    color: #0f172a;
+}
+
+.markdown-viewer pre {
+    background: #f1f5f9;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    overflow-x: auto;
+    margin: 0 0 1rem;
+}
+
+.markdown-viewer pre code {
+    background: none;
+    padding: 0;
+    font-size: 0.875em;
+    color: inherit;
+}
+
+.markdown-viewer mark.markdown-highlight {
+    background: #fef08a;
+    color: inherit;
+    padding: 0.05em 0.2em;
+    border-radius: 0.25rem;
+}
+
+.markdown-viewer ins.critic-addition,
+.markdown-viewer del.critic-deletion {
+    padding: 0.05em 0.2em;
+    border-radius: 0.25rem;
+}
+
+.markdown-viewer ins.critic-addition {
+    background: #dcfce7;
+    color: #166534;
+    text-decoration: none;
+}
+
+.markdown-viewer del.critic-deletion {
+    background: #fee2e2;
+    color: #991b1b;
+    text-decoration: line-through;
+}
+
+.markdown-viewer blockquote {
+    border-left: 4px solid #cbd5e1;
+    margin: 0 0 1rem;
+    padding: 0.5rem 1rem;
+    color: var(--blue_secondary);
+    background: #f8fafc;
+    border-radius: 0 0.25rem 0.25rem 0;
+}
+
+.markdown-viewer blockquote p:last-child {
+    margin-bottom: 0;
+}
+
+.markdown-viewer ul,
+.markdown-viewer ol {
+    margin: 0 0 1rem;
+    padding-left: 1.75rem;
+}
+
+.markdown-viewer li {
+    margin-bottom: 0.25rem;
+}
+
+.markdown-viewer table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 0 0 1rem;
+    font-size: 0.9em;
+}
+
+.markdown-viewer th,
+.markdown-viewer td {
+    border: 1px solid #e2e8f0;
+    padding: 0.5rem 1rem;
+    text-align: left;
+}
+
+.markdown-viewer th {
+    background: #f8fafc;
+    font-weight: 600;
+}
+
+.markdown-viewer tr:nth-child(even) {
+    background: #f8fafc;
+}
+
+.markdown-viewer img {
+    max-width: 100%;
+    border-radius: 0.375rem;
+}
+
+.markdown-viewer hr {
+    border: none;
+    border-top: 1px solid #e2e8f0;
+    margin: 1.5rem 0;
+}
+
+.markdown-viewer .katex-display {
+    margin: 1.25rem 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 0.25rem;
+}
+
+/* Mermaid diagrams */
+.markdown-viewer .mermaid {
+    text-align: center;
+    margin: 1.5rem 0;
+    overflow-x: auto;
+}
+
+.markdown-viewer .mermaid svg {
+    max-width: 100%;
+    height: auto;
+}
