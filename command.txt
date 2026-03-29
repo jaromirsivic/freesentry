@@ -2638,3 +2638,10 @@ identifikuj všechny soubory, ve kterých bude nutné něco upravit, aby korektn
 pracovaly s novými komponentami.
 Pak komponenty přenes
 a změny aplikuj.
+
+Proveď hloubkové review všech komponent a stránek ve složce /server/wwwroot.
+Zjisti co vše by se dalo vylepšit pro zlepšení spolehlivosti a rychlosti projektu,
+případně pro zvýšení čitelnosti zdrojového kódu. Pozor spolehlivost,
+multiplatformnost a rychlost kódu je prioritizována před čitelností.
+Soustřeď se na to, aby kritické části byly thread-safe a fault-proof.
+Je plánováno, že tento systém poběží bezodstávkově měsíce, možná roky.
