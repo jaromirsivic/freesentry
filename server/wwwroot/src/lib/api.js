@@ -3,11 +3,39 @@
  * Centralized module for all API communications
  */
 
-// Base URL for API calls - uses current hostname with port 80
-const getBaseUrl = () => `http://${window.location.hostname}:80`;
-
 // Default timeout in milliseconds
 const DEFAULT_TIMEOUT = 5000;
+const ABSOLUTE_URL_PATTERN = /^[a-zA-Z][a-zA-Z\d+\-.]*:/;
+const CONFIGURED_API_BASE_URL = (import.meta.env.VITE_API_BASE_URL?.trim() ?? '').replace(/\/+$/, '');
+
+const isAbsoluteUrl = (url) => typeof url === 'string' && (ABSOLUTE_URL_PATTERN.test(url) || url.startsWith('//'));
+
+/**
+ * Resolve API URLs safely across same-origin, reverse-proxy and explicit
+ * cross-origin deployments.
+ *
+ * By default we keep root-relative `/api/...` URLs untouched so the browser
+ * resolves them against the current origin. If `VITE_API_BASE_URL` is defined,
+ * we prefix relative API paths with that configured base instead.
+ *
+ * @param {string|URL} url - API endpoint or absolute URL
+ * @returns {string|URL}
+ */
+const resolveApiUrl = (url) => {
+    if (typeof url !== 'string' || url.length === 0 || isAbsoluteUrl(url)) {
+        return url;
+    }
+
+    if (!CONFIGURED_API_BASE_URL) {
+        return url;
+    }
+
+    if (url.startsWith('/')) {
+        return `${CONFIGURED_API_BASE_URL}${url}`;
+    }
+
+    return `${CONFIGURED_API_BASE_URL}/${url.replace(/^\/+/, '')}`;
+};
 
 /**
  * Generic fetch wrapper with timeout support
@@ -21,7 +49,7 @@ const fetchWithTimeout = async (endpoint, options = {}, timeout = DEFAULT_TIMEOU
     const timeoutId = setTimeout(() => controller.abort(), timeout);
 
     try {
-        const response = await fetch(`${getBaseUrl()}${endpoint}`, {
+        const response = await fetch(resolveApiUrl(endpoint), {
             ...options,
             signal: controller.signal
         });
@@ -305,7 +333,7 @@ function notifyAuthExpired(status) {
 
 /** POST JSON body, return parsed JSON response. Throws on non-2xx. */
 export async function apiFetch(url, body) {
-    const resp = await fetch(url, {
+    const resp = await fetch(resolveApiUrl(url), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify(body),
@@ -324,7 +352,7 @@ export async function apiFetch(url, body) {
 
 /** GET plain text response. Throws on non-2xx. */
 export async function apiText(url, { headers = {}, signal } = {}) {
-    const resp = await fetch(url, {
+    const resp = await fetch(resolveApiUrl(url), {
         method: 'GET',
         headers: { ...authHeaders(), ...headers },
         signal,
@@ -384,7 +412,7 @@ export function apiUploadWithProgress(url, formData, { onProgress, signal } = {}
         xhr.onerror = () => reject(new Error('Network error during upload'));
         xhr.onabort = () => reject(new DOMException('Upload cancelled', 'AbortError'));
         const token = localStorage.getItem(TOKEN_KEY);
-        xhr.open('POST', url);
+        xhr.open('POST', resolveApiUrl(url));
         if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
         xhr.send(formData);
     });
@@ -392,7 +420,7 @@ export function apiUploadWithProgress(url, formData, { onProgress, signal } = {}
 
 /** POST FormData (file upload). Do NOT set Content-Type – browser does it. */
 export async function apiUpload(url, formData) {
-    const resp = await fetch(url, {
+    const resp = await fetch(resolveApiUrl(url), {
         method: 'POST',
         headers: authHeaders(),
         body: formData,
@@ -411,7 +439,7 @@ export async function apiUpload(url, formData) {
 
 /** POST JSON body, trigger a browser file download from the response blob. */
 export async function apiDownload(url, body, filename) {
-    const resp = await fetch(url, {
+    const resp = await fetch(resolveApiUrl(url), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify(body),
@@ -433,7 +461,7 @@ export async function apiDownload(url, body, filename) {
 
 /** POST JSON body, return a temporary object URL for the response blob. */
 export async function apiBlob(url, body) {
-    const resp = await fetch(url, {
+    const resp = await fetch(resolveApiUrl(url), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify(body),

@@ -2645,3 +2645,8 @@ případně pro zvýšení čitelnosti zdrojového kódu. Pozor spolehlivost,
 multiplatformnost a rychlost kódu je prioritizována před čitelností.
 Soustřeď se na to, aby kritické části byly thread-safe a fault-proof.
 Je plánováno, že tento systém poběží bezodstávkově měsíce, možná roky.
+
+Načti findings_extended.md, což je soubor, který byl vytvořen jako detailní review zdrojových kódů tohoto projektu.
+Zaměř se pouze na aktivní zjištění 1 "server/wwwroot/src/lib/api.js — hardcoded http://hostname:80" a oprav tuto závadu jako expert.
+Uvědom si, že tento systém bude procházet auditem, proto musí být tvoje oprava super seniorní.
+Pokud máš doplňující dotazy, neboj se mě zeptat.

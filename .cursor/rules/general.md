@@ -169,7 +169,7 @@ The application uses Python FastAPI in the backend and HTML5 + React in the fron
 
 # Platform
 
-Project will be deployed to Windows, Linux and Mac OS. Try to avoid OS specific calls.
+Project will be deployed to Raspberry PI, Windows, Linux, Mac OS and Raspberry Pi. Try to avoid OS specific calls.
 
 
 # Modal Window Design & Behavior Rules
