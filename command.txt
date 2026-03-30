@@ -2650,3 +2650,8 @@ Načti findings_extended.md, což je soubor, který byl vytvořen jako detailní
 Zaměř se pouze na aktivní zjištění 1 "server/wwwroot/src/lib/api.js — hardcoded http://hostname:80" a oprav tuto závadu jako expert.
 Uvědom si, že tento systém bude procházet auditem, proto musí být tvoje oprava super seniorní.
 Pokud máš doplňující dotazy, neboj se mě zeptat.
+
+Načti findings_extended.md, což je soubor, který byl vytvořen jako detailní review zdrojových kódů tohoto projektu.
+Zaměř se pouze na aktivní zjištění 2 `server/wwwroot/src/App.jsx` — `BrowserRouter` bez `basename` a oprav tuto závadu jako expert.
+Uvědom si, že tento systém bude procházet auditem, proto musí být tvoje oprava super seniorní.
+Pokud máš doplňující dotazy, neboj se mě zeptat.

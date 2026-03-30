@@ -7,6 +7,10 @@ alwaysApply: true
 Everything you write must be in English. Every source code you output if there are any hardcoded strings or comments
 must be in English.
 
+# Generalization
+
+Before you implement any new feature, function, ... - ask yourself - is not there already something very similar in the source code that was implemented previously. Something regarding same web page, same backend functionality, ... If there is such a thing which can be generalized then generalize it. Create a helper function or helper module which will encapsulate function/features which then will be called from different places.
+
 # React
 
 Front-end application is written in React as a responsive, “Mobile First” application. It uses bootstrap policy and braking in case there is not enough space on the page. The app is multilingual, but English en-US will be the default language.
