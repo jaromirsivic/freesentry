@@ -75,6 +75,7 @@ const ManualControl = () => {
     const motorsRef = useRef(motors);
     const isFullscreenRef = useRef(isFullscreen);
     const initialLoadGenerationRef = useRef(0);
+    const dismissalStopQueuedRef = useRef(false);
     
     // Keep cameraSettingsRef in sync with cameraSettings state
     useEffect(() => {
@@ -131,6 +132,42 @@ const ManualControl = () => {
         return `/api/cameras/stream/${camera}?mode=${mode}&quality=${quality}`;
     }, []);
 
+    const getActiveCameraCode = useCallback((cameraCode) => {
+        return cameraCode || cameraSettingsRef.current?.selectedCamera || 'scope_camera';
+    }, []);
+
+    const buildStopCameraUrl = useCallback((cameraCode) => {
+        const activeCameraCode = getActiveCameraCode(cameraCode);
+        return `/api/cameras/stop/${activeCameraCode}`;
+    }, [getActiveCameraCode]);
+
+    const queueDismissalCameraStop = useCallback((cameraCode) => {
+        if (dismissalStopQueuedRef.current) {
+            return;
+        }
+
+        dismissalStopQueuedRef.current = true;
+        const stopUrl = buildStopCameraUrl(cameraCode);
+
+        // Keep the dismissal request aligned with the normal POST contract when possible.
+        if (typeof fetch === 'function' && typeof Request !== 'undefined' && 'keepalive' in Request.prototype) {
+            try {
+                void fetch(stopUrl, { method: 'POST', keepalive: true }).catch(() => {});
+                return;
+            } catch {
+                // Fall through to sendBeacon for older browsers.
+            }
+        }
+
+        if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+            try {
+                navigator.sendBeacon(stopUrl, new Blob());
+            } catch {
+                // Best-effort only during page dismissal.
+            }
+        }
+    }, [buildStopCameraUrl]);
+
     /**
      * Stop camera stream via API.
      * Waits for success response before resolving.
@@ -139,14 +176,14 @@ const ManualControl = () => {
      */
     const stopCameraStream = useCallback(async ({ cameraCode } = {}) => {
         try {
-            const response = await fetch(`/api/cameras/stop/${cameraCode || cameraSettings.selectedCamera}`, { method: 'POST' });
+            const response = await fetch(buildStopCameraUrl(cameraCode), { method: 'POST' });
             const data = await response.json();
             return data.success === true;
         } catch (err) {
             console.error('Failed to stop camera stream:', err);
             return false;
         }
-    }, [cameraSettings.selectedCamera]);
+    }, [buildStopCameraUrl]);
 
     // Fetch camera and motor settings on mount
     useEffect(() => {
@@ -263,37 +300,33 @@ const ManualControl = () => {
             setTimerEnabled(false);
             // Show camera off image
             setStreamUrl(null);
-            // Stop camera stream via API (fire-and-forget, use ref for current value)
-            const selectedCamera = cameraSettingsRef.current?.selectedCamera || 'scope_camera';
-            fetch(`/api/cameras/stop/${selectedCamera}`, { method: 'POST' }).catch(() => {});
-        };
-    }, [buildStreamUrl]);
-
-    // Handle browser close/refresh (beforeunload)
-    useEffect(() => {
-        const handleBeforeUnload = (event) => {
-            // Show camera off image
-            setStreamUrl(null);
-            
-            // Use sendBeacon for reliable delivery during page unload
-            // Note: We can't wait for response during beforeunload
-            // Stop all cameras just in case
-            const allCameras = ['scope_camera', 'spotter_camera1', 'spotter_camera2', 'spotter_camera3'];
-            for (const camera of allCameras) {
-                navigator.sendBeacon(`/api/cameras/stop/${camera}`, '');
+            // SPA route changes use the normal stop endpoint; page dismissal has its own keepalive fallback.
+            if (!dismissalStopQueuedRef.current) {
+                void fetch(buildStopCameraUrl(), { method: 'POST' }).catch(() => {});
             }
-            
-            // For older browsers, return a message (though most modern browsers ignore it)
-            event.preventDefault();
-            event.returnValue = '';
+        };
+    }, [buildStopCameraUrl, buildStreamUrl]);
+
+    // Handle browser dismissal without forcing an unload confirmation prompt.
+    useEffect(() => {
+        const handlePageHide = (event) => {
+            if (!event.persisted) {
+                queueDismissalCameraStop();
+            }
         };
 
+        const handleBeforeUnload = () => {
+            queueDismissalCameraStop();
+        };
+
+        window.addEventListener('pagehide', handlePageHide);
         window.addEventListener('beforeunload', handleBeforeUnload);
         
         return () => {
+            window.removeEventListener('pagehide', handlePageHide);
             window.removeEventListener('beforeunload', handleBeforeUnload);
         };
-    }, [cameraSettings.selectedCamera]);
+    }, [queueDismissalCameraStop]);
 
     // Handle main menu open/close - pause streaming when menu opens, resume when it closes
     useEffect(() => {
