@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Panel from './components/Panel';
 import Button from './components/Button';
 import ModalWindow from './components/ModalWindow';
@@ -80,15 +80,6 @@ const Motors = () => {
         loadSpeedHistogram();
     }, [motors]); // Reload when motors change
 
-    // Cleanup test motor timer on unmount
-    useEffect(() => {
-        return () => {
-            if (testMotorTimerRef.current) {
-                clearInterval(testMotorTimerRef.current);
-            }
-        };
-    }, []);
-
     // Prepare dropdown options
     const motorTypeOptions = masterData.motors.motorTypes.map(type => ({
         label: type,
@@ -162,28 +153,41 @@ const Motors = () => {
         }, 100);
     };
 
-    const stopMotorActionTimer = () => {
+    const stopMotorActionTimer = useCallback(({ resetUiState = true, resetTimerValue = true } = {}) => {
         if (timerIntervalRef.current) {
             clearInterval(timerIntervalRef.current);
             timerIntervalRef.current = null;
         }
-        setMotorActionActive(false);
-    };
+        startTimeRef.current = null;
+        if (resetTimerValue) {
+            setMotorActionTimer(0);
+        }
+        if (resetUiState) {
+            setMotorActionActive(false);
+        }
+    }, []);
+
+    const stopActiveMotorAction = useCallback(async ({ resetUiState = true, errorContext = 'cleanup' } = {}) => {
+        const activePin = activeMotorPinRef.current;
+        activeMotorPinRef.current = null;
+        stopMotorActionTimer({
+            resetUiState,
+            resetTimerValue: resetUiState
+        });
+
+        if (activePin === null) {
+            return;
+        }
+
+        try {
+            await stopMotorAction(activePin);
+        } catch (error) {
+            console.error(`Failed to stop motor action during ${errorContext}:`, error);
+        }
+    }, [stopMotorActionTimer]);
 
     const handleCloseModal = async () => {
-        // Stop timer and reset J8 if motor action was active
-        if (motorActionActive && activeMotorPinRef.current !== null) {
-            stopMotorActionTimer();
-            try {
-                await stopMotorAction(activeMotorPinRef.current);
-            } catch (error) {
-                console.error('Failed to stop motor action on modal close:', error);
-            }
-        }
-        // Reset timer state
-        setMotorActionTimer(0);
-        setMotorActionActive(false);
-        activeMotorPinRef.current = null;
+        await stopActiveMotorAction({ errorContext: 'modal close' });
 
         setIsModalOpen(false);
         setEditingMotor(null);
@@ -219,14 +223,25 @@ const Motors = () => {
     /**
      * Stops the periodic speed API timer.
      */
-    const stopTestMotorTimer = () => {
+    const stopTestMotorTimer = useCallback(() => {
         if (testMotorTimerRef.current) {
             clearInterval(testMotorTimerRef.current);
             testMotorTimerRef.current = null;
         }
         joystickValueRef.current = 0;
         motorSpeedBeingSetRef.current = false;
-    };
+    }, []);
+
+    // Cleanup active timers and backend motor action on unmount
+    useEffect(() => {
+        return () => {
+            stopTestMotorTimer();
+            void stopActiveMotorAction({
+                resetUiState: false,
+                errorContext: 'page unmount'
+            });
+        };
+    }, [stopActiveMotorAction, stopTestMotorTimer]);
 
     const handleOpenTestModal = (motor) => {
         setTestMotor(motor);
@@ -297,7 +312,7 @@ const Motors = () => {
 
             // Update local state
             setMotors(updatedMotors);
-            handleCloseModal();
+            await handleCloseModal();
         } catch (error) {
             console.error('Error saving settings:', error);
             alert(`Failed to save settings: ${error.message}`);
@@ -1015,15 +1030,7 @@ const Motors = () => {
                                                             console.error('Failed to start motor action:', error);
                                                         }
                                                     } else if (val === 'stop') {
-                                                        stopMotorActionTimer();
-                                                        if (activeMotorPinRef.current !== null) {
-                                                            try {
-                                                                await stopMotorAction(activeMotorPinRef.current);
-                                                            } catch (error) {
-                                                                console.error('Failed to stop motor action:', error);
-                                                            }
-                                                            activeMotorPinRef.current = null;
-                                                        }
+                                                        await stopActiveMotorAction({ errorContext: 'stop selection' });
                                                     }
                                                 }}
                                                 orientation="horizontal"

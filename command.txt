@@ -2681,6 +2681,11 @@ Uvědom si, že tento systém bude procházet auditem, proto musí být tvoje op
 Pokud máš doplňující dotazy, neboj se mě zeptat.
 
 Načti findings_extended.md, což je soubor, který byl vytvořen jako detailní review zdrojových kódů tohoto projektu.
-Zaměř se pouze na aktivní zjištění "## ." a oprav tuto závadu jako expert.
+Zaměř se pouze na aktivní zjištění "## 7." a oprav tuto závadu jako expert.
+Uvědom si, že tento systém bude procházet auditem, proto musí být tvoje oprava super seniorní.
+Pokud máš doplňující dotazy, neboj se mě zeptat.
+
+Načti findings_extended.md, což je soubor, který byl vytvořen jako detailní review zdrojových kódů tohoto projektu.
+Zaměř se pouze na aktivní zjištění "## 8." a oprav tuto závadu jako expert.
 Uvědom si, že tento systém bude procházet auditem, proto musí být tvoje oprava super seniorní.
 Pokud máš doplňující dotazy, neboj se mě zeptat.
