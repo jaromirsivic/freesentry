@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 
 /**
  * Timer - An invisible/renderless timer component.
@@ -26,54 +26,147 @@ const Timer = ({
     onInterval,
     onEnd
 }) => {
-    const intervalRef = useRef(null);
+    const timeoutRef = useRef(null);
+    const loopVersionRef = useRef(0);
     const wasEnabledRef = useRef(false);
+    const isTickRunningRef = useRef(false);
+    const pendingRestartRef = useRef(null);
+    const onStartRef = useRef(onStart);
+    const onIntervalRef = useRef(onInterval);
     const onEndRef = useRef(onEnd);
+    const intervalValueRef = useRef(interval);
+    const runTickRef = useRef(null);
 
-    // Keep onEnd ref updated to avoid stale closure issues
-    useEffect(() => {
+    useLayoutEffect(() => {
+        onStartRef.current = onStart;
+    }, [onStart]);
+
+    useLayoutEffect(() => {
+        onIntervalRef.current = onInterval;
+    }, [onInterval]);
+
+    useLayoutEffect(() => {
         onEndRef.current = onEnd;
     }, [onEnd]);
 
+    useLayoutEffect(() => {
+        intervalValueRef.current = interval;
+    }, [interval]);
+
+    const clearScheduledTick = useCallback(() => {
+        if (timeoutRef.current !== null) {
+            clearTimeout(timeoutRef.current);
+            timeoutRef.current = null;
+        }
+    }, []);
+
+    const getIntervalMs = useCallback(() => Math.max(0, intervalValueRef.current * 1000), []);
+
+    const scheduleNextTick = useCallback((version, delayMs) => {
+        clearScheduledTick();
+        timeoutRef.current = setTimeout(() => {
+            timeoutRef.current = null;
+            void runTickRef.current?.(version);
+        }, Math.max(0, delayMs));
+    }, [clearScheduledTick]);
+
+    const runTick = useCallback(async (version) => {
+        if (!wasEnabledRef.current || loopVersionRef.current !== version || isTickRunningRef.current) {
+            return;
+        }
+
+        isTickRunningRef.current = true;
+        const startedAt = performance.now();
+
+        try {
+            await onIntervalRef.current?.();
+        } catch (error) {
+            console.error('Timer interval callback failed:', error);
+        }
+
+        isTickRunningRef.current = false;
+
+        if (!wasEnabledRef.current) {
+            return;
+        }
+
+        const pendingRestart = pendingRestartRef.current;
+        if (pendingRestart && pendingRestart.version === loopVersionRef.current) {
+            pendingRestartRef.current = null;
+
+            const nextDelayMs = pendingRestart.mode === 'fresh'
+                ? getIntervalMs()
+                : Math.max(0, getIntervalMs() - (performance.now() - startedAt));
+
+            scheduleNextTick(pendingRestart.version, nextDelayMs);
+            return;
+        }
+
+        if (loopVersionRef.current !== version) {
+            return;
+        }
+
+        const elapsedMs = performance.now() - startedAt;
+        scheduleNextTick(version, Math.max(0, getIntervalMs() - elapsedMs));
+    }, [getIntervalMs, scheduleNextTick]);
+
+    useLayoutEffect(() => {
+        runTickRef.current = runTick;
+    }, [runTick]);
+
     useEffect(() => {
-        if (enabled && !wasEnabledRef.current) {
-            // Timer just became enabled - trigger onStart
-            wasEnabledRef.current = true;
-            if (onStart) {
-                onStart();
+        if (!enabled) {
+            clearScheduledTick();
+            pendingRestartRef.current = null;
+
+            if (wasEnabledRef.current) {
+                loopVersionRef.current += 1;
+                wasEnabledRef.current = false;
+                onEndRef.current?.();
             }
 
-            // Start the interval
-            intervalRef.current = setInterval(() => {
-                if (onInterval) {
-                    onInterval();
-                }
-            }, interval * 1000);
-        } else if (!enabled && wasEnabledRef.current) {
-            // Timer just became disabled - trigger onEnd
-            wasEnabledRef.current = false;
-            if (intervalRef.current) {
-                clearInterval(intervalRef.current);
-                intervalRef.current = null;
-            }
-            if (onEndRef.current) {
-                onEndRef.current();
-            }
+            return;
         }
-    }, [enabled, interval, onStart, onInterval]);
+
+        if (!wasEnabledRef.current) {
+            const version = loopVersionRef.current + 1;
+            loopVersionRef.current = version;
+            wasEnabledRef.current = true;
+            onStartRef.current?.();
+
+            if (isTickRunningRef.current) {
+                pendingRestartRef.current = { version, mode: 'fresh' };
+            } else {
+                scheduleNextTick(version, getIntervalMs());
+            }
+
+            return;
+        }
+
+        const version = loopVersionRef.current + 1;
+        loopVersionRef.current = version;
+
+        if (isTickRunningRef.current) {
+            pendingRestartRef.current = { version, mode: 'steady' };
+        } else {
+            pendingRestartRef.current = null;
+            scheduleNextTick(version, getIntervalMs());
+        }
+    }, [clearScheduledTick, enabled, getIntervalMs, interval, scheduleNextTick]);
 
     // Cleanup on unmount - trigger onEnd if timer was enabled
     useEffect(() => {
         return () => {
-            if (intervalRef.current) {
-                clearInterval(intervalRef.current);
-                intervalRef.current = null;
-            }
-            if (wasEnabledRef.current && onEndRef.current) {
-                onEndRef.current();
+            clearScheduledTick();
+            pendingRestartRef.current = null;
+            loopVersionRef.current += 1;
+
+            if (wasEnabledRef.current) {
+                wasEnabledRef.current = false;
+                onEndRef.current?.();
             }
         };
-    }, []);
+    }, [clearScheduledTick]);
 
     // Renderless component - returns nothing
     return null;

@@ -2655,3 +2655,27 @@ Načti findings_extended.md, což je soubor, který byl vytvořen jako detailní
 Zaměř se pouze na aktivní zjištění 2 `server/wwwroot/src/App.jsx` — `BrowserRouter` bez `basename` a oprav tuto závadu jako expert.
 Uvědom si, že tento systém bude procházet auditem, proto musí být tvoje oprava super seniorní.
 Pokud máš doplňující dotazy, neboj se mě zeptat.
+
+Načti findings_extended.md, což je soubor, který byl vytvořen jako detailní review zdrojových kódů tohoto projektu.
+Zaměř se pouze na aktivní zjištění 3 `server/wwwroot/src/components/Timer.jsx` — stale callback při aktivním intervalu a oprav tuto závadu jako expert.
+Uvědom si, že tento systém bude procházet auditem, proto musí být tvoje oprava super seniorní.
+Tvoje oprava tedy znamená, že pokud se pošle request na server, tak stránka počká na odpověď. Pokud odpověď trvala
+déle než je timer.interval tak zašle další request okamžitě, v opačném případě počká, aby uběhl čas
+timer.interval a potom pošle další request? V nejhorším případě počká
+network timeout a pak pošle request znovu?
+
+Načti findings_extended.md, což je soubor, který byl vytvořen jako detailní review zdrojových kódů tohoto projektu.
+Zaměř se pouze na aktivní zjištění 4 `server/wwwroot/src/ManualControl.jsx` — příliš agresivní control loop a oprav tuto závadu jako expert.
+Uvědom si, že tento systém bude procházet auditem, proto musí být tvoje oprava super seniorní.
+Ověř, jestli je toto zjištění ještě platné.
+Pokud máš doplňující dotazy, neboj se mě zeptat.
+
+Načti findings_extended.md, což je soubor, který byl vytvořen jako detailní review zdrojových kódů tohoto projektu.
+Zaměř se pouze na aktivní zjištění 5 `server/wwwroot/src/ManualControl.jsx` — async načítání bez plné cancellation strategie a oprav tuto závadu jako expert.
+Uvědom si, že tento systém bude procházet auditem, proto musí být tvoje oprava super seniorní.
+Pokud máš doplňující dotazy, neboj se mě zeptat.
+
+Načti findings_extended.md, což je soubor, který byl vytvořen jako detailní review zdrojových kódů tohoto projektu.
+Zaměř se pouze na aktivní zjištění "## 6." a oprav tuto závadu jako expert.
+Uvědom si, že tento systém bude procházet auditem, proto musí být tvoje oprava super seniorní.
+Pokud máš doplňující dotazy, neboj se mě zeptat.

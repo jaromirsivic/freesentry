@@ -72,11 +72,22 @@ const ManualControl = () => {
     const polygonRef = useRef(null);
     // Ref to store current camera settings for cleanup (avoids stale closure)
     const cameraSettingsRef = useRef(cameraSettings);
+    const motorsRef = useRef(motors);
+    const isFullscreenRef = useRef(isFullscreen);
+    const initialLoadGenerationRef = useRef(0);
     
     // Keep cameraSettingsRef in sync with cameraSettings state
     useEffect(() => {
         cameraSettingsRef.current = cameraSettings;
     }, [cameraSettings]);
+
+    useEffect(() => {
+        motorsRef.current = motors;
+    }, [motors]);
+
+    useEffect(() => {
+        isFullscreenRef.current = isFullscreen;
+    }, [isFullscreen]);
     
     // Window dimensions for responsive joystick positioning
     const [windowWidth, setWindowWidth] = useState(window.innerWidth);
@@ -93,29 +104,6 @@ const ManualControl = () => {
     // Request-in-flight tracking for sendManualControlAction
     const requestInFlightRef = useRef(false);
     const lastActionResultRef = useRef({ success: true, motors: [] });
-
-    /**
-     * Fetch motor and camera settings from backend.
-     */
-    const fetchMotorSettings = useCallback(async () => {
-        try {
-            const response = await fetch('/api/manualcontrol/motors');
-            const data = await response.json();
-            
-            if (data.success && data.motors) {
-                // Limit to 4 motors
-                const limitedMotors = data.motors.slice(0, 4);
-                setMotors(limitedMotors);
-            }
-            
-            // Also get camera settings
-            if (data.success && data.camera) {
-                setCameraSettings(data.camera);
-            }
-        } catch (error) {
-            console.error('Failed to fetch motor settings:', error);
-        }
-    }, []);
 
     /**
      * Build stream URL from camera settings.
@@ -144,67 +132,6 @@ const ManualControl = () => {
     }, []);
 
     /**
-     * Fetch camera settings from new API.
-     * Uses camera settings from manualControl in settings.json.
-     */
-    const fetchCameraSettings = useCallback(async () => {
-        try {
-            // First get manual control settings (includes camera config)
-            const motorResponse = await fetch('/api/manualcontrol/motors');
-            const motorData = await motorResponse.json();
-            
-            let camSettings = {
-                selectedCamera: 'scope_camera',
-                streamQuality: 80,
-                scopeCameraMode: 0,
-                spotterCamera1Mode: 0,
-                spotterCamera2Mode: 0,
-                spotterCamera3Mode: 0
-            };
-            
-            if (motorData.success && motorData.camera) {
-                camSettings = motorData.camera;
-                setCameraSettings(camSettings);
-            }
-            
-            // Get camera list for reticle settings
-            const response = await fetch('/api/cameras/list');
-            const data = await response.json();
-            
-            if (data.success && data.cameras) {
-                // Use the selected camera for reticle settings
-                const cameraConfig = data.cameras[camSettings.selectedCamera];
-                
-                if (cameraConfig) {
-                    setReticleSettings({
-                        x: cameraConfig.static_reticle_x ?? 0.5,
-                        y: cameraConfig.static_reticle_y ?? 0.5,
-                        color: cameraConfig.static_reticle_color ?? '#88ff00cc',
-                        outline: cameraConfig.static_reticle_outline ?? '#000000cc',
-                        size: cameraConfig.static_reticle_size ?? 1.0
-                    });
-                }
-            }
-            
-            // Set the stream URL and enable timer
-            if (isMountedRef.current) {
-                setStreamUrl(buildStreamUrl(camSettings));
-                setIsLoading(false);
-                setTimerEnabled(true);
-            }
-            
-        } catch (error) {
-            console.error('Failed to fetch camera settings:', error);
-            // Use defaults on error
-            if (isMountedRef.current) {
-                setStreamUrl('/api/cameras/stream/scope_camera?mode=0&quality=80');
-                setIsLoading(false);
-                setTimerEnabled(true);
-            }
-        }
-    }, [buildStreamUrl]);
-
-    /**
      * Stop camera stream via API.
      * Waits for success response before resolving.
      * @param {string} cameraCode - Camera code to stop.
@@ -224,12 +151,114 @@ const ManualControl = () => {
     // Fetch camera and motor settings on mount
     useEffect(() => {
         isMountedRef.current = true;
-        fetchCameraSettings();
-        fetchMotorSettings();
+        const controller = new AbortController();
+        const loadGeneration = initialLoadGenerationRef.current + 1;
+        initialLoadGenerationRef.current = loadGeneration;
+
+        const canApplyLoad = () => (
+            isMountedRef.current
+            && !controller.signal.aborted
+            && initialLoadGenerationRef.current === loadGeneration
+        );
+
+        const loadInitialState = async () => {
+            const defaultCameraSettings = {
+                selectedCamera: 'scope_camera',
+                streamQuality: 80,
+                scopeCameraMode: 0,
+                spotterCamera1Mode: 0,
+                spotterCamera2Mode: 0,
+                spotterCamera3Mode: 0
+            };
+
+            let nextMotors = null;
+            let nextCameraSettings = defaultCameraSettings;
+            let nextReticleSettings = null;
+
+            try {
+                const motorResponse = await fetch('/api/manualcontrol/motors', {
+                    signal: controller.signal
+                });
+                const motorData = await motorResponse.json();
+
+                if (motorData.success && Array.isArray(motorData.motors)) {
+                    nextMotors = motorData.motors.slice(0, 4);
+                }
+
+                if (motorData.success && motorData.camera) {
+                    nextCameraSettings = motorData.camera;
+                }
+
+                try {
+                    const cameraListResponse = await fetch('/api/cameras/list', {
+                        signal: controller.signal
+                    });
+                    const cameraListData = await cameraListResponse.json();
+
+                    if (cameraListData.success && cameraListData.cameras) {
+                        const cameraConfig = cameraListData.cameras[nextCameraSettings.selectedCamera];
+
+                        if (cameraConfig) {
+                            nextReticleSettings = {
+                                x: cameraConfig.static_reticle_x ?? 0.5,
+                                y: cameraConfig.static_reticle_y ?? 0.5,
+                                color: cameraConfig.static_reticle_color ?? '#88ff00cc',
+                                outline: cameraConfig.static_reticle_outline ?? '#000000cc',
+                                size: cameraConfig.static_reticle_size ?? 1.0
+                            };
+                        }
+                    }
+                } catch (cameraListError) {
+                    if (cameraListError?.name === 'AbortError') {
+                        throw cameraListError;
+                    }
+
+                    console.error('Failed to fetch reticle settings:', cameraListError);
+                }
+
+                if (!canApplyLoad()) {
+                    return;
+                }
+
+                if (nextMotors) {
+                    motorsRef.current = nextMotors;
+                    setMotors(nextMotors);
+                }
+
+                cameraSettingsRef.current = nextCameraSettings;
+                setCameraSettings(nextCameraSettings);
+
+                if (nextReticleSettings) {
+                    setReticleSettings(nextReticleSettings);
+                }
+
+                setStreamUrl(buildStreamUrl(nextCameraSettings));
+                setIsLoading(false);
+                setTimerEnabled(true);
+            } catch (error) {
+                if (error?.name === 'AbortError') {
+                    return;
+                }
+
+                console.error('Failed to load manual control settings:', error);
+
+                if (!canApplyLoad()) {
+                    return;
+                }
+
+                setStreamUrl('/api/cameras/stream/scope_camera?mode=0&quality=80');
+                setIsLoading(false);
+                setTimerEnabled(true);
+            }
+        };
+
+        void loadInitialState();
         
         // Cleanup when component unmounts (navigation away)
         return () => {
             isMountedRef.current = false;
+            initialLoadGenerationRef.current += 1;
+            controller.abort();
             // Stop the timer
             setTimerEnabled(false);
             // Show camera off image
@@ -238,7 +267,7 @@ const ManualControl = () => {
             const selectedCamera = cameraSettingsRef.current?.selectedCamera || 'scope_camera';
             fetch(`/api/cameras/stop/${selectedCamera}`, { method: 'POST' }).catch(() => {});
         };
-    }, [fetchCameraSettings, fetchMotorSettings]);
+    }, [buildStreamUrl]);
 
     // Handle browser close/refresh (beforeunload)
     useEffect(() => {
@@ -303,6 +332,7 @@ const ManualControl = () => {
                 document.mozFullScreenElement ||
                 document.msFullscreenElement
             );
+            isFullscreenRef.current = isNowFullscreen;
             setIsFullscreen(isNowFullscreen);
             
             // Add/remove class on body for reliable CSS targeting
@@ -487,6 +517,7 @@ const ManualControl = () => {
             
             if (data.success) {
                 // Update main state with saved values
+                motorsRef.current = tempMotors;
                 setMotors(tempMotors);
                 setCameraSettings(tempCameraSettings);
                 setIsModalOpen(false);
@@ -526,10 +557,10 @@ const ManualControl = () => {
 
     /**
      * Send manual control action to backend.
-     * Called periodically by Timer and on joystick movement.
+     * Called by the Timer loop, which serializes requests and
+     * always sends the latest state snapshot from refs.
      * 
-     * This function ensures only one request is in flight at a time.
-     * If a request is already pending, returns the last known result immediately.
+     * The request-in-flight guard stays as a defensive fallback.
      * Includes a 5-second timeout for the request.
      */
     const sendManualControlAction = useCallback(async () => {
@@ -543,13 +574,13 @@ const ManualControl = () => {
             requestInFlightRef.current = true;
             
             // Build motors array from all motors displayed in modal
-            const motorsPayload = motors.slice(0, 4).map(motor => ({
+            const motorsPayload = motorsRef.current.slice(0, 4).map(motor => ({
                 index: motor.index,
                 value: motorJoystickValuesRef.current[motor.index] ?? 0.0
             }));
             
             const payload = {
-                fullscreen: isFullscreen,
+                fullscreen: isFullscreenRef.current,
                 joystick: {
                     x: polygonJoystickRef.current.x,
                     y: polygonJoystickRef.current.y
@@ -600,15 +631,13 @@ const ManualControl = () => {
             // Mark request as complete
             requestInFlightRef.current = false;
         }
-    }, [motors, isFullscreen]);
+    }, []);
 
     // Handle Polygon joystick move events (controls motors 0 and 1)
     const handlePolygonJoystickMove = useCallback((coords) => {
         // coords: { x: -1 to 1, y: -1 to 1 }
         polygonJoystickRef.current = { x: coords.x, y: coords.y };
-        // Send action immediately on joystick move
-        sendManualControlAction();
-    }, [sendManualControlAction]);
+    }, []);
 
     // Handle Polygon joystick start
     const handlePolygonJoystickStart = useCallback(() => {
@@ -619,8 +648,7 @@ const ManualControl = () => {
     const handlePolygonJoystickEnd = useCallback(() => {
         // Reset polygon joystick position
         polygonJoystickRef.current = { x: 0, y: 0 };
-        sendManualControlAction();
-    }, [sendManualControlAction]);
+    }, []);
 
     /**
      * Create handler for Joystick1D onChange event.
@@ -630,10 +658,8 @@ const ManualControl = () => {
         return (data) => {
             // data.value contains the joystick value (-1 to 1)
             motorJoystickValuesRef.current[motorIndex] = data.value ?? 0;
-            // Send action immediately on joystick move
-            sendManualControlAction();
         };
-    }, [sendManualControlAction]);
+    }, []);
 
     /**
      * Create handler for Joystick1D onEnd event.
@@ -641,13 +667,12 @@ const ManualControl = () => {
      */
     const createMotorJoystickEndHandler = useCallback((motorIndex) => {
         return () => {
-            const motor = motors.find(m => m.index === motorIndex);
+            const motor = motorsRef.current.find(m => m.index === motorIndex);
             if (!motor || motor.mode !== 'slider') {
                 motorJoystickValuesRef.current[motorIndex] = 0;
             }
-            sendManualControlAction();
         };
-    }, [sendManualControlAction, motors]);
+    }, []);
 
     // Button style - 20% transparent (opacity 0.8), z-index below menu (48-50)
     // Background color matches menu button (#887700)
@@ -679,10 +704,8 @@ const ManualControl = () => {
      */
     const getFirstJoystickPosition = useCallback(() => {
         const joystickWidth = 200;
-        const joystickHeight = 60;
         const buttonWidth = 48;
         const buttonMargin = 16;
-        const buttonGap = 16;
         const margin = 16;
         
         // Fullscreen button left edge position from left of screen
@@ -1047,7 +1070,7 @@ const ManualControl = () => {
                 </div>
             </ModalWindow>
 
-            {/* Timer for periodic action updates (0.25 second interval) */}
+            {/* Timer for periodic action updates (100 ms cadence) */}
             <Timer
                 enabled={timerEnabled}
                 interval={0.1}
