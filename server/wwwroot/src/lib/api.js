@@ -37,6 +37,197 @@ const resolveApiUrl = (url) => {
     return `${CONFIGURED_API_BASE_URL}/${url.replace(/^\/+/, '')}`;
 };
 
+const createErrorWithMetadata = (message, metadata = {}) => {
+    const error = new Error(message);
+    Object.assign(error, metadata);
+    return error;
+};
+
+const createTimeoutError = (endpoint, timeout) => createErrorWithMetadata(
+    `Request timed out after ${timeout}ms`,
+    {
+        name: 'ApiTimeoutError',
+        endpoint,
+        timeout
+    }
+);
+
+const createHttpError = (method, endpoint, status, detail) => createErrorWithMetadata(
+    detail || `${method} ${endpoint} failed with status ${status}`,
+    {
+        name: 'ApiHttpError',
+        method,
+        endpoint,
+        status
+    }
+);
+
+const isTimeoutError = (error) => error?.name === 'ApiTimeoutError';
+const isHttpError = (error) => error?.name === 'ApiHttpError';
+const isAbortError = (error) => error?.name === 'AbortError';
+const isNetworkError = (error) => error instanceof TypeError;
+
+const isGenericRequestMessage = (message) => {
+    if (typeof message !== 'string') {
+        return false;
+    }
+
+    const trimmedMessage = message.trim();
+    return /^Request timed out after \d+ms$/i.test(trimmedMessage)
+        || /^(GET|POST)\s+\S+\s+failed with status \d+$/i.test(trimmedMessage)
+        || /^Request failed \(\d+\)$/i.test(trimmedMessage);
+};
+
+const appendOperationDetail = (baseMessage, detail) => {
+    if (typeof detail !== 'string') {
+        return baseMessage;
+    }
+
+    const trimmedDetail = detail.trim();
+    if (!trimmedDetail || isGenericRequestMessage(trimmedDetail)) {
+        return baseMessage;
+    }
+
+    if (trimmedDetail.toLowerCase().startsWith(baseMessage.toLowerCase())) {
+        return trimmedDetail;
+    }
+
+    return `${baseMessage} ${trimmedDetail}`;
+};
+
+const createLongOperationError = (message, metadata = {}) => createErrorWithMetadata(
+    message,
+    {
+        name: 'ApiLongOperationError',
+        userMessage: message,
+        ...metadata
+    }
+);
+
+const normalizeLongOperationError = (error, config) => {
+    if (error?.name === 'ApiLongOperationError') {
+        return error;
+    }
+
+    const {
+        endpoint,
+        timeoutMessage,
+        networkMessage,
+        httpBaseMessage,
+        defaultMessage,
+        abortMessage,
+        retryable = {},
+        ambiguous = {}
+    } = config;
+
+    if (isTimeoutError(error)) {
+        return createLongOperationError(timeoutMessage, {
+            kind: 'timeout',
+            endpoint,
+            timeout: error.timeout,
+            retryable: retryable.timeout ?? false,
+            ambiguous: ambiguous.timeout ?? false,
+            cause: error
+        });
+    }
+
+    if (isAbortError(error)) {
+        return createLongOperationError(abortMessage, {
+            kind: 'abort',
+            endpoint,
+            retryable: retryable.abort ?? false,
+            ambiguous: false,
+            cause: error
+        });
+    }
+
+    if (isNetworkError(error)) {
+        return createLongOperationError(networkMessage, {
+            kind: 'network',
+            endpoint,
+            retryable: retryable.network ?? false,
+            ambiguous: ambiguous.network ?? false,
+            cause: error
+        });
+    }
+
+    if (isHttpError(error)) {
+        return createLongOperationError(
+            appendOperationDetail(httpBaseMessage, error.message),
+            {
+                kind: 'http',
+                endpoint,
+                status: error.status,
+                retryable: retryable.http ?? false,
+                ambiguous: ambiguous.http ?? false,
+                cause: error
+            }
+        );
+    }
+
+    return createLongOperationError(
+        appendOperationDetail(defaultMessage, error?.message),
+        {
+            kind: 'unknown',
+            endpoint,
+            retryable: retryable.unknown ?? false,
+            ambiguous: ambiguous.unknown ?? false,
+            cause: error
+        }
+    );
+};
+
+const postLongOperation = async (endpoint, data, timeout, config) => {
+    try {
+        return await post(endpoint, data, timeout);
+    } catch (error) {
+        throw normalizeLongOperationError(error, { endpoint, ...config });
+    }
+};
+
+const LONG_OPERATION_CONFIG = {
+    saveGeneralSettings: {
+        timeoutMessage: 'Saving settings timed out. The controller may still be applying the new configuration. Verify the controller status before retrying.',
+        networkMessage: 'Saving settings failed because the device could not be reached. Verify the current settings before retrying.',
+        httpBaseMessage: 'Saving settings failed.',
+        defaultMessage: 'Saving settings failed.',
+        abortMessage: 'Saving settings was cancelled.',
+        retryable: {
+            http: true
+        },
+        ambiguous: {
+            timeout: true
+        }
+    },
+    setSystemDateTimeAndTimezone: {
+        timeoutMessage: 'Updating system date and time timed out. The device may still be applying the change. Verify the displayed date and time before retrying.',
+        networkMessage: 'Updating system date and time failed because the server could not be reached.',
+        httpBaseMessage: 'Updating system date and time failed.',
+        defaultMessage: 'Updating system date and time failed.',
+        abortMessage: 'Updating system date and time was cancelled.',
+        retryable: {
+            http: true
+        },
+        ambiguous: {
+            timeout: true
+        }
+    },
+    rebootSystem: {
+        timeoutMessage: 'Reboot request timed out. The device may already be restarting. Wait for it to reconnect before trying again.',
+        networkMessage: 'Connection was lost while sending the reboot request. The device may already be restarting. Wait for it to reconnect before trying again.',
+        httpBaseMessage: 'Reboot could not be started.',
+        defaultMessage: 'Reboot could not be confirmed.',
+        abortMessage: 'Reboot request was cancelled.',
+        retryable: {
+            http: true
+        },
+        ambiguous: {
+            timeout: true,
+            network: true
+        }
+    }
+};
+
 /**
  * Generic fetch wrapper with timeout support
  * @param {string} endpoint - API endpoint (e.g., '/api/settings/camera')
@@ -74,7 +265,7 @@ const fetchWithTimeout = async (endpoint, options = {}, timeout = DEFAULT_TIMEOU
         return response;
     } catch (error) {
         if (didTimeout) {
-            throw new Error(`Request timed out after ${timeout}ms`);
+            throw createTimeoutError(endpoint, timeout);
         }
         throw error;
     } finally {
@@ -102,7 +293,7 @@ const get = async (endpoint, timeout = DEFAULT_TIMEOUT, options = {}) => {
 
     if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || `GET ${endpoint} failed with status ${response.status}`);
+        throw createHttpError('GET', endpoint, response.status, errorData.detail || `GET ${endpoint} failed with status ${response.status}`);
     }
 
     return response.json();
@@ -126,7 +317,7 @@ const post = async (endpoint, data, timeout = DEFAULT_TIMEOUT) => {
 
     if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || `POST ${endpoint} failed with status ${response.status}`);
+        throw createHttpError('POST', endpoint, response.status, errorData.detail || `POST ${endpoint} failed with status ${response.status}`);
     }
 
     return response.json();
@@ -263,7 +454,7 @@ export const getGeneralSettings = async () => {
  * @returns {Promise<object>} Response from server
  */
 export const saveGeneralSettings = async (generalSettings, timeout) => {
-    return post('/api/settings/general', generalSettings, timeout);
+    return postLongOperation('/api/settings/general', generalSettings, timeout, LONG_OPERATION_CONFIG.saveGeneralSettings);
 };
 
 // ============================================
@@ -331,7 +522,7 @@ export const setSystemTimezone = async (timezone) => {
  * @returns {Promise<object>} Response from server
  */
 export const setSystemDateTimeAndTimezone = async (settings) => {
-    return post('/api/system/datetime-and-timezone', settings, 30000);
+    return postLongOperation('/api/system/datetime-and-timezone', settings, 30000, LONG_OPERATION_CONFIG.setSystemDateTimeAndTimezone);
 };
 
 /**
@@ -339,7 +530,7 @@ export const setSystemDateTimeAndTimezone = async (settings) => {
  * @returns {Promise<object>} Response from server
  */
 export const rebootSystem = async () => {
-    return post('/api/system/reboot', {}, 30000);
+    return postLongOperation('/api/system/reboot', {}, 30000, LONG_OPERATION_CONFIG.rebootSystem);
 };
 
 // ============================================

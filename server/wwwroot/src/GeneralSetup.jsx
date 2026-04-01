@@ -10,8 +10,10 @@ import StaticText from './components/StaticText';
 import HorizontalSeparator from './components/HorizontalSeparator';
 import SystemEditModal from './SystemEditModal';
 import WifiEditModal from './WifiEditModal';
+import OperationFeedback from './components/OperationFeedback';
 
 import { getGeneralSettings, saveGeneralSettings, getSystemInfo, getSystemPlatformInfo, setSystemDateTimeAndTimezone, rebootSystem } from './lib/api';
+import { createOperationFeedback } from './lib/operationFeedback';
 import editIcon from './assets/icons/edit.svg';
 import TextField from './components/TextField';
 
@@ -44,6 +46,8 @@ const GeneralSetup = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [controllerStatus, setControllerStatus] = useState({ initialized: false, error_message: '' });
+    const [controllerSaveFeedback, setControllerSaveFeedback] = useState(null);
+    const [rebootFeedback, setRebootFeedback] = useState(null);
 
     const fetchControllerStatus = async () => {
         try {
@@ -109,27 +113,36 @@ const GeneralSetup = () => {
 
     const handleEdit = () => {
         const settingsCopy = JSON.parse(JSON.stringify(settings));
+        setControllerSaveFeedback(null);
         setEditingSettings(settingsCopy);
         setIsModalOpen(true);
     };
 
     const handleCloseModal = () => {
+        setControllerSaveFeedback(null);
         setIsModalOpen(false);
         setEditingSettings(null);
     };
 
     const handleSave = async () => {
+        if (!editingSettings) {
+            return;
+        }
+
+        const savedSettings = editingSettings;
+        setControllerSaveFeedback(null);
+
         try {
             setIsSaving(true);
-            await saveGeneralSettings(editingSettings, 60000); // 60 seconds timeout
+            await saveGeneralSettings(savedSettings, 60000); // 60 seconds timeout
             console.log('General settings saved successfully');
-            setSettings(editingSettings);
+            setSettings(savedSettings);
             handleCloseModal();
             // Refresh status after save (backend triggers reset)
             await fetchControllerStatus();
         } catch (error) {
             console.error('Error saving settings:', error);
-            alert(`Failed to save settings: ${error.message}`);
+            setControllerSaveFeedback(createOperationFeedback(error, 'Saving settings failed.'));
         } finally {
             setIsSaving(false);
         }
@@ -159,14 +172,26 @@ const GeneralSetup = () => {
         setSettings(updatedSettings);
     };
 
+    const handleOpenRebootConfirm = () => {
+        setRebootFeedback(null);
+        setIsRebootConfirmOpen(true);
+    };
+
+    const handleCloseRebootConfirm = () => {
+        setRebootFeedback(null);
+        setIsRebootConfirmOpen(false);
+    };
+
     const handleReboot = async () => {
+        setRebootFeedback(null);
+
         try {
             setIsRebooting(true);
             await rebootSystem();
-            setIsRebootConfirmOpen(false);
+            handleCloseRebootConfirm();
         } catch (error) {
             console.error('Failed to reboot system:', error);
-            alert(`Failed to reboot: ${error.message}`);
+            setRebootFeedback(createOperationFeedback(error, 'Reboot could not be confirmed.'));
         } finally {
             setIsRebooting(false);
         }
@@ -238,7 +263,7 @@ const GeneralSetup = () => {
                             <HorizontalSeparator label="Reboot" fullWidth={true} />
                             <Button
                                 label="Reboot"
-                                onClick={() => setIsRebootConfirmOpen(true)}
+                                onClick={handleOpenRebootConfirm}
                                 color="#dc2626"
                             />
                         </ColumnLayout>
@@ -348,6 +373,7 @@ const GeneralSetup = () => {
                     onCancel={handleCloseModal}
                     okLabel={isSaving ? "Saving..." : "Save"}
                     okDisabled={isSaving}
+                    cancelDisabled={isSaving}
                 >
                     <ColumnLayout gap="1rem">
                         <HorizontalSeparator label="Controller Setup" help="https://www.discussion.com" fullWidth={true} bleed="1rem" />
@@ -382,6 +408,7 @@ const GeneralSetup = () => {
                                 disabled={!isRemoteMode}
                             />
                         </ColumnLayout>
+                        <OperationFeedback feedback={controllerSaveFeedback} />
                     </ColumnLayout>
                 </ModalWindow>
             )}
@@ -411,13 +438,16 @@ const GeneralSetup = () => {
                 isOpen={isRebootConfirmOpen}
                 title="Reboot"
                 onOk={handleReboot}
-                onCancel={() => setIsRebootConfirmOpen(false)}
+                onCancel={handleCloseRebootConfirm}
                 okLabel={isRebooting ? "Rebooting..." : "OK"}
                 okDisabled={isRebooting}
                 cancelDisabled={isRebooting}
                 movable={false}
             >
-                <StaticText text="Do you really want to reboot the system (Raspberry Pi)?" />
+                <ColumnLayout gap="0.75rem">
+                    <StaticText text="Do you really want to reboot the system (Raspberry Pi)?" />
+                    <OperationFeedback feedback={rebootFeedback} />
+                </ColumnLayout>
             </ModalWindow>
         </div>
     );

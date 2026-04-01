@@ -1,5 +1,0 @@
----
-alwaysApply: true
----
-
-Project will be deployed to Raspberry PI, Windows, Linux and Mac OS. Try to avoid OS specific calls.

@@ -3,6 +3,8 @@ import ModalWindow from './components/ModalWindow';
 import HorizontalSeparator from './components/HorizontalSeparator';
 import DateTimePicker from './components/DateTimePicker';
 import ComboBox from './components/ComboBox';
+import OperationFeedback from './components/OperationFeedback';
+import { createOperationFeedback } from './lib/operationFeedback';
 
 /**
  * System Edit Modal.
@@ -14,7 +16,7 @@ const SystemEditModal = ({ isOpen, onClose, onSave, initialSettings, availableTi
         timezone: 'UTC'
     });
     const [isSaving, setIsSaving] = useState(false);
-    const [error, setError] = useState('');
+    const [saveFeedback, setSaveFeedback] = useState(null);
 
     // Initialize temp settings when modal opens
     useEffect(() => {
@@ -28,7 +30,7 @@ const SystemEditModal = ({ isOpen, onClose, onSave, initialSettings, availableTi
                 dateTime: dt,
                 timezone: initialSettings.timezone || 'UTC'
             });
-            setError('');
+            setSaveFeedback(null);
         }
     }, [isOpen, initialSettings]);
 
@@ -44,7 +46,7 @@ const SystemEditModal = ({ isOpen, onClose, onSave, initialSettings, availableTi
      */
     const handleSave = async () => {
         setIsSaving(true);
-        setError('');
+        setSaveFeedback(null);
         
         try {
             const dt = tempSettings.dateTime;
@@ -61,7 +63,7 @@ const SystemEditModal = ({ isOpen, onClose, onSave, initialSettings, availableTi
             await onSave(settingsToSave);
             onClose();
         } catch (err) {
-            setError(err.message || 'Failed to save settings');
+            setSaveFeedback(createOperationFeedback(err, 'Updating system date and time failed.'));
         } finally {
             setIsSaving(false);
         }
@@ -71,7 +73,7 @@ const SystemEditModal = ({ isOpen, onClose, onSave, initialSettings, availableTi
      * Handle cancel.
      */
     const handleCancel = () => {
-        setError('');
+        setSaveFeedback(null);
         onClose();
     };
 
@@ -90,6 +92,7 @@ const SystemEditModal = ({ isOpen, onClose, onSave, initialSettings, availableTi
             okLabel={isSaving ? "Saving..." : "Save"}
             cancelLabel="Cancel"
             okDisabled={isSaving}
+            cancelDisabled={isSaving}
             movable={true}
         >
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -111,18 +114,7 @@ const SystemEditModal = ({ isOpen, onClose, onSave, initialSettings, availableTi
                     onChange={(val) => updateSetting('timezone', val)}
                     labelWidth="120px"
                 />
-
-                {error && (
-                    <div style={{ 
-                        color: '#ef4444', 
-                        padding: '0.5rem', 
-                        backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                        borderRadius: '4px',
-                        fontSize: '0.875rem'
-                    }}>
-                        {error}
-                    </div>
-                )}
+                <OperationFeedback feedback={saveFeedback} />
 
                 <div style={{ 
                     color: '#6b7280', 

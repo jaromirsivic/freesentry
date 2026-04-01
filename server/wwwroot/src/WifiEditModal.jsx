@@ -5,6 +5,8 @@ import ComboBox from './components/ComboBox';
 import Textbox from './components/Textbox';
 import ColumnLayout from './components/ColumnLayout';
 import Button from './components/Button';
+import OperationFeedback from './components/OperationFeedback';
+import { createOperationFeedback } from './lib/operationFeedback';
 
 const MODE_OPTIONS = [
     { label: 'Disabled', value: 'disabled' },
@@ -27,11 +29,13 @@ const WifiEditModal = ({ isOpen, onClose, onSave, wifiSettings }) => {
     const [tempSettings, setTempSettings] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
     const [showRebootInfo, setShowRebootInfo] = useState(false);
+    const [saveFeedback, setSaveFeedback] = useState(null);
 
     useEffect(() => {
         if (isOpen && wifiSettings) {
             setTempSettings(JSON.parse(JSON.stringify(wifiSettings)));
             setShowRebootInfo(false);
+            setSaveFeedback(null);
         }
     }, [isOpen, wifiSettings]);
 
@@ -66,14 +70,21 @@ const WifiEditModal = ({ isOpen, onClose, onSave, wifiSettings }) => {
     const handleConfirmSave = async () => {
         setShowRebootInfo(false);
         setIsSaving(true);
+        setSaveFeedback(null);
         try {
             await onSave(tempSettings);
             onClose();
         } catch (err) {
-            alert(`Failed to save wifi settings: ${err.message}`);
+            setSaveFeedback(createOperationFeedback(err, 'Saving wifi settings failed.'));
         } finally {
             setIsSaving(false);
         }
+    };
+
+    const handleCancel = () => {
+        setShowRebootInfo(false);
+        setSaveFeedback(null);
+        onClose();
     };
 
     if (!tempSettings) return null;
@@ -90,10 +101,11 @@ const WifiEditModal = ({ isOpen, onClose, onSave, wifiSettings }) => {
             isOpen={isOpen}
             title="Edit Wifi"
             onOk={handleSaveClick}
-            onCancel={onClose}
+            onCancel={handleCancel}
             okLabel={isSaving ? "Saving..." : "Save"}
             cancelLabel="Cancel"
             okDisabled={isSaving}
+            cancelDisabled={isSaving}
             movable={true}
             validationErrors={getValidationErrors()}
             validationWarnings={[]}
@@ -183,6 +195,7 @@ const WifiEditModal = ({ isOpen, onClose, onSave, wifiSettings }) => {
                         />
                     </ColumnLayout>
                 </div>
+                <OperationFeedback feedback={saveFeedback} />
             </ColumnLayout>
         </ModalWindow>
 
