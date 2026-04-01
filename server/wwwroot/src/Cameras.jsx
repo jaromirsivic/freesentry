@@ -163,6 +163,18 @@ const Cameras = () => {
     // Snapshot of stream quality/display mode when modal opened (for relevant-change detection)
     const [originalStreamQuality, setOriginalStreamQuality] = useState(80);
     const [originalDisplayMode, setOriginalDisplayMode] = useState(0);
+    const activeModalRef = useRef(null);
+    const previewEnabledRef = useRef(false);
+
+    const setActiveModalState = useCallback((cameraCode) => {
+        activeModalRef.current = cameraCode;
+        setActiveModal(cameraCode);
+    }, []);
+
+    const setPreviewEnabledState = useCallback((enabled) => {
+        previewEnabledRef.current = enabled;
+        setPreviewEnabled(enabled);
+    }, []);
 
     // ========================
     // Fetch cameras list from API
@@ -253,27 +265,27 @@ const Cameras = () => {
         const state = getCameraStateFromConfig(config);
         setTempState(state);
         setOriginalModalState(JSON.parse(JSON.stringify(state)));
-        setActiveModal(cameraCode);
+        setActiveModalState(cameraCode);
         setOriginalStreamQuality(streamQuality);
         setOriginalDisplayMode(displayMode);
         // Enable preview and increment stream version
-        setPreviewEnabled(true);
+        setPreviewEnabledState(true);
         setStreamVersion(v => v + 1);
-    }, [cameras, getCameraStateFromConfig, streamQuality, displayMode]);
+    }, [cameras, getCameraStateFromConfig, streamQuality, displayMode, setActiveModalState, setPreviewEnabledState]);
 
     // ========================
     // Modal: Close
     // ========================
     const closeModal = useCallback(() => {
-        setPreviewEnabled(false);
-        setActiveModal(null);
+        setPreviewEnabledState(false);
+        setActiveModalState(null);
         setTempState({});
         setOriginalModalState({});
         setShowCancelConfirmModal(false);
         setIsSaving(false);
         setIsApplying(false);
         setIsClosing(false);
-    }, []);
+    }, [setActiveModalState, setPreviewEnabledState]);
 
     // ========================
     // Modal: Check for changes
@@ -302,25 +314,70 @@ const Cameras = () => {
     // ========================
     // Helper: Stop camera stream via API
     // ========================
-    const stopCameraStream = useCallback(async () => {
-        if (!activeModal) return;
-        try {
-            await fetch(`/api/cameras/stop/${activeModal}`, { method: 'POST' });
-        } catch (err) {
-            console.error('Failed to stop camera stream:', err);
+    const stopCameraStream = useCallback(async ({ cameraCode, keepalive = false } = {}) => {
+        const resolvedCameraCode = cameraCode ?? activeModalRef.current;
+        if (!resolvedCameraCode) {
+            return false;
         }
-    }, [activeModal]);
+
+        try {
+            const requestOptions = { method: 'POST' };
+            if (keepalive && typeof Request !== 'undefined' && 'keepalive' in Request.prototype) {
+                requestOptions.keepalive = true;
+            }
+
+            const response = await fetch(`/api/cameras/stop/${resolvedCameraCode}`, requestOptions);
+            if (!response.ok) {
+                console.error(`Failed to stop camera stream for ${resolvedCameraCode}: ${response.status} ${response.statusText}`);
+                return false;
+            }
+
+            const data = await response.json();
+            if (data.success !== true) {
+                console.error(`Camera stop did not return success for ${resolvedCameraCode}:`, data);
+                return false;
+            }
+
+            return true;
+        } catch (err) {
+            console.error(`Failed to stop camera stream for ${resolvedCameraCode}:`, err);
+            return false;
+        }
+    }, []);
+
+    const stopPreviewStream = useCallback(async ({ cameraCode, updateUi = true, keepalive = false } = {}) => {
+        if (updateUi) {
+            setPreviewEnabledState(false);
+        }
+
+        return stopCameraStream({ cameraCode, keepalive });
+    }, [setPreviewEnabledState, stopCameraStream]);
+
+    // Route unmount must still release the backend preview stream.
+    useEffect(() => {
+        return () => {
+            if (!previewEnabledRef.current || !activeModalRef.current) {
+                return;
+            }
+
+            void stopPreviewStream({
+                cameraCode: activeModalRef.current,
+                updateUi: false,
+                keepalive: true
+            });
+        };
+    }, [stopPreviewStream]);
 
     // ========================
     // Modal: Close request
     // ========================
     const handleCloseRequest = useCallback(async () => {
         // Stop the preview stream immediately and show "Closing..."
-        setPreviewEnabled(false);
+        setPreviewEnabledState(false);
         setIsClosing(true);
         
         // Stop the camera stream via API immediately
-        await stopCameraStream();
+        await stopPreviewStream({ updateUi: false });
         
         // Wait 1 second to allow the UI to update
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -331,7 +388,7 @@ const Cameras = () => {
         } else {
             closeModal();
         }
-    }, [hasModalChanges, closeModal, stopCameraStream]);
+    }, [hasModalChanges, closeModal, setPreviewEnabledState, stopPreviewStream]);
 
     // ========================
     // Modal: Cancel confirm
@@ -353,9 +410,8 @@ const Cameras = () => {
      */
     const handleRelevantFieldChange = useCallback((key, value) => {
         setTempState(prev => ({ ...prev, [key]: value }));
-        setPreviewEnabled(false);
-        stopCameraStream();
-    }, [stopCameraStream]);
+        void stopPreviewStream();
+    }, [stopPreviewStream]);
 
     // ========================
     // Helper: Build payload from tempState
@@ -409,11 +465,11 @@ const Cameras = () => {
 
         try {
             // Stop preview and show saving state
-            setPreviewEnabled(false);
+            setPreviewEnabledState(false);
             setIsSaving(true);
 
             // Stop the camera stream via API immediately
-            await stopCameraStream();
+            await stopPreviewStream({ updateUi: false });
 
             // Wait 1 second to allow the UI to update
             await new Promise(resolve => setTimeout(resolve, 100));
@@ -436,11 +492,11 @@ const Cameras = () => {
         } catch (err) {
             console.error('Failed to save camera settings:', err);
             // Re-enable preview on error
-            setPreviewEnabled(true);
+            setPreviewEnabledState(true);
         } finally {
             setIsSaving(false);
         }
-    }, [activeModal, buildPayload, fetchCameras, fetchInputDevices, closeModal, stopCameraStream]);
+    }, [activeModal, buildPayload, fetchCameras, fetchInputDevices, closeModal, setPreviewEnabledState, stopPreviewStream]);
 
     // ========================
     // Modal: Apply (apply changes and restart preview)
@@ -450,11 +506,11 @@ const Cameras = () => {
 
         try {
             // Stop preview and show applying state
-            setPreviewEnabled(false);
+            setPreviewEnabledState(false);
             setIsApplying(true);
 
             // Stop the camera stream via API immediately
-            await stopCameraStream();
+            await stopPreviewStream({ updateUi: false });
 
             // Wait 1 second to allow the UI to update
             await new Promise(resolve => setTimeout(resolve, 100));
@@ -479,10 +535,10 @@ const Cameras = () => {
             console.error('Failed to apply camera settings:', err);
         } finally {
             setIsApplying(false);
-            setPreviewEnabled(true);
+            setPreviewEnabledState(true);
             setStreamVersion(v => v + 1);
         }
-    }, [activeModal, buildPayload, fetchCameras, fetchInputDevices, tempState, streamQuality, displayMode, stopCameraStream]);
+    }, [activeModal, buildPayload, fetchCameras, fetchInputDevices, tempState, streamQuality, displayMode, setPreviewEnabledState, stopPreviewStream]);
 
     // ========================
     // Modal: Reset Camera - show confirmation
@@ -509,7 +565,7 @@ const Cameras = () => {
 
         try {
             // Stop preview and show resetting state
-            setPreviewEnabled(false);
+            setPreviewEnabledState(false);
             setIsResetting(true);
 
             // Call reset API
@@ -540,10 +596,10 @@ const Cameras = () => {
         } finally {
             setIsResetting(false);
             // Restart the preview
-            setPreviewEnabled(true);
+            setPreviewEnabledState(true);
             setStreamVersion(v => v + 1);
         }
-    }, [activeModal, fetchCameras, fetchInputDevices, getCameraStateFromConfig]);
+    }, [activeModal, fetchCameras, fetchInputDevices, getCameraStateFromConfig, setPreviewEnabledState]);
 
     // ========================
     // Reset All Cameras: Show confirmation modal
@@ -594,46 +650,41 @@ const Cameras = () => {
         if (device) {
             const deviceState = getCameraStateFromConfig(device);
             setTempState(deviceState);
-            setPreviewEnabled(false);
-            stopCameraStream();
+            void stopPreviewStream();
         }
-    }, [inputDevices, getCameraStateFromConfig, stopCameraStream]);
+    }, [inputDevices, getCameraStateFromConfig, stopPreviewStream]);
 
     // ========================
     // Modal: Resolution change handler
     // ========================
     const onResolutionChange = useCallback((val) => {
         updateTempState('preferredResolution', val);
-        setPreviewEnabled(false);
-        stopCameraStream();
-    }, [updateTempState, stopCameraStream]);
+        void stopPreviewStream();
+    }, [updateTempState, stopPreviewStream]);
 
     // ========================
     // Modal: FPS change handler
     // ========================
     const onFpsChange = useCallback((val) => {
         updateTempState('fps', val);
-        setPreviewEnabled(false);
-        stopCameraStream();
-    }, [updateTempState, stopCameraStream]);
+        void stopPreviewStream();
+    }, [updateTempState, stopPreviewStream]);
 
     // ========================
     // Modal: Stream quality change handler
     // ========================
     const onStreamQualityChange = useCallback((val) => {
         setStreamQuality(val);
-        setPreviewEnabled(false);
-        stopCameraStream();
-    }, [stopCameraStream]);
+        void stopPreviewStream();
+    }, [stopPreviewStream]);
 
     // ========================
     // Modal: Display mode change handler
     // ========================
     const onDisplayModeChange = useCallback((val) => {
         setDisplayMode(val);
-        setPreviewEnabled(false);
-        stopCameraStream();
-    }, [stopCameraStream]);
+        void stopPreviewStream();
+    }, [stopPreviewStream]);
 
     // ========================
     // Compute derived values
