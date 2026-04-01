@@ -19,6 +19,24 @@ import componentsDemoIcon from './assets/icons/mainPage.svg'; // Using mainPage 
 import aboutIcon from './assets/icons/about.svg';
 import modalWindowsIcon from './assets/icons/tip.svg';
 
+const FULL_BLEED_PATHS = new Set([
+  '/manual-control',
+  '/ai-agent',
+  '/tools/hot-zone'
+]);
+
+const MenuLink = ({ to, icon, label, onNavigate }) => (
+  <Link
+    to={to}
+    className="btn"
+    style={{ justifyContent: 'flex-start', width: '100%', gap: '0.75rem' }}
+    onClick={onNavigate}
+  >
+    {icon && <img src={icon} alt="" width="24" height="24" />}
+    {label}
+  </Link>
+);
+
 const Layout = () => {
   const location = useLocation();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -75,19 +93,8 @@ const Layout = () => {
   const { title, icon } = getPageInfo();
 
   // Pages that should use full-bleed layout (no padding, no scrollbars)
-  const isFullBleedPage = location.pathname === '/manual-control' || location.pathname === '/ai-agent';
-
-  const MenuLink = ({ to, icon, label }) => (
-    <Link
-      to={to}
-      className="btn"
-      style={{ justifyContent: 'flex-start', width: '100%', gap: '0.75rem' }}
-      onClick={() => handleMenuToggle(false, true)}
-    >
-      {icon && <img src={icon} alt="" width="24" height="24" />}
-      {label}
-    </Link>
-  );
+  const isFullBleedPage = FULL_BLEED_PATHS.has(location.pathname);
+  const handleMenuNavigate = () => handleMenuToggle(false, true);
 
   return (
     <div className="app-container">
@@ -137,20 +144,20 @@ const Layout = () => {
             overflowY: 'auto'
           }}>
             <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              <li><MenuLink to="/" icon={mainPageIcon} label="Main Page" /></li>
-              <li><MenuLink to="/manual-control" icon={manualControlIcon} label="Manual Control" /></li>
-              <li><MenuLink to="/ai-agent" icon={aiAgentIcon} label="AI Agent" /></li>
+              <li><MenuLink to="/" icon={mainPageIcon} label="Main Page" onNavigate={handleMenuNavigate} /></li>
+              <li><MenuLink to="/manual-control" icon={manualControlIcon} label="Manual Control" onNavigate={handleMenuNavigate} /></li>
+              <li><MenuLink to="/ai-agent" icon={aiAgentIcon} label="AI Agent" onNavigate={handleMenuNavigate} /></li>
               <li>
                 <div className="btn" style={{ justifyContent: 'flex-start', width: '100%', cursor: 'default', opacity: 0.8, gap: '0.75rem' }}>
                   <img src={settingsIcon} alt="" width="24" height="24" />
                   Settings
                 </div>
                 <ul style={{ listStyle: 'none', paddingLeft: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
-                  <li><MenuLink to="/settings/import-export" icon={importExportIcon} label="Import / Export" /></li>
-                  <li><MenuLink to="/settings/general-setup" icon={settingsIcon} label="General Setup" /></li>
-                  <li><MenuLink to="/settings/motors" icon={motorsIcon} label="Motors" /></li>
-                  <li><MenuLink to="/settings/cameras-new" icon={cameraIcon} label="Cameras" /></li>
-                  <li><MenuLink to="/settings/ai-behavior" icon={aiBehaviorIcon} label="AI Setup" /></li>
+                  <li><MenuLink to="/settings/import-export" icon={importExportIcon} label="Import / Export" onNavigate={handleMenuNavigate} /></li>
+                  <li><MenuLink to="/settings/general-setup" icon={settingsIcon} label="General Setup" onNavigate={handleMenuNavigate} /></li>
+                  <li><MenuLink to="/settings/motors" icon={motorsIcon} label="Motors" onNavigate={handleMenuNavigate} /></li>
+                  <li><MenuLink to="/settings/cameras-new" icon={cameraIcon} label="Cameras" onNavigate={handleMenuNavigate} /></li>
+                  <li><MenuLink to="/settings/ai-behavior" icon={aiBehaviorIcon} label="AI Setup" onNavigate={handleMenuNavigate} /></li>
                 </ul>
               </li>
               <li>
@@ -159,7 +166,7 @@ const Layout = () => {
                   Tools
                 </div>
                 <ul style={{ listStyle: 'none', paddingLeft: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
-                  <li><MenuLink to="/tools/hot-zone" icon={hotZoneIcon} label="Hot Zone" /></li>
+                  <li><MenuLink to="/tools/hot-zone" icon={hotZoneIcon} label="Hot Zone" onNavigate={handleMenuNavigate} /></li>
                 </ul>
               </li>
               <li><MenuLink to="/tutorials" icon={tutorialsIcon} label="Tutorials" /></li>
@@ -169,17 +176,17 @@ const Layout = () => {
                   Developers Sandbox
                 </div>
                 <ul style={{ listStyle: 'none', paddingLeft: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
-                  <li><MenuLink to="/sandbox/components-demo" icon={componentsDemoIcon} label="Components Demo" /></li>
-                  <li><MenuLink to="/sandbox/modal-windows-demo" icon={modalWindowsIcon} label="Modal Windows Demo" /></li>
-                  <li><MenuLink to="/sandbox/editable-chart" icon={componentsDemoIcon} label="Editable Chart" /></li>
-                  <li><MenuLink to="/sandbox/table-demo" icon={componentsDemoIcon} label="Table Demo" /></li>
-                  <li><MenuLink to="/sandbox/chart2d" icon={componentsDemoIcon} label="Chart2D Demo" /></li>
-                  <li><MenuLink to="/sandbox/polygon-zoom-pan" icon={componentsDemoIcon} label="Polygon Zoom Pan" /></li>
-                  <li><MenuLink to="/sandbox/datetimepicker" icon={componentsDemoIcon} label="DateTimePicker Demo" /></li>
-                  <li><MenuLink to="/sandbox/joystick1d" icon={componentsDemoIcon} label="Joystick1D Demo" /></li>
+                  <li><MenuLink to="/sandbox/components-demo" icon={componentsDemoIcon} label="Components Demo" onNavigate={handleMenuNavigate} /></li>
+                  <li><MenuLink to="/sandbox/modal-windows-demo" icon={modalWindowsIcon} label="Modal Windows Demo" onNavigate={handleMenuNavigate} /></li>
+                  <li><MenuLink to="/sandbox/editable-chart" icon={componentsDemoIcon} label="Editable Chart" onNavigate={handleMenuNavigate} /></li>
+                  <li><MenuLink to="/sandbox/table-demo" icon={componentsDemoIcon} label="Table Demo" onNavigate={handleMenuNavigate} /></li>
+                  <li><MenuLink to="/sandbox/chart2d" icon={componentsDemoIcon} label="Chart2D Demo" onNavigate={handleMenuNavigate} /></li>
+                  <li><MenuLink to="/sandbox/polygon-zoom-pan" icon={componentsDemoIcon} label="Polygon Zoom Pan" onNavigate={handleMenuNavigate} /></li>
+                  <li><MenuLink to="/sandbox/datetimepicker" icon={componentsDemoIcon} label="DateTimePicker Demo" onNavigate={handleMenuNavigate} /></li>
+                  <li><MenuLink to="/sandbox/joystick1d" icon={componentsDemoIcon} label="Joystick1D Demo" onNavigate={handleMenuNavigate} /></li>
                 </ul>
               </li>
-              <li><MenuLink to="/about" icon={aboutIcon} label="About" /></li>
+              <li><MenuLink to="/about" icon={aboutIcon} label="About" onNavigate={handleMenuNavigate} /></li>
             </ul>
           </nav>
         </>

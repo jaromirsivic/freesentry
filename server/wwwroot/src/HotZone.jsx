@@ -69,21 +69,6 @@ const HotZone = () => {
         };
     }, []);
 
-    // Override main-content padding for full-screen Scene3D
-    useEffect(() => {
-        const mainContent = document.querySelector('.main-content');
-        if (mainContent) {
-            const originalPadding = mainContent.style.padding;
-            const originalOverflow = mainContent.style.overflow;
-            mainContent.style.padding = '0';
-            mainContent.style.overflow = 'hidden';
-            return () => {
-                mainContent.style.padding = originalPadding;
-                mainContent.style.overflow = originalOverflow;
-            };
-        }
-    }, []);
-
     // Edit button style - positioned above Reset button in Scene3D
     const editButtonStyle = {
         position: 'absolute',
