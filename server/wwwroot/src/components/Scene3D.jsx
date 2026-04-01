@@ -3,6 +3,105 @@ import * as THREE from 'three';
 import MultiSwitch from './MultiSwitch';
 import Button from './Button';
 
+const MAX_RENDERER_PIXEL_RATIO = 1.5;
+const RENDER_HEARTBEAT_MS = 1000;
+
+const createDisposalContext = () => ({
+    geometries: new Set(),
+    materials: new Set(),
+    textures: new Set()
+});
+
+const disposeMaterialTextureValue = (value, disposalContext) => {
+    if (!value) {
+        return;
+    }
+
+    if (Array.isArray(value)) {
+        value.forEach((entry) => disposeMaterialTextureValue(entry, disposalContext));
+        return;
+    }
+
+    if (value.isTexture && !disposalContext.textures.has(value)) {
+        value.dispose();
+        disposalContext.textures.add(value);
+    }
+};
+
+const disposeMaterial = (material, disposalContext) => {
+    if (Array.isArray(material)) {
+        material.forEach((entry) => disposeMaterial(entry, disposalContext));
+        return;
+    }
+
+    if (!material || disposalContext.materials.has(material)) {
+        return;
+    }
+
+    Object.values(material).forEach((value) => {
+        disposeMaterialTextureValue(value, disposalContext);
+    });
+
+    material.dispose();
+    disposalContext.materials.add(material);
+};
+
+const disposeObjectResources = (object, disposalContext) => {
+    if (object.geometry && !disposalContext.geometries.has(object.geometry)) {
+        object.geometry.dispose();
+        disposalContext.geometries.add(object.geometry);
+    }
+
+    if (object.material) {
+        disposeMaterial(object.material, disposalContext);
+    }
+};
+
+const detachAndDisposeObject = (object, disposalContext = createDisposalContext()) => {
+    if (!object) {
+        return;
+    }
+
+    object.traverse((child) => {
+        disposeObjectResources(child, disposalContext);
+    });
+
+    object.clear();
+
+    if (object.parent) {
+        object.parent.remove(object);
+    }
+};
+
+const clearObjectChildren = (object3D, disposalContext = createDisposalContext()) => {
+    if (!object3D) {
+        return;
+    }
+
+    [...object3D.children].forEach((child) => {
+        detachAndDisposeObject(child, disposalContext);
+    });
+};
+
+const removeNamedSceneObject = (scene, objectName, disposalContext = createDisposalContext()) => {
+    if (!scene) {
+        return;
+    }
+
+    const object = scene.getObjectByName(objectName);
+    if (object) {
+        detachAndDisposeObject(object, disposalContext);
+    }
+};
+
+const getRendererPixelRatio = () => {
+    if (typeof window === 'undefined') {
+        return 1;
+    }
+
+    return Math.min(window.devicePixelRatio || 1, MAX_RENDERER_PIXEL_RATIO);
+};
+
 const Scene3D = ({
     background = '#ffffffff',
     gridColor = '#eeeeeeff',
@@ -17,6 +116,7 @@ const Scene3D = ({
     const objectsGroupRef = useRef(null);
     const lightRef = useRef(null);
     const animationFrameRef = useRef(null);
+    const heartbeatIntervalRef = useRef(null);
     const currentGridScaleRef = useRef(1);
 
     const [controlMode, setControlMode] = useState('move');
@@ -46,6 +146,34 @@ const Scene3D = ({
         return { color: parseInt(hex, 16), opacity };
     };
 
+    const renderScene = useCallback(() => {
+        const renderer = rendererRef.current;
+        const scene = sceneRef.current;
+        const camera = cameraRef.current;
+
+        if (!renderer || !scene || !camera) {
+            return;
+        }
+
+        renderer.render(scene, camera);
+    }, []);
+
+    const requestRender = useCallback(() => {
+        if (animationFrameRef.current !== null) {
+            return;
+        }
+
+        if (typeof window === 'undefined' || typeof window.requestAnimationFrame !== 'function') {
+            renderScene();
+            return;
+        }
+
+        animationFrameRef.current = window.requestAnimationFrame(() => {
+            animationFrameRef.current = null;
+            renderScene();
+        });
+    }, [renderScene]);
+
     // Update camera position based on orbit state
     const updateCameraPosition = useCallback((shouldUpdateGrid = true) => {
         const camera = cameraRef.current;
@@ -70,35 +198,9 @@ const Scene3D = ({
         if (shouldUpdateGrid && updateGridRef.current) {
             updateGridRef.current();
         }
-    }, []);
 
-    // Fit camera to view all objects (Auto-fit)
-    const resetCamera = useCallback(() => {
-        const group = objectsGroupRef.current;
-        if (!group) return; // Allow empty group handling if needed, but usually we just skip
-
-        // If no children, default to a sensible view, but distinct from "The Default"
-        if (group.children.length === 0) {
-            setCameraToDefault();
-            return;
-        }
-
-        // Calculate bounding box
-        const box = new THREE.Box3().setFromObject(group);
-        const center = box.getCenter(new THREE.Vector3());
-        const size = box.getSize(new THREE.Vector3());
-        const maxDim = Math.max(size.x, size.y, size.z);
-        const distance = maxDim * 2 + 5;
-
-        // Auto-fit sets a view relative to the object center
-        cameraStateRef.current = {
-            distance: Math.max(distance, 5),
-            theta: Math.PI / 4,
-            phi: Math.PI / 3,
-            target: center.clone()
-        };
-        updateCameraPosition();
-    }, [updateCameraPosition]);
+        requestRender();
+    }, [requestRender]);
 
     // Set camera to fixed default position (2, 2, 2) looking at (0, 0, 0)
     const setCameraToDefault = useCallback(() => {
@@ -134,18 +236,7 @@ const Scene3D = ({
         if (!group) return;
 
         // Clear existing objects
-        while (group.children.length > 0) {
-            const child = group.children[0];
-            if (child.geometry) child.geometry.dispose();
-            if (child.material) {
-                if (Array.isArray(child.material)) {
-                    child.material.forEach(m => m.dispose());
-                } else {
-                    child.material.dispose();
-                }
-            }
-            group.remove(child);
-        }
+        clearObjectChildren(group);
 
         // Create new objects
         objects.forEach(obj => {
@@ -228,7 +319,8 @@ const Scene3D = ({
                     console.warn(`Unknown object type: ${obj.type}`);
             }
         });
-    }, [objects]);
+        requestRender();
+    }, [objects, requestRender]);
 
     // Initialize Three.js scene
     useEffect(() => {
@@ -250,8 +342,8 @@ const Scene3D = ({
 
         // Renderer
         const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setPixelRatio(getRendererPixelRatio());
         renderer.setSize(container.clientWidth, container.clientHeight);
-        renderer.setPixelRatio(window.devicePixelRatio);
         container.appendChild(renderer.domElement);
         rendererRef.current = renderer;
 
@@ -272,12 +364,9 @@ const Scene3D = ({
         // Initial camera position
         updateCameraPosition();
 
-        // Animation loop
-        const animate = () => {
-            animationFrameRef.current = requestAnimationFrame(animate);
-            renderer.render(scene, camera);
-        };
-        animate();
+        heartbeatIntervalRef.current = window.setInterval(() => {
+            requestRender();
+        }, RENDER_HEARTBEAT_MS);
 
         // Handle resize
         const handleResize = () => {
@@ -286,7 +375,9 @@ const Scene3D = ({
             const height = container.clientHeight;
             camera.aspect = width / height;
             camera.updateProjectionMatrix();
+            renderer.setPixelRatio(getRendererPixelRatio());
             renderer.setSize(width, height);
+            requestRender();
         };
 
         const resizeObserver = new ResizeObserver(handleResize);
@@ -296,23 +387,42 @@ const Scene3D = ({
         return () => {
             if (animationFrameRef.current) {
                 cancelAnimationFrame(animationFrameRef.current);
+                animationFrameRef.current = null;
+            }
+            if (heartbeatIntervalRef.current !== null) {
+                clearInterval(heartbeatIntervalRef.current);
+                heartbeatIntervalRef.current = null;
             }
             resizeObserver.disconnect();
+            clearObjectChildren(scene);
+            scene.background = null;
+            renderer.renderLists.dispose();
             renderer.dispose();
+            if (typeof renderer.forceContextLoss === 'function') {
+                renderer.forceContextLoss();
+            }
             if (container.contains(renderer.domElement)) {
                 container.removeChild(renderer.domElement);
             }
+            rendererRef.current = null;
+            sceneRef.current = null;
+            cameraRef.current = null;
+            objectsGroupRef.current = null;
+            lightRef.current = null;
+            updateGridRef.current = null;
+            isDraggingRef.current = false;
         };
-    }, [updateCameraPosition]);
+    }, [requestRender, updateCameraPosition]);
 
     // Update background color
     useEffect(() => {
         const scene = sceneRef.current;
         if (!scene) return;
 
-        const { color, opacity } = parseColor(background);
+        const { color } = parseColor(background);
         scene.background = new THREE.Color(color);
-    }, [background]);
+        requestRender();
+    }, [background, requestRender]);
 
     // Update grid based on camera distance (Blender-style dynamic scaling)
     const updateGrid = useCallback(() => {
@@ -333,18 +443,9 @@ const Scene3D = ({
         currentGridScaleRef.current = gridScale;
 
         // Remove existing grids
-        const existingGrid = scene.getObjectByName('grid');
-        if (existingGrid) {
-            existingGrid.geometry.dispose();
-            existingGrid.material.dispose();
-            scene.remove(existingGrid);
-        }
-        const existingSubGrid = scene.getObjectByName('subgrid');
-        if (existingSubGrid) {
-            existingSubGrid.geometry.dispose();
-            existingSubGrid.material.dispose();
-            scene.remove(existingSubGrid);
-        }
+        const gridDisposalContext = createDisposalContext();
+        removeNamedSceneObject(scene, 'grid', gridDisposalContext);
+        removeNamedSceneObject(scene, 'subgrid', gridDisposalContext);
 
         const { color } = parseColor(gridColor);
 
@@ -368,7 +469,8 @@ const Scene3D = ({
         subGrid.material = subGridMaterial;
         subGrid.name = 'subgrid';
         scene.add(subGrid);
-    }, [gridColor]);
+        requestRender();
+    }, [gridColor, requestRender]);
 
     // Store updateGrid reference for use in updateCameraPosition
     useEffect(() => {
@@ -506,6 +608,23 @@ const Scene3D = ({
         updateCameraPosition();
     }, [updateCameraPosition]);
 
+    useEffect(() => {
+        const container = containerRef.current;
+        if (!container) {
+            return undefined;
+        }
+
+        const handleNonPassiveWheel = (event) => {
+            handleWheel(event);
+        };
+
+        container.addEventListener('wheel', handleNonPassiveWheel, { passive: false });
+
+        return () => {
+            container.removeEventListener('wheel', handleNonPassiveWheel);
+        };
+    }, [handleWheel]);
+
     // Handle context menu (prevent on canvas)
     const handleContextMenu = useCallback((e) => {
         e.preventDefault();
@@ -558,7 +677,6 @@ const Scene3D = ({
             onTouchStart={handleTouchStart}
             onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
-            onWheel={handleWheel}
             onContextMenu={handleContextMenu}
         >
             <div style={controlsStyle}>
