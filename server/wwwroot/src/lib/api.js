@@ -46,21 +46,40 @@ const resolveApiUrl = (url) => {
  */
 const fetchWithTimeout = async (endpoint, options = {}, timeout = DEFAULT_TIMEOUT) => {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeout);
+    const externalSignal = options.signal;
+    let didTimeout = false;
+
+    const handleExternalAbort = () => {
+        controller.abort();
+    };
+
+    if (externalSignal) {
+        if (externalSignal.aborted) {
+            controller.abort();
+        } else {
+            externalSignal.addEventListener('abort', handleExternalAbort, { once: true });
+        }
+    }
+
+    const timeoutId = setTimeout(() => {
+        didTimeout = true;
+        controller.abort();
+    }, timeout);
 
     try {
         const response = await fetch(resolveApiUrl(endpoint), {
             ...options,
             signal: controller.signal
         });
-        clearTimeout(timeoutId);
         return response;
     } catch (error) {
-        clearTimeout(timeoutId);
-        if (error.name === 'AbortError') {
+        if (didTimeout) {
             throw new Error(`Request timed out after ${timeout}ms`);
         }
         throw error;
+    } finally {
+        clearTimeout(timeoutId);
+        externalSignal?.removeEventListener('abort', handleExternalAbort);
     }
 };
 
@@ -68,13 +87,16 @@ const fetchWithTimeout = async (endpoint, options = {}, timeout = DEFAULT_TIMEOU
  * Generic GET request
  * @param {string} endpoint - API endpoint
  * @param {number} timeout - Timeout in milliseconds
+ * @param {object} options - Fetch options
  * @returns {Promise<any>}
  */
-const get = async (endpoint, timeout = DEFAULT_TIMEOUT) => {
+const get = async (endpoint, timeout = DEFAULT_TIMEOUT, options = {}) => {
     const response = await fetchWithTimeout(endpoint, {
+        ...options,
         method: 'GET',
         headers: {
             'Content-Type': 'application/json',
+            ...options.headers,
         }
     }, timeout);
 
@@ -201,10 +223,16 @@ export const setMotorSpeed = async (motorName, speed) => {
 
 /**
  * Get hot zone settings from the server
+ * @param {number|object} timeoutOrOptions - Timeout in milliseconds or fetch options
  * @returns {Promise<object>} Hot zone settings object
  */
-export const getHotZoneSettings = async () => {
-    return get('/api/settings/hot-zone');
+export const getHotZoneSettings = async (timeoutOrOptions = DEFAULT_TIMEOUT) => {
+    if (typeof timeoutOrOptions === 'number') {
+        return get('/api/settings/hot-zone', timeoutOrOptions);
+    }
+
+    const { timeout = DEFAULT_TIMEOUT, signal } = timeoutOrOptions ?? {};
+    return get('/api/settings/hot-zone', timeout, { signal });
 };
 
 /**

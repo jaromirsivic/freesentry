@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Scene3D from './components/Scene3D';
 import Button from './components/Button';
 import HotZoneEditModal from './HotZoneEditModal';
@@ -9,35 +9,65 @@ import { getHotZoneSettings } from './lib/api';
 const HotZone = () => {
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [sceneObjects, setSceneObjects] = useState([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const [_isLoading, setIsLoading] = useState(true);
     const [fov, setFov] = useState({ horizontal: 0, vertical: 0 });
+    const loadGenerationRef = useRef(0);
 
-    // Load initial hot zone settings and generate scene
+    // Guard the initial async load so route changes cannot apply stale state.
     useEffect(() => {
-        loadAndGenerateScene();
-    }, []);
+        const controller = new AbortController();
+        const loadGeneration = loadGenerationRef.current + 1;
+        loadGenerationRef.current = loadGeneration;
 
-    const loadAndGenerateScene = async () => {
-        try {
-            setIsLoading(true);
-            const settings = await getHotZoneSettings();
-            if (settings && Object.keys(settings).length > 0) {
-                const quality = settings.computationQuality || 15;
-                const result = generateHotZoneSceneObjects(settings, quality);
+        const canApplyLoad = () => (
+            !controller.signal.aborted
+            && loadGenerationRef.current === loadGeneration
+        );
 
-                if (result.fov) {
-                    setSceneObjects(result.objects);
-                    setFov(result.fov);
-                } else {
-                    setSceneObjects(result);
+        const loadAndGenerateScene = async () => {
+            try {
+                setIsLoading(true);
+                const settings = await getHotZoneSettings({ signal: controller.signal });
+
+                if (!canApplyLoad()) {
+                    return;
+                }
+
+                if (settings && Object.keys(settings).length > 0) {
+                    const quality = settings.computationQuality || 15;
+                    const result = generateHotZoneSceneObjects(settings, quality);
+
+                    if (!canApplyLoad()) {
+                        return;
+                    }
+
+                    if (result.fov) {
+                        setSceneObjects(result.objects);
+                        setFov(result.fov);
+                    } else {
+                        setSceneObjects(result);
+                    }
+                }
+            } catch (error) {
+                if (!canApplyLoad() || error?.name === 'AbortError') {
+                    return;
+                }
+
+                console.error('Failed to load hot zone settings:', error);
+            } finally {
+                if (canApplyLoad()) {
+                    setIsLoading(false);
                 }
             }
-        } catch (error) {
-            console.error('Failed to load hot zone settings:', error);
-        } finally {
-            setIsLoading(false);
-        }
-    };
+        };
+
+        void loadAndGenerateScene();
+
+        return () => {
+            loadGenerationRef.current += 1;
+            controller.abort();
+        };
+    }, []);
 
     // Override main-content padding for full-screen Scene3D
     useEffect(() => {
