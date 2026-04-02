@@ -2709,3 +2709,27 @@ Načti findings_extended.md, což je soubor, který byl vytvořen jako detailní
 Zaměř se pouze na aktivní zjištění "## 12." a oprav tuto závadu jako expert.
 Uvědom si, že tento systém bude procházet auditem, proto musí být tvoje oprava super seniorní.
 Pokud máš doplňující dotazy, neboj se mě zeptat.
+
+Načti findings_extended.md, což je soubor, který byl vytvořen jako detailní review zdrojových kódů tohoto projektu.
+Zaměř se pouze na aktivní zjištění "## 13." a oprav tuto závadu jako expert.
+Uvědom si, že tento systém bude procházet auditem, proto musí být tvoje oprava super seniorní.
+Pokud máš doplňující dotazy, neboj se mě zeptat.
+
+Načti findings_extended.md, což je soubor, který byl vytvořen jako detailní review zdrojových kódů tohoto projektu.
+Zaměř se pouze na aktivní zjištění "## 15." a oprav tuto závadu jako expert.
+Uvědom si, že tento systém bude procházet auditem, proto musí být tvoje oprava super seniorní.
+Pokud máš doplňující dotazy, neboj se mě zeptat.
+
+Proveď hloubkové review všech python zdrojových kódů ve složce /server
+Zjisti co vše by se dalo vylepšit pro zlepšení spolehlivosti a rychlosti projektu,
+případně pro zvýšení čitelnosti zdrojového kódu. Pozor spolehlivost,
+multiplatformnost a rychlost kódu je prioritizována před čitelností.
+Soustřeď se na to, aby kritické části byly thread-safe a fault-proof.
+Je plánováno, že tento systém poběží bezodstávkově měsíce, možná roky.
+Výsledné nálezy detailně popiš a ulož do souboru
+findings_python.md do root složky tohoto projektu.
+
+Načti findings_python.md, což je soubor, který byl vytvořen jako detailní review zdrojových kódů tohoto projektu.
+Zaměř se pouze na aktivní zjištění "## 1." a oprav tuto závadu jako expert.
+Uvědom si, že tento systém bude procházet auditem, proto musí být tvoje oprava super seniorní.
+Pokud máš doplňující dotazy, neboj se mě zeptat.

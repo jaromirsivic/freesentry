@@ -8,7 +8,8 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.requests import Request
 import subprocess
 import time
-from .context import master_controller
+from .context import clear_master_controller, set_master_controller
+from .mastercontroller import MasterController
 from .common import get_platform_info
 from . import settingscontroller
 from . import restapimotors
@@ -115,15 +116,19 @@ async def onload():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup logic goes here
     print("Server starting up...")
-    master_controller.start()            
-    # onLoad function is called after the server is started
-    await onload()
-    yield
-    # Shutdown logic goes here
-    print("Server shutting down...")
-    master_controller.stop()
+    master_controller = MasterController()
+    set_master_controller(app, master_controller)
+    try:
+        master_controller.start()
+        await onload()
+        yield
+    finally:
+        print("Server shutting down...")
+        try:
+            master_controller.stop()
+        finally:
+            clear_master_controller(app)
 
 app = FastAPI(lifespan=lifespan)
 

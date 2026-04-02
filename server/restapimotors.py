@@ -1,8 +1,13 @@
-from fastapi import APIRouter, HTTPException
+from typing import TYPE_CHECKING, Any
+
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from typing import Any
+
 from . import settingscontroller
-from .context import master_controller
+from .context import get_master_controller
+
+if TYPE_CHECKING:
+    from .mastercontroller import MasterController
 
 router = APIRouter()
 
@@ -17,7 +22,7 @@ class MotorSpeedRequest(BaseModel):
     motor_name: str
     speed: float
 
-async def get_j8():
+async def get_j8(master_controller: "MasterController"):
     """Get the J8 instance from the motors controller"""
     return master_controller.motors_controller.j8
 
@@ -28,7 +33,10 @@ async def get_motors_settings_endpoint():
     return settings.get("motors", [])
 
 @router.post("/api/settings/motors")
-async def save_motors_settings_endpoint(motors_settings: list[dict[str, Any]]):
+async def save_motors_settings_endpoint(
+    motors_settings: list[dict[str, Any]],
+    master_controller: "MasterController" = Depends(get_master_controller),
+):
     """Save motors settings to settings.json file"""
     settings = await settingscontroller.get_settings()
     settings["motors"] = motors_settings
@@ -37,10 +45,12 @@ async def save_motors_settings_endpoint(motors_settings: list[dict[str, Any]]):
     return {"success": True}
 
 @router.get("/api/controller/status")
-async def get_controller_status_endpoint():
+async def get_controller_status_endpoint(
+    master_controller: "MasterController" = Depends(get_master_controller),
+):
     """Get J8 controller initialization status"""
     try:
-        j8 = await get_j8()
+        j8 = await get_j8(master_controller=master_controller)
         return {
             "initialized": j8.initialized,
             "error_message": j8.error_message
@@ -52,10 +62,13 @@ async def get_controller_status_endpoint():
         }
 
 @router.post("/api/motors/action/start")
-async def start_motor_action(request: MotorActionStartRequest):
+async def start_motor_action(
+    request: MotorActionStartRequest,
+    master_controller: "MasterController" = Depends(get_master_controller),
+):
     """Start motor action: set J8[pin_index] to pwm_multiplier"""
     try:
-        j8 = await get_j8()
+        j8 = await get_j8(master_controller=master_controller)
         # Note: We do not reset the controller here because it would interrupt the automatic execution loop.
         
         j8[request.pin_index].value = request.pwm_multiplier
@@ -65,10 +78,13 @@ async def start_motor_action(request: MotorActionStartRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/api/motors/action/stop")
-async def stop_motor_action(request: MotorActionStopRequest):
+async def stop_motor_action(
+    request: MotorActionStopRequest,
+    master_controller: "MasterController" = Depends(get_master_controller),
+):
     """Stop motor action: reset J8[pin_index]"""
     try:
-        j8 = await get_j8()
+        j8 = await get_j8(master_controller=master_controller)
         j8[request.pin_index].reset()
         return {"success": True, "message": f"Pin {request.pin_index} reset"}
     except Exception as e:
@@ -76,7 +92,10 @@ async def stop_motor_action(request: MotorActionStopRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/api/motors/speed")
-async def set_motor_speed(request: MotorSpeedRequest):
+async def set_motor_speed(
+    request: MotorSpeedRequest,
+    master_controller: "MasterController" = Depends(get_master_controller),
+):
     """Set motor speed via REST API"""
     try:
         motors = master_controller.motors_controller.motors

@@ -1,4 +1,3 @@
-import datetime
 from .motorscontroller import MotorsController
 from .camerascontroller import CamerasController
 from .aiagent import AIAgent
@@ -6,16 +5,22 @@ from .aiagent import AIAgent
 
 class MasterController:
     def __init__(self):
+        self._started = False
         self.motors_controller = MotorsController()
         self.ai_agent = AIAgent(master_controller=self)
         self.cameras_controller = CamerasController(master_controller=self)
 
     def start(self):
+        if self._started:
+            return
         self.motors_controller.start()
+        self.ai_agent.start()
+        self._started = True
 
     def stop(self):
         self.ai_agent.stop()
         self.motors_controller.stop()
+        self._started = False
 
     def reset(self):
         self.motors_controller.reset()

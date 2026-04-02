@@ -2,10 +2,11 @@
 REST API for Camera management.
 Provides endpoints to list, update, and stream camera feeds.
 """
-from fastapi import APIRouter, HTTPException
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
+
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from typing import Dict, Any, Optional, List
 import asyncio
 import time
 import cv2
@@ -13,7 +14,10 @@ import cv2
 from .camera import Camera
 from .common import EPSILON_DELAY
 from . import settingscontroller
-from .context import master_controller
+from .context import get_master_controller
+
+if TYPE_CHECKING:
+    from .mastercontroller import MasterController
 
 router = APIRouter()
 
@@ -82,7 +86,9 @@ async def get_cameras_list():
 
 
 @router.get("/api/cameras/input_devices")
-async def get_input_devices():
+async def get_input_devices(
+    master_controller: "MasterController" = Depends(get_master_controller),
+):
     """
     Get list of available input devices from CamerasController.
     Returns device info including index, name, and supported resolutions.
@@ -103,7 +109,12 @@ async def get_input_devices():
 
 
 @router.post("/api/cameras/update/{camera_code}")
-async def update_camera(*, camera_code: str, request: CameraUpdateRequest):
+async def update_camera(
+    *,
+    camera_code: str,
+    request: CameraUpdateRequest,
+    master_controller: "MasterController" = Depends(get_master_controller),
+):
     """
     Update camera settings in settings.json and reset CamerasController.
     
@@ -202,7 +213,11 @@ async def update_camera(*, camera_code: str, request: CameraUpdateRequest):
 
 
 @router.post("/api/cameras/reset/{camera_code}")
-async def reset_camera(*, camera_code: str):
+async def reset_camera(
+    *,
+    camera_code: str,
+    master_controller: "MasterController" = Depends(get_master_controller),
+):
     """
     Reset camera settings to default values.
     
@@ -257,7 +272,9 @@ async def reset_camera(*, camera_code: str):
 
 
 @router.post("/api/cameras/resetall")
-async def reset_all_cameras():
+async def reset_all_cameras(
+    master_controller: "MasterController" = Depends(get_master_controller),
+):
     """
     Reset all cameras by calling master_controller.cameras_controller.reset().
     Reloads all cameras from scratch.
@@ -266,7 +283,7 @@ async def reset_all_cameras():
         master_controller.cameras_controller.reset(reset_to_default=True)
         await settingscontroller.clear_cached_settings()
         for camera_name in CAMERA_NAMES:
-            await reset_camera(camera_code=camera_name)
+            await reset_camera(camera_code=camera_name, master_controller=master_controller)
         return {"success": True}
     except Exception as e:
         print(f"Error resetting all cameras: {e}")
@@ -274,7 +291,11 @@ async def reset_all_cameras():
 
 
 @router.post("/api/cameras/stop/{camera_code}")
-async def stop_camera(*, camera_code: str):
+async def stop_camera(
+    *,
+    camera_code: str,
+    master_controller: "MasterController" = Depends(get_master_controller),
+):
     """
     Stop camera streaming.
     
@@ -313,7 +334,13 @@ async def stop_camera(*, camera_code: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-async def generate_camera_frames(*, index: int, mode: int=0, quality: int=90):
+async def generate_camera_frames(
+    *,
+    index: int,
+    master_controller: "MasterController",
+    mode: int = 0,
+    quality: int = 90,
+):
     """
     Generator that yields MJPEG frames from the camera.
     Uses multipart/x-mixed-replace for browser-native streaming.
@@ -370,7 +397,13 @@ async def generate_camera_frames(*, index: int, mode: int=0, quality: int=90):
 
 
 @router.get("/api/cameras/stream/{item_code}")
-async def stream_camera(*, item_code: str, mode: int = 0, quality: int = 80):
+async def stream_camera(
+    *,
+    item_code: str,
+    mode: int = 0,
+    quality: int = 80,
+    master_controller: "MasterController" = Depends(get_master_controller),
+):
     """
     Stream camera feed as MJPEG.
     
@@ -404,7 +437,12 @@ async def stream_camera(*, item_code: str, mode: int = 0, quality: int = 80):
         camera.settings = camera.settings
         
         return StreamingResponse(
-            generate_camera_frames(index=camera_index, mode=mode, quality=quality-10),
+            generate_camera_frames(
+                index=camera_index,
+                master_controller=master_controller,
+                mode=mode,
+                quality=quality - 10,
+            ),
             media_type='multipart/x-mixed-replace; boundary=frame'
         )
         

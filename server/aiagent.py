@@ -66,13 +66,23 @@ class AIAgent(threading.Thread):
         self._latest_processed_timestamp: float = 0
         self._engaging_started_at: float = 0
         self._disengaging_started_at: float = 0
-        self._running = True
+        self._running = False
         self._paused = threading.Event()
         self._paused.set()
         self._stop_event = threading.Event()
-        self.start()
+        self._thread_started = False
 
     ORGAN_NAMES = ("brain", "chest", "abdomen", "liver", "heart")
+
+    def start(self) -> None:
+        """Start the worker thread exactly once for this instance."""
+        if self._thread_started:
+            return
+        self._running = True
+        self._stop_event.clear()
+        self._paused.set()
+        self._thread_started = True
+        super().start()
 
     def _get_motor_by_role(self, *, role: str) -> "Motor | None":  # pyright: ignore[reportUndefinedVariable]
         """Return the Motor instance whose settings entry has the given role, or None."""

@@ -2,12 +2,17 @@
 REST API for Manual Control page motor settings.
 Handles loading and saving motor visibility settings for the Manual Control interface.
 """
-from fastapi import APIRouter, HTTPException
+from typing import TYPE_CHECKING
+
+from fastapi import APIRouter, Depends, HTTPException
 from . import settingscontroller
 from pydantic import BaseModel
-from .context import master_controller
+from .context import get_master_controller
 from .common import epsilon, Vector2D, Line2D, fit_vector_to_polygon, rotate_vector
 import math
+
+if TYPE_CHECKING:
+    from .mastercontroller import MasterController
 
 router = APIRouter()
 
@@ -191,7 +196,11 @@ async def save_manual_control_motors(*, request: SaveMotorVisibilityRequest):
 
 
 @router.post("/api/manualcontrol/action")
-async def manual_control_action(*, request: ManualControlActionRequest):
+async def manual_control_action(
+    *,
+    request: ManualControlActionRequest,
+    master_controller: "MasterController" = Depends(get_master_controller),
+):
     """
     Process manual control action from frontend.
     

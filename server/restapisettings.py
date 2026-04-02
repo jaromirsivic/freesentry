@@ -1,7 +1,12 @@
-from fastapi import APIRouter
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+from fastapi import APIRouter, Depends
+
 from . import settingscontroller
-from .context import master_controller
+from .context import get_master_controller
+
+if TYPE_CHECKING:
+    from .mastercontroller import MasterController
 
 router = APIRouter()
 
@@ -22,7 +27,10 @@ async def get_general_settings_endpoint():
     return settings.get("general", {})
 
 @router.post("/api/settings/general")
-async def save_general_settings_endpoint(general_settings: dict[str, Any]):
+async def save_general_settings_endpoint(
+    general_settings: dict[str, Any],
+    master_controller: "MasterController" = Depends(get_master_controller),
+):
     """Save general settings to settings.json file"""
     settings = await settingscontroller.get_settings()
     settings["general"] = general_settings

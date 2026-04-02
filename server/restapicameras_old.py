@@ -1,11 +1,15 @@
-from fastapi import APIRouter, HTTPException
+from typing import TYPE_CHECKING, Any, Dict, List
+
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from typing import List, Dict, Any
 import asyncio
 import cv2
 from . import settingscontroller
-from .context import master_controller
+from .context import get_master_controller
+
+if TYPE_CHECKING:
+    from .mastercontroller import MasterController
 
 router = APIRouter()
 
@@ -47,7 +51,9 @@ class CameraSettings(BaseModel):
     saveToDisk: bool = False
 
 @router.get("/api/cameras_old/list")
-async def get_cameras_list_endpoint():
+async def get_cameras_list_endpoint(
+    master_controller: "MasterController" = Depends(get_master_controller),
+):
     """Get connected cameras info and settings"""
     settings = await settingscontroller.get_settings()
     general_settings = settings.get("general", {})
@@ -71,7 +77,9 @@ async def get_primary_camera_endpoint():
     return {"success": True, "primaryCamera": primary_camera}
 
 @router.post("/api/reset")
-async def reset_cameras_endpoint():
+async def reset_cameras_endpoint(
+    master_controller: "MasterController" = Depends(get_master_controller),
+):
     """Reset camera settings to defaults"""
     # Reset in-memory settings for all cameras
     for camera in master_controller.cameras_controller.cameras:
@@ -94,7 +102,10 @@ async def reset_cameras_endpoint():
     return {"success": True}
 
 @router.post("/api/cameras_old/savecamera")
-async def save_camera_settings(settings: CameraSettings):
+async def save_camera_settings(
+    settings: CameraSettings,
+    master_controller: "MasterController" = Depends(get_master_controller),
+):
     """
     Save or apply camera settings.
     If saveToDisk is True, saves to settings.json.
@@ -207,7 +218,7 @@ async def save_camera_settings(settings: CameraSettings):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-async def generate_camera_frames(*, camera_index: int):
+async def generate_camera_frames(*, camera_index: int, master_controller: "MasterController"):
     """
     Generator that yields MJPEG frames from the camera.
     Uses multipart/x-mixed-replace for browser-native streaming.
@@ -240,7 +251,10 @@ async def generate_camera_frames(*, camera_index: int):
             await asyncio.sleep(0.1)
 
 @router.get("/api/cameras_old/stream/{camera_index}")
-async def stream_camera(camera_index: int):
+async def stream_camera(
+    camera_index: int,
+    master_controller: "MasterController" = Depends(get_master_controller),
+):
     """
     Stream camera feed as MJPEG (raw camera image).
     Use this URL as an img src for live video streaming.
@@ -249,12 +263,12 @@ async def stream_camera(camera_index: int):
         raise HTTPException(status_code=404, detail=f"Camera {camera_index} not found")
     
     return StreamingResponse(
-        generate_camera_frames(camera_index=camera_index),
+        generate_camera_frames(camera_index=camera_index, master_controller=master_controller),
         media_type='multipart/x-mixed-replace; boundary=frame'
     )
 
 
-async def generate_camera_frames_manual(*, camera_index: int):
+async def generate_camera_frames_manual(*, camera_index: int, master_controller: "MasterController"):
     """
     Generator that yields MJPEG frames from the cropped/resized camera image.
     Uses multipart/x-mixed-replace for browser-native streaming.
@@ -284,7 +298,7 @@ async def generate_camera_frames_manual(*, camera_index: int):
             await asyncio.sleep(0.1)
 
 
-async def generate_camera_frames_ai(*, camera_index: int):
+async def generate_camera_frames_ai(*, camera_index: int, master_controller: "MasterController"):
     """
     Generator that yields MJPEG frames from the AI-processed camera image.
     Uses multipart/x-mixed-replace for browser-native streaming.
@@ -315,7 +329,10 @@ async def generate_camera_frames_ai(*, camera_index: int):
 
 
 @router.get("/api/cameras_old/stream-manual/{camera_index}")
-async def stream_camera_manual(camera_index: int):
+async def stream_camera_manual(
+    camera_index: int,
+    master_controller: "MasterController" = Depends(get_master_controller),
+):
     """
     Stream cropped/resized camera feed as MJPEG for Manual Control.
     Source: camera.image_cropped_resized.frame
@@ -324,13 +341,16 @@ async def stream_camera_manual(camera_index: int):
         raise HTTPException(status_code=404, detail=f"Camera {camera_index} not found")
     
     return StreamingResponse(
-        generate_camera_frames_manual(camera_index=camera_index),
+        generate_camera_frames_manual(camera_index=camera_index, master_controller=master_controller),
         media_type='multipart/x-mixed-replace; boundary=frame'
     )
 
 
 @router.get("/api/cameras_old/stream-ai/{camera_index}")
-async def stream_camera_ai(camera_index: int):
+async def stream_camera_ai(
+    camera_index: int,
+    master_controller: "MasterController" = Depends(get_master_controller),
+):
     """
     Stream AI-processed camera feed as MJPEG for AI Agent.
     Source: camera.image_ai.frame
@@ -339,13 +359,16 @@ async def stream_camera_ai(camera_index: int):
         raise HTTPException(status_code=404, detail=f"Camera {camera_index} not found")
     
     return StreamingResponse(
-        generate_camera_frames_ai(camera_index=camera_index),
+        generate_camera_frames_ai(camera_index=camera_index, master_controller=master_controller),
         media_type='multipart/x-mixed-replace; boundary=frame'
     )
 
 
 @router.get("/api/cameras_old/frame/{camera_index}")
-async def get_camera_frame(camera_index: int):
+async def get_camera_frame(
+    camera_index: int,
+    master_controller: "MasterController" = Depends(get_master_controller),
+):
     """
     Get a single frame from the camera as JPEG.
     Use this for polling-based updates.
