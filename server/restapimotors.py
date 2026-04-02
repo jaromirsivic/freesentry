@@ -38,9 +38,10 @@ async def save_motors_settings_endpoint(
     master_controller: "MasterController" = Depends(get_master_controller),
 ):
     """Save motors settings to settings.json file"""
-    settings = await settingscontroller.get_settings()
-    settings["motors"] = motors_settings
-    await settingscontroller.save_settings(settings)
+    def update_motors_settings(settings: dict[str, Any]) -> None:
+        settings["motors"] = motors_settings
+
+    await settingscontroller.update_settings(update_motors_settings)
     master_controller.motors_controller.reset()
     return {"success": True}
 

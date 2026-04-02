@@ -129,72 +129,29 @@ async def update_camera(
         )
     
     try:
-        # Get current settings
-        current_settings = await settingscontroller.get_settings()
-        
-        # Ensure cameras object exists
-        if "cameras" not in current_settings:
-            current_settings["cameras"] = {}
-        
-        # Capture previous device index for this camera_code (before we overwrite)
-        camera_config = current_settings["cameras"].get(camera_code, {})
-        old_index = camera_config.get("index")
         new_index = request.index
+        camera: Camera = master_controller.cameras_controller.cameras[new_index]
+        updated_camera_config = request.model_dump()
+        updated_camera_config["supported_resolutions"] = camera.supported_resolutions
 
-        # If user selected a different device, clear that device from any other camera_code
-        # so only one slot (e.g. scope_camera) owns the device.
-        for other_code, other_config in current_settings["cameras"].items():
-            if other_code != camera_code and other_config.get("index") == new_index:
-                other_config["index"] = -1
+        def update_camera_settings(current_settings: dict[str, Any]) -> int | None:
+            cameras = current_settings.setdefault("cameras", {})
+            stored_camera_config = cameras.get(camera_code, {})
+            old_index = stored_camera_config.get("index")
 
-        # Update all fields from request
-        camera_config["index"] = request.index
-        camera_config["name"] = request.name
-        camera_config["width"] = request.width
-        camera_config["height"] = request.height
-        camera_config["fps"] = request.fps
-        camera_config["flip_horizontal"] = request.flip_horizontal
-        camera_config["flip_vertical"] = request.flip_vertical
-        camera_config["rotate"] = request.rotate
-        camera_config["brightness"] = request.brightness
-        camera_config["contrast"] = request.contrast
-        camera_config["hue"] = request.hue
-        camera_config["saturation"] = request.saturation
-        camera_config["sharpness"] = request.sharpness
-        camera_config["gamma"] = request.gamma
-        camera_config["white_balance_temperature"] = request.white_balance_temperature
-        camera_config["backlight"] = request.backlight
-        camera_config["gain"] = request.gain
-        camera_config["focus"] = request.focus
-        camera_config["exposure"] = request.exposure
-        camera_config["auto_white_balance_temperature"] = request.auto_white_balance_temperature
-        camera_config["auto_focus"] = request.auto_focus
-        camera_config["auto_exposure"] = request.auto_exposure
-        camera_config["crop_top"] = request.crop_top
-        camera_config["crop_left"] = request.crop_left
-        camera_config["crop_bottom"] = request.crop_bottom
-        camera_config["crop_right"] = request.crop_right
-        camera_config["stretch_enabled"] = request.stretch_enabled
-        camera_config["stretch_width"] = request.stretch_width
-        camera_config["stretch_height"] = request.stretch_height
-        camera_config["static_reticle_x"] = request.static_reticle_x
-        camera_config["static_reticle_y"] = request.static_reticle_y
-        camera_config["static_reticle_color"] = request.static_reticle_color
-        camera_config["static_reticle_outline"] = request.static_reticle_outline
-        camera_config["static_reticle_size"] = request.static_reticle_size
-        camera_config["mask_polygons"] = request.mask_polygons
+            for other_code, other_config in cameras.items():
+                if other_code != camera_code and other_config.get("index") == new_index:
+                    other_config["index"] = -1
 
-        # Reset CamerasController to apply changes
-        camera: Camera = master_controller.cameras_controller.cameras[camera_config["index"]]
-        # get supported resolutions from the camera
-        camera_config["supported_resolutions"] = camera.supported_resolutions
-        # Update the cameras object
-        current_settings["cameras"][camera_code] = camera_config
-        # Save to disk
-        await settingscontroller.save_settings(current_settings)
+            next_camera_config = dict(stored_camera_config)
+            next_camera_config.update(updated_camera_config)
+            cameras[camera_code] = next_camera_config
+            return old_index
+
+        old_index = await settingscontroller.update_settings(update_camera_settings)
         # update the camera settings
         camera_settings = camera.settings
-        camera_settings.update(camera_config)
+        camera_settings.update(updated_camera_config)
         camera.settings = camera_settings
 
         # Update Camera instances: old device gets camera_code None, new device gets this camera_code
@@ -251,10 +208,13 @@ async def reset_camera(
         # Reset the camera settings to default
         camera: Camera = master_controller.cameras_controller.cameras[camera_index]
         camera.reset_settings()
-        current_settings["cameras"][camera_code].update(camera.settings)
 
-        # Save to disk
-        await settingscontroller.save_settings(current_settings)
+        def update_reset_camera_settings(settings: dict[str, Any]) -> None:
+            cameras = settings.setdefault("cameras", {})
+            stored_camera_settings = cameras.setdefault(camera_code, {})
+            stored_camera_settings.update(camera.settings)
+
+        await settingscontroller.update_settings(update_reset_camera_settings)
 
         if error_when_searching_for_camera_index:
             raise HTTPException(

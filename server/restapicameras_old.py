@@ -50,6 +50,14 @@ class CameraSettings(BaseModel):
     mask_polygons: List[List[Dict[str, float]]] = []
     saveToDisk: bool = False
 
+
+def _find_camera_config_by_index(cameras: dict[str, dict[str, Any]], index: int) -> dict[str, Any] | None:
+    for camera_config in cameras.values():
+        if isinstance(camera_config, dict) and camera_config.get("index") == index:
+            return camera_config
+    return None
+
+
 @router.get("/api/cameras_old/list")
 async def get_cameras_list_endpoint(
     master_controller: "MasterController" = Depends(get_master_controller),
@@ -87,13 +95,13 @@ async def reset_cameras_endpoint(
 
     # Update settings.json to remove general section for each camera
     try:
-        current_settings = await settingscontroller.get_settings()
-        if "cameras" in current_settings:
-            for camera_config in current_settings["cameras"]:
-                if "general" in camera_config:
+        def reset_legacy_camera_settings(current_settings: dict[str, Any]) -> None:
+            cameras = current_settings.get("cameras", {})
+            for camera_config in cameras.values():
+                if isinstance(camera_config, dict) and "general" in camera_config:
                     del camera_config["general"]
-            
-            await settingscontroller.save_settings(current_settings)
+
+        await settingscontroller.update_settings(reset_legacy_camera_settings)
     except Exception as e:
         print(f"Error resetting settings: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -147,69 +155,55 @@ async def save_camera_settings(
 
         # If saveToDisk is True, update settings.json
         if settings.saveToDisk:
-            current_settings = await settingscontroller.get_settings()
-            
-            # Ensure "cameras" list exists in settings
-            if "cameras" not in current_settings:
-                current_settings["cameras"] = []
-            
-            # Find or create the camera config in settings
-            camera_config = None
-            for conf in current_settings["cameras"]:
-                if conf.get("index") == settings.index:
-                    camera_config = conf
-                    break
-            
-            if not camera_config:
-                camera_config = {"index": settings.index}
-                current_settings["cameras"].append(camera_config)
-            
-            # Save Primary Camera info if name is provided (it's the currently selected one being saved)
-            if settings.name:
-                current_settings["primaryCamera"] = {
-                    "index": settings.index,
-                    "name": settings.name
-                }
+            def update_legacy_camera_settings(current_settings: dict[str, Any]) -> None:
+                cameras = current_settings.setdefault("cameras", {})
+                camera_config = _find_camera_config_by_index(cameras, settings.index)
+                if camera_config is None:
+                    legacy_camera_code = f"legacy_camera_{settings.index}"
+                    camera_config = cameras.setdefault(legacy_camera_code, {"index": settings.index})
 
-            # Update camera settings directly on the camera object (flat structure)
-            camera_config["camera_role"] = settings.camera_role
-            camera_config["width"] = settings.width
-            camera_config["height"] = settings.height
-            camera_config["fps"] = settings.fps
-            camera_config["flip_horizontal"] = settings.flip_horizontal
-            camera_config["flip_vertical"] = settings.flip_vertical
-            camera_config["rotate"] = settings.rotate
-            camera_config["brightness"] = settings.brightness
-            camera_config["contrast"] = settings.contrast
-            camera_config["hue"] = settings.hue
-            camera_config["saturation"] = settings.saturation
-            camera_config["sharpness"] = settings.sharpness
-            camera_config["gamma"] = settings.gamma
-            camera_config["white_balance_temperature"] = settings.white_balance_temperature
-            camera_config["backlight"] = settings.backlight
-            camera_config["gain"] = settings.gain
-            camera_config["focus"] = settings.focus
-            camera_config["exposure"] = settings.exposure
-            camera_config["auto_white_balance_temperature"] = settings.auto_white_balance_temperature
-            camera_config["auto_focus"] = settings.auto_focus
-            camera_config["auto_exposure"] = settings.auto_exposure
-            camera_config["crop_top"] = settings.crop_top
-            camera_config["crop_left"] = settings.crop_left
-            camera_config["crop_bottom"] = settings.crop_bottom
-            camera_config["crop_right"] = settings.crop_right
-            camera_config["stretch_width"] = settings.stretch_width
-            camera_config["stretch_height"] = settings.stretch_height
-            camera_config["static_reticle_x"] = settings.static_reticle_x
-            camera_config["static_reticle_y"] = settings.static_reticle_y
-            camera_config["static_reticle_color"] = settings.static_reticle_color
-            camera_config["static_reticle_size"] = settings.static_reticle_size
-            camera_config["mask_polygons"] = settings.mask_polygons
-            
-            # Remove old nested "general" section if it exists
-            if "general" in camera_config:
-                del camera_config["general"]
-            
-            await settingscontroller.save_settings(current_settings)
+                if settings.name:
+                    current_settings["primaryCamera"] = {
+                        "index": settings.index,
+                        "name": settings.name,
+                    }
+
+                camera_config["index"] = settings.index
+                camera_config["camera_role"] = settings.camera_role
+                camera_config["width"] = settings.width
+                camera_config["height"] = settings.height
+                camera_config["fps"] = settings.fps
+                camera_config["flip_horizontal"] = settings.flip_horizontal
+                camera_config["flip_vertical"] = settings.flip_vertical
+                camera_config["rotate"] = settings.rotate
+                camera_config["brightness"] = settings.brightness
+                camera_config["contrast"] = settings.contrast
+                camera_config["hue"] = settings.hue
+                camera_config["saturation"] = settings.saturation
+                camera_config["sharpness"] = settings.sharpness
+                camera_config["gamma"] = settings.gamma
+                camera_config["white_balance_temperature"] = settings.white_balance_temperature
+                camera_config["backlight"] = settings.backlight
+                camera_config["gain"] = settings.gain
+                camera_config["focus"] = settings.focus
+                camera_config["exposure"] = settings.exposure
+                camera_config["auto_white_balance_temperature"] = settings.auto_white_balance_temperature
+                camera_config["auto_focus"] = settings.auto_focus
+                camera_config["auto_exposure"] = settings.auto_exposure
+                camera_config["crop_top"] = settings.crop_top
+                camera_config["crop_left"] = settings.crop_left
+                camera_config["crop_bottom"] = settings.crop_bottom
+                camera_config["crop_right"] = settings.crop_right
+                camera_config["stretch_width"] = settings.stretch_width
+                camera_config["stretch_height"] = settings.stretch_height
+                camera_config["static_reticle_x"] = settings.static_reticle_x
+                camera_config["static_reticle_y"] = settings.static_reticle_y
+                camera_config["static_reticle_color"] = settings.static_reticle_color
+                camera_config["static_reticle_size"] = settings.static_reticle_size
+                camera_config["mask_polygons"] = settings.mask_polygons
+                camera_config.pop("general", None)
+
+            await settingscontroller.update_settings(update_legacy_camera_settings)
 
         return {"success": True}
 

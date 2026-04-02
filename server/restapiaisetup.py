@@ -2,6 +2,7 @@
 REST API for AI Setup page settings.
 Handles loading and saving AI Setup configuration for the front end.
 """
+from copy import deepcopy
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from . import settingscontroller
@@ -81,6 +82,51 @@ class SaveAISetupRequest(BaseModel):
     aiSetup: dict
 
 
+def _build_ai_setup_response(ai_setup_settings: dict | None) -> dict:
+    ai_setup = deepcopy(ai_setup_settings) if isinstance(ai_setup_settings, dict) else {}
+
+    if "activationDateTime" not in ai_setup:
+        ai_setup["activationDateTime"] = "2199-12-31T23:59:59Z"
+    if "minFpsToAllowEngagement" not in ai_setup:
+        ai_setup["minFpsToAllowEngagement"] = 0
+    if "organMustBeVisibleSeconds" not in ai_setup:
+        ai_setup["organMustBeVisibleSeconds"] = 0
+    if "detectionRadiusFromReticle" not in ai_setup:
+        ai_setup["detectionRadiusFromReticle"] = 50
+    if "modelName" not in ai_setup:
+        ai_setup["modelName"] = YOLOModels.DEFAULT_MODEL_NAME
+    if "device" not in ai_setup:
+        ai_setup["device"] = DEFAULT_DEVICE
+    if "organs" not in ai_setup:
+        ai_setup["organs"] = {
+            "brain": {"enabled": True, "sizeMultiplier": 1.0, "confidenceThreshold": 0.5, "minimumRadius": 1},
+            "chest": {"enabled": True, "sizeMultiplier": 1.0, "confidenceThreshold": 0.5, "minimumRadius": 1},
+            "heart": {"enabled": True, "sizeMultiplier": 1.0, "confidenceThreshold": 0.5, "minimumRadius": 1},
+            "liver": {"enabled": True, "sizeMultiplier": 1.0, "confidenceThreshold": 0.5, "minimumRadius": 1},
+            "abdomen": {"enabled": True, "sizeMultiplier": 1.0, "confidenceThreshold": 0.5, "minimumRadius": 1},
+        }
+    if "missions" not in ai_setup:
+        ai_setup["missions"] = {
+            "randomWalk": {
+                "enabled": True,
+                "disableDutyCycle": True,
+                "delayBetweenEngagements": 0.5,
+                "engagementDuration": 0.5,
+                "motors": [],
+            }
+        }
+    if "exitStrategy" not in ai_setup:
+        ai_setup["exitStrategy"] = {
+            "maxEngagements": 1000000000,
+            "timeoutAfterFirstEngagement": 10000000000,
+            "fixedDateTime": "2199-12-31T23:59:59Z",
+            "exitStrategyDuration": 0.5,
+            "motors": [],
+        }
+
+    return ai_setup
+
+
 @router.get("/api/aisetup")
 async def get_ai_setup():
     """
@@ -90,48 +136,8 @@ async def get_ai_setup():
     try:
         settings = await settingscontroller.get_settings()
 
-        # Get aiSetup section with defaults
-        ai_setup = settings.get("aiSetup", {})
-
-        # Apply defaults if not present
-        if "activationDateTime" not in ai_setup:
-            ai_setup["activationDateTime"] = "2199-12-31T23:59:59Z"
-        if "minFpsToAllowEngagement" not in ai_setup:
-            ai_setup["minFpsToAllowEngagement"] = 0
-        if "organMustBeVisibleSeconds" not in ai_setup:
-            ai_setup["organMustBeVisibleSeconds"] = 0
-        if "detectionRadiusFromReticle" not in ai_setup:
-            ai_setup["detectionRadiusFromReticle"] = 50
-        if "modelName" not in ai_setup:
-            ai_setup["modelName"] = YOLOModels.DEFAULT_MODEL_NAME
-        if "device" not in ai_setup:
-            ai_setup["device"] = DEFAULT_DEVICE
-        if "organs" not in ai_setup:
-            ai_setup["organs"] = {
-                "brain": {"enabled": True, "sizeMultiplier": 1.0, "confidenceThreshold": 0.5, "minimumRadius": 1},
-                "chest": {"enabled": True, "sizeMultiplier": 1.0, "confidenceThreshold": 0.5, "minimumRadius": 1},
-                "heart": {"enabled": True, "sizeMultiplier": 1.0, "confidenceThreshold": 0.5, "minimumRadius": 1},
-                "liver": {"enabled": True, "sizeMultiplier": 1.0, "confidenceThreshold": 0.5, "minimumRadius": 1},
-                "abdomen": {"enabled": True, "sizeMultiplier": 1.0, "confidenceThreshold": 0.5, "minimumRadius": 1}
-            }
-        if "missions" not in ai_setup:
-            ai_setup["missions"] = {
-                "randomWalk": {
-                    "enabled": True,
-                    "disableDutyCycle": True,
-                    "delayBetweenEngagements": 0.5,
-                    "engagementDuration": 0.5,
-                    "motors": []
-                }
-            }
-        if "exitStrategy" not in ai_setup:
-            ai_setup["exitStrategy"] = {
-                "maxEngagements": 1000000000,
-                "timeoutAfterFirstEngagement": 10000000000,
-                "fixedDateTime": "2199-12-31T23:59:59Z",
-                "exitStrategyDuration": 0.5,
-                "motors": []
-            }
+        # Build defaults on a detached copy so GET requests stay read-only.
+        ai_setup = _build_ai_setup_response(settings.get("aiSetup", {}))
 
         # Get motors array for names and colors
         motors_list = settings.get("motors", [])
@@ -164,12 +170,10 @@ async def save_ai_setup(*, request: SaveAISetupRequest):
     Updates the aiSetup section.
     """
     try:
-        current_settings = await settingscontroller.get_settings()
+        def update_ai_setup(settings: dict) -> None:
+            settings["aiSetup"] = request.aiSetup
 
-        # Update aiSetup section
-        current_settings["aiSetup"] = request.aiSetup
-
-        await settingscontroller.save_settings(current_settings)
+        await settingscontroller.update_settings(update_ai_setup)
 
         return {"success": True}
 

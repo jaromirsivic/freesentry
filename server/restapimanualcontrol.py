@@ -139,54 +139,42 @@ async def save_manual_control_motors(*, request: SaveMotorVisibilityRequest):
     Updates the enabled status of motors in settings.json -> manualControl -> motors.
     """
     try:
-        current_settings = await settingscontroller.get_settings()
-        
-        # Ensure manualControl section exists
-        if "manualControl" not in current_settings:
-            current_settings["manualControl"] = {}
-        
-        # Get current motors config or create empty
-        current_motors = current_settings["manualControl"].get("motors", [])
-        
-        # Update enabled status and mode for each motor in the request
-        for motor_update in request.motors:
-            motor_index = motor_update.get("index")
-            enabled = motor_update.get("enabled", True)
-            mode = motor_update.get("mode", "joystick")
-            
-            # Find and update existing motor config
-            found = False
-            for motor_config in current_motors:
-                if motor_config.get("index") == motor_index:
-                    motor_config["enabled"] = enabled
-                    motor_config["mode"] = mode
-                    found = True
-                    break
-            
-            # Add new motor config if not found
-            if not found:
-                current_motors.append({
-                    "index": motor_index,
-                    "enabled": enabled,
-                    "mode": mode
-                })
-        
-        # Limit to 4 motors and save
-        current_settings["manualControl"]["motors"] = current_motors[:4]
-        
-        # Update camera settings if provided
-        if request.camera is not None:
-            if "camera" not in current_settings["manualControl"]:
-                current_settings["manualControl"]["camera"] = {}
-            
-            current_settings["manualControl"]["camera"]["selectedCamera"] = request.camera.selectedCamera
-            current_settings["manualControl"]["camera"]["streamQuality"] = request.camera.streamQuality
-            current_settings["manualControl"]["camera"]["scopeCameraMode"] = request.camera.scopeCameraMode
-            current_settings["manualControl"]["camera"]["spotterCamera1Mode"] = request.camera.spotterCamera1Mode
-            current_settings["manualControl"]["camera"]["spotterCamera2Mode"] = request.camera.spotterCamera2Mode
-            current_settings["manualControl"]["camera"]["spotterCamera3Mode"] = request.camera.spotterCamera3Mode
-        
-        await settingscontroller.save_settings(current_settings)
+        def update_manual_control_settings(current_settings: dict[str, Any]) -> None:
+            manual_control = current_settings.setdefault("manualControl", {})
+            current_motors = manual_control.get("motors", [])
+
+            for motor_update in request.motors:
+                motor_index = motor_update.get("index")
+                enabled = motor_update.get("enabled", True)
+                mode = motor_update.get("mode", "joystick")
+
+                found = False
+                for motor_config in current_motors:
+                    if motor_config.get("index") == motor_index:
+                        motor_config["enabled"] = enabled
+                        motor_config["mode"] = mode
+                        found = True
+                        break
+
+                if not found:
+                    current_motors.append({
+                        "index": motor_index,
+                        "enabled": enabled,
+                        "mode": mode,
+                    })
+
+            manual_control["motors"] = current_motors[:4]
+
+            if request.camera is not None:
+                camera_settings = manual_control.setdefault("camera", {})
+                camera_settings["selectedCamera"] = request.camera.selectedCamera
+                camera_settings["streamQuality"] = request.camera.streamQuality
+                camera_settings["scopeCameraMode"] = request.camera.scopeCameraMode
+                camera_settings["spotterCamera1Mode"] = request.camera.spotterCamera1Mode
+                camera_settings["spotterCamera2Mode"] = request.camera.spotterCamera2Mode
+                camera_settings["spotterCamera3Mode"] = request.camera.spotterCamera3Mode
+
+        await settingscontroller.update_settings(update_manual_control_settings)
         
         return {"success": True}
     

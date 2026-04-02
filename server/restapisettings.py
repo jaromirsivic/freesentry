@@ -32,9 +32,10 @@ async def save_general_settings_endpoint(
     master_controller: "MasterController" = Depends(get_master_controller),
 ):
     """Save general settings to settings.json file"""
-    settings = await settingscontroller.get_settings()
-    settings["general"] = general_settings
-    await settingscontroller.save_settings(settings)
+    def update_general_settings(settings: dict[str, Any]) -> None:
+        settings["general"] = general_settings
+
+    await settingscontroller.update_settings(update_general_settings)
     
     # Reset controller with new settings
     try:

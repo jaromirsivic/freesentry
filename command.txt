@@ -2733,3 +2733,14 @@ Načti findings_python.md, což je soubor, který byl vytvořen jako detailní r
 Zaměř se pouze na aktivní zjištění "## 1." a oprav tuto závadu jako expert.
 Uvědom si, že tento systém bude procházet auditem, proto musí být tvoje oprava super seniorní.
 Pokud máš doplňující dotazy, neboj se mě zeptat.
+
+Načti findings_python.md, což je soubor, který byl vytvořen jako detailní review zdrojových kódů tohoto projektu.
+Zaměř se pouze na aktivní zjištění "## 2." a oprav tuto závadu jako expert.
+Uvědom si, že tento systém bude procházet auditem, proto musí být tvoje oprava super seniorní.
+Pokud máš doplňující dotazy, neboj se mě zeptat.
+
+Načti findings_python.md, což je soubor, který byl vytvořen jako detailní review zdrojových kódů tohoto projektu.
+Zaměř se pouze na aktivní zjištění "## 3." a oprav tuto závadu jako expert.
+Uvědom si, že tento systém bude procházet auditem, proto musí být tvoje oprava super seniorní.
+Nezpomeň, že je nutné zachovat cachování pro maximální performance.
+Pokud máš doplňující dotazy, neboj se mě zeptat.

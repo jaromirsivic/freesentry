@@ -13,7 +13,9 @@ async def get_hot_zone_settings_endpoint():
 @router.post("/api/settings/hot-zone")
 async def save_hot_zone_settings_endpoint(hot_zone_settings: dict[str, Any]):
     """Save hot zone settings to settings.json file"""
-    settings = await settingscontroller.get_settings()
-    settings["hotZone"] = hot_zone_settings
-    return await settingscontroller.save_settings(settings)
+    def update_hot_zone_settings(settings: dict[str, Any]) -> None:
+        settings["hotZone"] = hot_zone_settings
+
+    await settingscontroller.update_settings(update_hot_zone_settings)
+    return {"success": True, "message": "Settings saved successfully"}
 
