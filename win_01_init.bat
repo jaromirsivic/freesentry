@@ -8,6 +8,7 @@ rem nvidia-smi
 rem download drivers for your version of CUDA https://developer.nvidia.com/cuda-downloads
 rem install drivers and cuda toolkit
 rem nvcc --version
+rem CUDA-enabled torch for NVIDIA runtime is pinned in pyproject.toml via the cu130 index.
 rem uv pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
 rem uv pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu130
 rem python
@@ -23,4 +24,6 @@ uv add debugpy
 uv add tensorrt
 uv add picamera2
 uv pip install python-periphery
+uv add torch torchvision torchaudio
+python -c "import sys, torch; print(sys.executable); print(torch.__file__); print(torch.version.cuda); print(torch.cuda.is_available()); print(torch.cuda.device_count())"
 pause

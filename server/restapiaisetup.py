@@ -6,7 +6,7 @@ from copy import deepcopy
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from . import settingscontroller
-from .ai_setup_constants import DEVICE_OPTIONS, DEFAULT_DEVICE
+from .ai_setup_constants import DEFAULT_DEVICE
 from .yolomodels import YOLOModels
 
 router = APIRouter()
@@ -97,6 +97,7 @@ def _build_ai_setup_response(ai_setup_settings: dict | None) -> dict:
         ai_setup["modelName"] = YOLOModels.DEFAULT_MODEL_NAME
     if "device" not in ai_setup:
         ai_setup["device"] = DEFAULT_DEVICE
+    ai_setup["device"] = YOLOModels.normalize_device_value(ai_setup.get("device"))
     if "organs" not in ai_setup:
         ai_setup["organs"] = {
             "brain": {"enabled": True, "sizeMultiplier": 1.0, "confidenceThreshold": 0.5, "minimumRadius": 1},
@@ -153,8 +154,8 @@ async def get_ai_setup():
             "success": True,
             "aiSetup": ai_setup,
             "modelNames": list(YOLOModels.MODEL_NAMES),
-            "deviceOptions": DEVICE_OPTIONS,
-            "defaultDevice": DEFAULT_DEVICE,
+            "deviceOptions": YOLOModels.get_supported_device_options(),
+            "defaultDevice": YOLOModels.get_default_device_value(),
             "motors": motors_info
         }
 

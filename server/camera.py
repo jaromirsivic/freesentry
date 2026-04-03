@@ -54,6 +54,7 @@ class Camera(threading.Thread):
         self._camera_name = camera_name if camera_name is not None else f'{index}: Loadeing, please wait a minute...'
         self._camera: cv2.VideoCapture = None
         self._lock = threading.Lock()
+        self._state_lock = threading.RLock()
         self._latest_ai_time = 0
         self._latest_ai_code = ""
         # Frame properties
@@ -78,6 +79,9 @@ class Camera(threading.Thread):
         self._image_ai: Frame = None
         # Initialize settings
         self._settings: dict = None
+        self._settings_version = 0
+        self._applied_settings_version = -1
+        self._settings_modified = False
         # Supported resolutions
         self.supported_resolutions = self._get_supported_resolutions()
         # Settings
@@ -136,10 +140,10 @@ class Camera(threading.Thread):
         Returns the settings of the camera.
         If settings are not set, gets the default settings.
         """
-        if self._settings is not None:
-            return self._settings
-        result = self._get_camera_properties()
-        return result
+        with self._state_lock:
+            if self._settings is not None:
+                return deepcopy(self._settings)
+        return deepcopy(self._get_camera_properties())
 
     @settings.setter
     def settings(self, value: dict | None):
@@ -147,8 +151,40 @@ class Camera(threading.Thread):
         Set the settings of the camera.
         If value is None, sets the default settings.
         """
-        self._settings = value
-        self._settings_modified = True
+        with self._state_lock:
+            self._settings = deepcopy(value) if value is not None else None
+            self._settings_version += 1
+            self._settings_modified = self._applied_settings_version != self._settings_version
+
+    @property
+    def camera_code(self) -> str | None:
+        with self._state_lock:
+            return self._camera_code
+
+    @camera_code.setter
+    def camera_code(self, value: str | None):
+        with self._state_lock:
+            self._camera_code = value
+
+    def _get_state_snapshot(self) -> tuple[dict | None, str | None]:
+        with self._state_lock:
+            settings_snapshot = deepcopy(self._settings) if self._settings is not None else None
+            camera_code = self._camera_code
+        return settings_snapshot, camera_code
+
+    def _get_pending_settings_update(self) -> tuple[dict | None, int] | None:
+        with self._state_lock:
+            if self._applied_settings_version == self._settings_version:
+                self._settings_modified = False
+                return None
+            settings_snapshot = deepcopy(self._settings) if self._settings is not None else None
+            return settings_snapshot, self._settings_version
+
+    def _mark_settings_applied(self, *, settings_version: int) -> None:
+        with self._state_lock:
+            if settings_version > self._applied_settings_version:
+                self._applied_settings_version = settings_version
+            self._settings_modified = self._applied_settings_version != self._settings_version
 
     @property
     def capabilities(self) -> dict:
@@ -236,7 +272,7 @@ class Camera(threading.Thread):
                     return self._frame_masked_ai.copy()
         return self._create_blank_frame()
 
-    def _crop_and_resize(self, *, image: np.ndarray) -> np.ndarray:
+    def _crop_and_resize(self, *, image: np.ndarray, settings: dict | None) -> np.ndarray:
         """
         Crop and resize a frame.
         Parameters:
@@ -245,12 +281,13 @@ class Camera(threading.Thread):
         bool : True if the frame was cropped and resized successfully, False otherwise.
         np.ndarray : The cropped and resized frame.
         """
+        settings = settings or {}
         # convert crop coordinates to pixels
         # crop coordinates are between 0 and 1
-        crop_top = self._settings["crop_top"] if "crop_top" in self._settings else 0.0
-        crop_left = self._settings["crop_left"] if "crop_left" in self._settings else 0.0
-        crop_bottom = self._settings["crop_bottom"] if "crop_bottom" in self._settings else 0.0
-        crop_right = self._settings["crop_right"] if "crop_right" in self._settings else 0.0
+        crop_top = settings["crop_top"] if "crop_top" in settings else 0.0
+        crop_left = settings["crop_left"] if "crop_left" in settings else 0.0
+        crop_bottom = settings["crop_bottom"] if "crop_bottom" in settings else 0.0
+        crop_right = settings["crop_right"] if "crop_right" in settings else 0.0
         crop_top_px = int(round(crop_top * image.shape[0]))
         crop_left_px = int(round(crop_left * image.shape[1]))
         crop_bottom_px = int(round(crop_bottom * image.shape[0]))
@@ -261,9 +298,9 @@ class Camera(threading.Thread):
         src_width = image.shape[1] - crop_right_px - crop_left_px
         src_height = image.shape[0] - crop_bottom_px - crop_top_px
         # get stretch properties
-        stretch_enabled = self._settings["stretch_enabled"] if "stretch_enabled" in self._settings else False
-        stretch_width = self._settings["stretch_width"] if "stretch_width" in self._settings else 0
-        stretch_height = self._settings["stretch_height"] if "stretch_height" in self._settings else 0
+        stretch_enabled = settings["stretch_enabled"] if "stretch_enabled" in settings else False
+        stretch_width = settings["stretch_width"] if "stretch_width" in settings else 0
+        stretch_height = settings["stretch_height"] if "stretch_height" in settings else 0
         if stretch_enabled:
             target_width = stretch_width
             target_height = stretch_height
@@ -290,13 +327,14 @@ class Camera(threading.Thread):
         # if source frame coordinates are valid, return cropped and resized frame
         return cv2.resize(image[src_y:src_y + src_height, src_x:src_x + src_width], (target_width, target_height))
 
-    def _mask_image(self, *, image: np.ndarray) -> np.ndarray:
+    def _mask_image(self, *, image: np.ndarray, settings: dict | None) -> np.ndarray:
         """
         Takes an image and a list of normalized polygon coordinates.
         Returns the image with everything outside the polygons blackened out.
         """
+        settings = settings or {}
         # 1. Base case: If no polygons, return original image
-        mask_polygons = self._settings["mask_polygons"] if "mask_polygons" in self._settings else []
+        mask_polygons = settings["mask_polygons"] if "mask_polygons" in settings else []
         if not mask_polygons:
             return image
         # 2. Get image dimensions
@@ -341,12 +379,15 @@ class Camera(threading.Thread):
         ai_setup = settings.get("aiSetup", {})
         model_name = ai_setup.get("modelName", YOLOModels().default_model_name)
         device = ai_setup.get("device", DEFAULT_DEVICE)
-        model = YOLOModels().get_model(model_name=model_name, device=device)
-        
 
         # Run YOLO inference
         try:
-            results = model(image, verbose=False)
+            results = YOLOModels().predict(
+                model_name=model_name,
+                device=device,
+                image=image,
+                verbose=False,
+            )
             result = results[0]
 
             # Check for keypoints
@@ -376,6 +417,7 @@ class Camera(threading.Thread):
         """Capture a frame from the camera and apply transformations."""
         if not self._active or self._camera is None:
             return
+        camera_settings, camera_code = self._get_state_snapshot()
         try:
             now = time.time()
             valid, image = self._get_image_ndarray()
@@ -388,9 +430,10 @@ class Camera(threading.Thread):
             self._frame = self._create_blank_frame()
             return
         # Apply flip transformations
-        flip_horizontal = self._settings["flip_horizontal"] if "flip_horizontal" in self._settings else False
-        flip_vertical = self._settings["flip_vertical"] if "flip_vertical" in self._settings else False
-        rotate = self._settings["rotate"] if "rotate" in self._settings else 0
+        camera_settings = camera_settings or {}
+        flip_horizontal = camera_settings["flip_horizontal"] if "flip_horizontal" in camera_settings else False
+        flip_vertical = camera_settings["flip_vertical"] if "flip_vertical" in camera_settings else False
+        rotate = camera_settings["rotate"] if "rotate" in camera_settings else 0
         if flip_horizontal and flip_vertical:
             image = cv2.flip(image, FLIP_BOTH)
         elif flip_horizontal:
@@ -405,7 +448,7 @@ class Camera(threading.Thread):
         elif rotate == 270:
             image = cv2.rotate(image, cv2.ROTATE_90_CLOCKWISE)
         # crop and resize the image
-        image = self._crop_and_resize(image=image)
+        image = self._crop_and_resize(image=image, settings=camera_settings)
         with self._lock_frame:
             self._frame = Frame(valid=True, image=image, time=time.time())
         # mask the image
@@ -415,7 +458,7 @@ class Camera(threading.Thread):
             # if the masked frame has timed out, return
             if elapsed_masked > self.TIMEOUT_SECONDS:
                 return
-            image_masked = self._mask_image(image=image)
+            image_masked = self._mask_image(image=image, settings=camera_settings)
             self._frame_masked = Frame(valid=True, image=image_masked, time=time.time())
         # apply the AI model to the image
         with self._lock_frame_masked_ai:
@@ -430,7 +473,7 @@ class Camera(threading.Thread):
             self._frame_masked_ai = Frame(valid=True, image=frame_masked_ai.image, time=time.time(), pose=frame_masked_ai.pose)
             # check if the AI agent can engage
             # this is only for the scope camera
-            if self._camera_code is not None and self._camera_code == "scope_camera":
+            if camera_code is not None and camera_code == "scope_camera":
                 ai_agent: AIAgent = self._master_controller.ai_agent
                 engagement_result = ai_agent.engage(frame=self._frame_masked_ai, settings=settings)
                 ai_agent.draw_engagement_result(frame=self._frame_masked_ai, engagement_result=engagement_result)
@@ -440,17 +483,17 @@ class Camera(threading.Thread):
         if not self._open():
             return
         try:
-            # set the settings modified flag to true
-            self._settings_modified = True
             # set the last access time
             with self._lock_frame:
                 self._last_access_time_raw_frame = time.time()
             # main loop
             while self._active:
                 # if settings were modified, set the properties
-                if self._settings_modified:
-                    self._set_camera_properties(self._settings)
-                    self._settings_modified = False
+                pending_settings = self._get_pending_settings_update()
+                if pending_settings is not None:
+                    settings_snapshot, settings_version = pending_settings
+                    self._set_camera_properties(settings_snapshot)
+                    self._mark_settings_applied(settings_version=settings_version)
                 # get frame
                 with self._lock:
                     #with self._lock_property_manipulation:
@@ -480,4 +523,3 @@ class Camera(threading.Thread):
 
     def reset_settings(self):
         self.settings = deepcopy(self._default_settings)
-        self._settings_modified = True

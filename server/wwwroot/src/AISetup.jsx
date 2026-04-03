@@ -31,7 +31,7 @@ const normalizeDevice = (d, deviceOptions, defaultDevice) => {
     const exact = opts.find((o) => o.value === s);
     if (exact) return exact.value;
     const byPrefix = opts.find((o) => o.value.startsWith(s) || s.startsWith((o.value.split(' ')[0] ?? '')));
-    return byPrefix ? byPrefix.value : s;
+    return byPrefix ? byPrefix.value : (defaultDevice ?? '');
 };
 
 const defaultSettings = {

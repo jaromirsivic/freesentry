@@ -106,8 +106,26 @@ async def wifi_startup():
     except Exception as e:
         print(f"Wifi startup error: {e}")
 
+def log_ai_runtime_diagnostics() -> None:
+    """Emit one-shot runtime diagnostics for the active backend interpreter."""
+    try:
+        from .yolomodels import YOLOModels
+
+        diagnostics = YOLOModels.get_runtime_diagnostics()
+        print("AI runtime diagnostics:")
+        print(f"  python: {diagnostics['python_executable']}")
+        print(f"  torch: {diagnostics['torch_module_path']}")
+        print(f"  torch_version: {diagnostics['torch_version']}")
+        print(f"  torch_cuda_version: {diagnostics['torch_cuda_version']}")
+        print(f"  cuda_available: {diagnostics['cuda_available']}")
+        print(f"  cuda_device_count: {diagnostics['cuda_device_count']}")
+        print(f"  default_device: {diagnostics['default_device']}")
+    except Exception as e:
+        print(f"AI runtime diagnostics failed: {e}")
+
 async def onload():
     print("Server loaded")
+    log_ai_runtime_diagnostics()
     await wifi_startup()
     await execute_startup_script()
     print("Startup script execution completed")

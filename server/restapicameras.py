@@ -97,8 +97,10 @@ async def get_input_devices(
         input_devices = []
         
         for camera in master_controller.cameras_controller.cameras:
-            device_info = camera.settings
-            device_info["capabilities"] = camera.capabilities
+            device_info = {
+                **camera.settings,
+                "capabilities": camera.capabilities,
+            }
             input_devices.append(device_info)
         
         return {"success": True, "input_devices": input_devices}
@@ -150,17 +152,18 @@ async def update_camera(
 
         old_index = await settingscontroller.update_settings(update_camera_settings)
         # update the camera settings
-        camera_settings = camera.settings
-        camera_settings.update(updated_camera_config)
-        camera.settings = camera_settings
+        camera.settings = {
+            **camera.settings,
+            **updated_camera_config,
+        }
 
         # Update Camera instances: old device gets camera_code None, new device gets this camera_code
         cameras_list = master_controller.cameras_controller.cameras
         n = len(cameras_list)
         if old_index is not None and old_index != new_index and 0 <= old_index < n:
-            cameras_list[old_index]._camera_code = None
+            cameras_list[old_index].camera_code = None
         if 0 <= new_index < n:
-            cameras_list[new_index]._camera_code = camera_code
+            cameras_list[new_index].camera_code = camera_code
 
         return {"success": True}
         
