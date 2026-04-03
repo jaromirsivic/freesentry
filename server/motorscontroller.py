@@ -1,8 +1,5 @@
 import threading
 import time
-import json
-import os
-from typing import List
 from .j8 import J8
 from .motor import Motor
 from .motorlinearactuator import MotorLinearActuator
@@ -19,6 +16,7 @@ class MotorsController(threading.Thread):
         super().__init__(daemon=True)
         self._j8 = J8()
         self._motors: dict[str, Motor] = {}
+        self._motors_by_index: dict[int, Motor] = {}
         self._running = False
         self._paused = threading.Event()
         self._paused.set()  # Start in "running" (not paused) state
@@ -51,10 +49,11 @@ class MotorsController(threading.Thread):
 
         # Clear existing motors
         self._motors = {}
+        self._motors_by_index = {}
 
         # Create motors
         if "motors" in settings:
-            for motor_config in settings["motors"]:
+            for motor_index, motor_config in enumerate(settings["motors"]):
                 if motor_config.get("enabled", False) and motor_config.get("type") == "linear":
                     try:
                         forward_pin_index = motor_config["forwardPin"]
@@ -89,8 +88,28 @@ class MotorsController(threading.Thread):
                             inertia=inertia
                         )
                         self._motors[motor_config.get('name')] = motor
+                        self._motors_by_index[motor_index] = motor
                     except Exception as e:
                         print(f"Error creating motor {motor_config.get('name')}: {e}")
+
+    def set_motor_speed_by_index(self, *, motor_index: int, speed: float) -> bool:
+        """Set a motor target speed by settings index.
+
+        Returns False when the index is invalid, disabled, or not available so
+        callers can handle malformed AI motor configs without raising.
+        """
+        try:
+            resolved_index = int(motor_index)
+            resolved_speed = float(speed)
+        except (TypeError, ValueError):
+            return False
+
+        with self._lock:
+            motor = self._motors_by_index.get(resolved_index)
+            if motor is None:
+                return False
+            motor.move(speed=resolved_speed)
+            return True
 
     def reset(self, *, is_hard_reset: bool = False):
         """
@@ -159,5 +178,6 @@ class MotorsController(threading.Thread):
         with self._lock:
             # Delete all motors
             self._motors = {}
+            self._motors_by_index = {}
             # Release J8
             self._j8.release()

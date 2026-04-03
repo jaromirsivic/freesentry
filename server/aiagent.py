@@ -392,17 +392,24 @@ class AIAgent(threading.Thread):
         return result
 
     def _apply_motors(self, *, motors_config: list[dict], use_speed: bool) -> None:
-        """Set positions for all enabled motors in *motors_config*.
+        """Apply speeds for all enabled motors in *motors_config*.
 
         When *use_speed* is True each motor is set to its configured speed;
         otherwise it is set to 0 (stopped).
         """
         for motor in motors_config:
             if motor.get("enabled", False):
-                position = motor.get("speed", 0) if use_speed else 0
-                self._master_controller.motors_controller.set_motor_position(
-                    motor_index=motor.get("index", 0), position=position
-                )
+                motor_index = motor.get("index")
+                speed = motor.get("speed", 0) if use_speed else 0
+                try:
+                    applied = self._master_controller.motors_controller.set_motor_speed_by_index(
+                        motor_index=motor_index,
+                        speed=speed,
+                    )
+                    if not applied:
+                        print(f"AI motor config references unavailable motor index {motor_index}")
+                except Exception as e:
+                    print(f"Error applying AI motor config for index {motor_index}: {e}")
 
     def _random_walk_on_status_changed(self, *, new_status: EngagementStatus, old_status: EngagementStatus, settings: dict):
         """Called when the engagement status changes to start/stop motors."""
