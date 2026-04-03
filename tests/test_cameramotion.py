@@ -1,4 +1,6 @@
-import unittest
+﻿import unittest
+import tempfile
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -55,8 +57,8 @@ class CameraMotionTests(unittest.TestCase):
         current_frame = _translate_image(previous_frame, dx=dx, dy=dy)
 
         result = cameramotion.get_camera_movement(
-            [previous_frame, current_frame],
-            [[], []],
+            frames=[previous_frame, current_frame],
+            masked_rectangles=[[], []],
         )
 
         self.assertTrue(result.valid, result.reason)
@@ -79,8 +81,8 @@ class CameraMotionTests(unittest.TestCase):
         _draw_moving_object(current_frame, current_object)
 
         result = cameramotion.get_camera_movement(
-            [previous_frame, current_frame],
-            [[previous_object], [current_object]],
+            frames=[previous_frame, current_frame],
+            masked_rectangles=[[previous_object], [current_object]],
             config=cameramotion.CameraMotionConfig(max_features=350),
         )
 
@@ -92,7 +94,10 @@ class CameraMotionTests(unittest.TestCase):
     def test_get_camera_movement_rejects_featureless_frames(self):
         blank = np.zeros((240, 320, 3), dtype=np.uint8)
 
-        result = cameramotion.get_camera_movement([blank, blank], [[], []])
+        result = cameramotion.get_camera_movement(
+            frames=[blank, blank],
+            masked_rectangles=[[], []],
+        )
 
         self.assertFalse(result.valid)
         self.assertEqual(result.reason, "insufficient_features")
@@ -114,6 +119,31 @@ class CameraMotionTests(unittest.TestCase):
         self.assertAlmostEqual(result.pixel.x, 8, delta=2.0)
         self.assertAlmostEqual(result.pixel.y, 5, delta=2.0)
         self.assertEqual(result.downscale_factor, 0.5)
+
+    def test_get_camera_movement_from_files_matches_in_memory_pipeline(self):
+        previous_frame = _make_feature_rich_frame()
+        dx = 10
+        dy = -6
+        current_frame = _translate_image(previous_frame, dx=dx, dy=dy)
+        with tempfile.TemporaryDirectory() as tmp:
+            prev_path = Path(tmp) / 'a.png'
+            curr_path = Path(tmp) / 'b.png'
+            cv2.imwrite(str(prev_path), previous_frame)
+            cv2.imwrite(str(curr_path), current_frame)
+            from_disk = cameramotion.get_camera_movement_from_files(prev_path, curr_path)
+            from_arrays = cameramotion.get_camera_movement(
+                frames=[previous_frame, current_frame],
+                masked_rectangles=[[], []],
+            )
+        self.assertTrue(from_disk.valid, from_disk.reason)
+        self.assertTrue(from_arrays.valid, from_arrays.reason)
+        self.assertAlmostEqual(from_disk.pixel.x, from_arrays.pixel.x, delta=0.5)
+        self.assertAlmostEqual(from_disk.pixel.y, from_arrays.pixel.y, delta=0.5)
+
+    def test_get_camera_movement_from_files_missing_file_raises(self):
+        with self.assertRaises(ValueError) as ctx:
+            cameramotion.get_camera_movement_from_files('missing_prev.png', 'missing_curr.png')
+        self.assertIn('Could not load image', str(ctx.exception))
 
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 import math
+from pathlib import Path
 from typing import Any
 
 import cv2
@@ -114,9 +115,9 @@ class _PreparedFrame:
 
 
 def get_camera_movement(
+    *,
     frames: Sequence[Any],
     masked_rectangles: Sequence[Sequence[RectangleLike] | None] | None = None,
-    *,
     config: CameraMotionConfig | None = None,
 ) -> CameraMovementResult:
     """
@@ -134,6 +135,33 @@ def get_camera_movement(
         previous_prepared,
         current_prepared,
         config=effective_config,
+    )
+
+
+def get_camera_movement_from_files(
+    *,
+    previous_frame_filename: str | Path,
+    current_frame_filename: str | Path,
+    masked_rectangles: Sequence[Sequence[RectangleLike] | None] | None = None,
+    config: CameraMotionConfig | None = None,
+) -> CameraMovementResult:
+    """
+    Load two image files (JPEG, PNG, WebP, TIFF, ...) with OpenCV and run get_camera_movement.
+
+    Paths must be readable by cv2.imread; missing or unsupported files raise ValueError.
+    """
+    prev_path = str(Path(previous_frame_filename))
+    curr_path = str(Path(current_frame_filename))
+    previous_image = cv2.imread(prev_path)
+    if previous_image is None:
+        raise ValueError(f"Could not load image: {prev_path}")
+    current_image = cv2.imread(curr_path)
+    if current_image is None:
+        raise ValueError(f"Could not load image: {curr_path}")
+    return get_camera_movement(
+        frames=[previous_image, current_image],
+        masked_rectangles=masked_rectangles,
+        config=config,
     )
 
 
@@ -547,4 +575,5 @@ __all__ = [
     "RASPBERRY_PI_CAMERA_MOTION_CONFIG",
     "RaspberryPiCameraMotionEstimator",
     "get_camera_movement",
+    "get_camera_movement_from_files",
 ]
