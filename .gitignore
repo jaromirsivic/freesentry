@@ -14,7 +14,7 @@ pyproject.toml
 *.kra
 *.kra~
 dummy_cam
-command.txt
+command.md
 findings.md
 findings_extended.md
 findings_python.md
