@@ -26,6 +26,24 @@ class CamerasController:
         with self._lifecycle_lock:
             return list(self._cameras)
 
+    def _stop_cameras_locked(self) -> None:
+        stop_errors: list[tuple[str, Exception]] = []
+        for camera in self._cameras:
+            try:
+                camera.stop()
+            except Exception as exc:
+                camera_name = getattr(camera, "camera_name", repr(camera))
+                print(f"Error stopping camera worker '{camera_name}': {exc}")
+                stop_errors.append((camera_name, exc))
+
+        if stop_errors:
+            failed_cameras = ", ".join(name for name, _ in stop_errors)
+            raise RuntimeError(f"Failed to stop camera workers: {failed_cameras}") from stop_errors[0][1]
+
+    def stop(self) -> None:
+        with self._lifecycle_lock:
+            self._stop_cameras_locked()
+
     def stop_camera(self, *, index: int) -> None:
         with self._lifecycle_lock:
             if index < 0 or index >= len(self._cameras):
@@ -41,10 +59,9 @@ class CamerasController:
         """
         with self._lifecycle_lock:
             print("Resetting cameras controller")
-            settings = get_settings_sync()
-            for camera in self._cameras:
-                camera.stop()
+            self._stop_cameras_locked()
             time.sleep(1.0)
+            settings = get_settings_sync()
             # clear the list of cameras
             self._cameras = []
             # Initialize all cameras from settings

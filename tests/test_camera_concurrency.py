@@ -252,6 +252,53 @@ def _import_camera_stack():
     return camera_module, restapicameras
 
 
+def _import_camerascontroller_module():
+    _reset_modules(
+        "server.camerascontroller",
+        "server.camera",
+        "server.cameracv2",
+        "server.cameradummy",
+        "server.camerarpi",
+        "server.settingscontroller",
+        "cv2",
+    )
+
+    fake_cv2 = types.ModuleType("cv2")
+    fake_cv2.calibrateCamera = lambda *args, **kwargs: None
+
+    camera_module = types.ModuleType("server.camera")
+
+    class Camera:
+        pass
+
+    camera_module.Camera = Camera
+
+    settings_payload = {"cameras": {}}
+    settingscontroller = types.ModuleType("server.settingscontroller")
+    settingscontroller.get_settings_sync = lambda: deepcopy(settings_payload)
+
+    cameracv2 = types.ModuleType("server.cameracv2")
+    cameracv2.CameraCV2 = object
+
+    cameradummy = types.ModuleType("server.cameradummy")
+    cameradummy.CameraDummy = object
+
+    with mock.patch.dict(
+        sys.modules,
+        {
+            "cv2": fake_cv2,
+            "server.camera": camera_module,
+            "server.cameracv2": cameracv2,
+            "server.cameradummy": cameradummy,
+            "server.settingscontroller": settingscontroller,
+        },
+    ):
+        module = importlib.import_module("server.camerascontroller")
+
+    module.CamerasController._singleton = None
+    return module, settings_payload
+
+
 def _make_fake_camera_class(camera_module):
     class FakeCamera(camera_module.Camera):
         def __init__(self, *args, **kwargs):
@@ -749,6 +796,94 @@ class CameraConcurrencyTests(unittest.TestCase):
         clear_cached_settings_mock.assert_awaited_once()
         self.assertEqual(reset_camera_mock.await_count, len(self.restapicameras.CAMERA_NAMES))
         master_controller.cameras_controller.reset.assert_called_once_with(reset_to_default=True)
+
+    def test_camera_stop_raises_when_worker_survives_timeout(self):
+        camera = self.FakeCamera(
+            index=0,
+            camera_index=0,
+            camera_code="scope_camera",
+            settings={"index": 0, "name": "Scope"},
+            master_controller=SimpleNamespace(ai_agent=mock.Mock()),
+        )
+        camera.is_alive = mock.Mock(side_effect=[True, True])
+        camera.join = mock.Mock()
+
+        with mock.patch("builtins.print") as print_mock:
+            with self.assertRaises(RuntimeError) as exc_info:
+                camera.stop()
+
+        camera.join.assert_called_once_with(timeout=camera.STOP_TIMEOUT_SECONDS)
+        self.assertIn("still alive after", str(exc_info.exception))
+        printed_messages = " ".join(str(call.args[0]) for call in print_mock.call_args_list)
+        self.assertIn("still alive after", printed_messages)
+
+
+class CamerasControllerLifecycleTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.camerascontroller_module, self.settings_payload = _import_camerascontroller_module()
+
+    def _make_controller(self, *, cameras):
+        controller = object.__new__(self.camerascontroller_module.CamerasController)
+        controller._master_controller = SimpleNamespace()
+        controller._cameras = list(cameras)
+        controller._lifecycle_lock = threading.RLock()
+        return controller
+
+    def test_cameras_controller_stop_stops_cached_cameras_without_rebuilding_list(self):
+        class TrackedCamera:
+            def __init__(self, camera_name: str):
+                self.camera_name = camera_name
+                self.stop_calls = 0
+
+            def stop(self):
+                self.stop_calls += 1
+
+        cameras = [TrackedCamera("scope"), TrackedCamera("spotter")]
+        controller = self._make_controller(cameras=cameras)
+        original_list = controller._cameras
+
+        controller.stop()
+
+        self.assertIs(controller._cameras, original_list)
+        self.assertEqual([camera.stop_calls for camera in cameras], [1, 1])
+        self.assertEqual(controller.cameras, cameras)
+
+    def test_cameras_controller_reset_uses_shared_stop_phase_before_rebuilding(self):
+        class TrackedCamera:
+            def __init__(self, camera_name: str):
+                self.camera_name = camera_name
+                self.stop_calls = 0
+
+            def stop(self):
+                self.stop_calls += 1
+
+        old_cameras = [TrackedCamera("scope"), TrackedCamera("spotter")]
+        controller = self._make_controller(cameras=old_cameras)
+        created_cameras = []
+
+        class CreatedCamera:
+            def __init__(self, **kwargs):
+                self.camera_name = kwargs["camera_name"]
+                self.kwargs = kwargs
+                self.stop_calls = 0
+                created_cameras.append(self)
+
+            def stop(self):
+                self.stop_calls += 1
+
+        self.camerascontroller_module.CameraDummy = CreatedCamera
+        self.camerascontroller_module.CameraCV2 = CreatedCamera
+        stop_helper = mock.Mock(wraps=controller._stop_cameras_locked)
+        controller._stop_cameras_locked = stop_helper
+
+        with mock.patch.object(self.camerascontroller_module.time, "sleep", return_value=None):
+            controller.reset(max_index=-5, reset_to_default=True)
+
+        stop_helper.assert_called_once_with()
+        self.assertEqual([camera.stop_calls for camera in old_cameras], [1, 1])
+        self.assertEqual(len(created_cameras), 1)
+        self.assertEqual(controller._cameras, created_cameras)
+        self.assertTrue(all(camera not in old_cameras for camera in controller._cameras))
 
 
 if __name__ == "__main__":

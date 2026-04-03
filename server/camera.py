@@ -35,6 +35,7 @@ class Camera(threading.Thread):
     """
     
     TIMEOUT_SECONDS = 5
+    STOP_TIMEOUT_SECONDS = 4.0
     
     def __init__(self, *, index: int,
                  camera_index: int,
@@ -415,19 +416,24 @@ class Camera(threading.Thread):
 
     def _get_frame(self):
         """Capture a frame from the camera and apply transformations."""
-        if not self._active or self._camera is None:
-            return
         camera_settings, camera_code = self._get_state_snapshot()
+        now = time.time()
         try:
-            now = time.time()
-            valid, image = self._get_image_ndarray()
+            with self._lock:
+                if not self._active or self._camera is None:
+                    return
+                valid, image = self._get_image_ndarray()
         except Exception as e:
             print(f"Warning: Camera index={self._index}, camera_index={self._camera_index} "
                   f"and camera_type={self._camera_type.value}, error getting frame: {e}")
             valid = False
+            image = None
         if not valid:
-            self._close()
-            self._frame = self._create_blank_frame()
+            with self._lock:
+                if self._camera is not None:
+                    self._close()
+            with self._lock_frame:
+                self._frame = self._create_blank_frame()
             return
         # Apply flip transformations
         camera_settings = camera_settings or {}
@@ -478,6 +484,14 @@ class Camera(threading.Thread):
                 engagement_result = ai_agent.engage(frame=self._frame_masked_ai, settings=settings)
                 ai_agent.draw_engagement_result(frame=self._frame_masked_ai, engagement_result=engagement_result)
 
+    def _should_capture_next_frame(self) -> bool:
+        with self._lock:
+            if not self._active or self._camera is None:
+                return False
+        with self._lock_frame:
+            elapsed = time.time() - self._last_access_time_raw_frame
+        return elapsed <= self.TIMEOUT_SECONDS
+
     def run(self):
         """Thread main loop: captures frames until timeout."""
         if not self._open():
@@ -494,19 +508,11 @@ class Camera(threading.Thread):
                     settings_snapshot, settings_version = pending_settings
                     self._set_camera_properties(settings_snapshot)
                     self._mark_settings_applied(settings_version=settings_version)
-                # get frame
-                with self._lock:
-                    #with self._lock_property_manipulation:
-                    # check if camera is opened
-                    if not self._active or self._camera is None:
-                        break
-                    # Check if we should stop due to timeout
-                    with self._lock_frame:
-                        elapsed = time.time() - self._last_access_time_raw_frame
-                        if elapsed > self.TIMEOUT_SECONDS:
-                            break
-                    # get frame - locks are inside the _get_frame method
-                    self._get_frame()
+                if not self._should_capture_next_frame():
+                    break
+                # Device access stays serialized inside _get_frame, but slow
+                # post-processing runs outside the main lifecycle lock.
+                self._get_frame()
                 time.sleep(EPSILON_DELAY)  # Small delay to prevent CPU overload
         except Exception as e:
             print(f"Error in camera thread: {e}")
@@ -518,8 +524,20 @@ class Camera(threading.Thread):
         """Stop the capture thread."""
         with self._lock:
             self._active = False
+        if threading.current_thread() is self:
+            return
+        if not self.is_alive():
+            return
+
+        self.join(timeout=self.STOP_TIMEOUT_SECONDS)
         if self.is_alive():
-            self.join(timeout=4.0)
+            message = (
+                f"Camera worker still alive after {self.STOP_TIMEOUT_SECONDS:.1f}s stop timeout "
+                f"(index={self._index}, camera_index={self._camera_index}, "
+                f"camera_code={self._camera_code}, camera_name={self._camera_name})"
+            )
+            print(message)
+            raise RuntimeError(message)
 
     def reset_settings(self):
         self.settings = deepcopy(self._default_settings)

@@ -29,11 +29,15 @@ class FakeMasterController:
     def __init__(self):
         type(self).init_count += 1
         type(self).last_instance = self
+        self.start_calls = 0
+        self.stop_calls = 0
 
     def start(self):
+        self.start_calls += 1
         type(self).start_count += 1
 
     def stop(self):
+        self.stop_calls += 1
         type(self).stop_count += 1
 
 
@@ -81,6 +85,82 @@ def _make_stub_modules() -> dict[str, types.ModuleType]:
     return modules
 
 
+def _import_real_mastercontroller(*, stop_failures: dict[str, Exception] | None = None):
+    stop_failures = stop_failures or {}
+    for module_name in (
+        "server.mastercontroller",
+        "server.motorscontroller",
+        "server.camerascontroller",
+        "server.aiagent",
+    ):
+        sys.modules.pop(module_name, None)
+
+    events: list[str] = []
+
+    motorscontroller = types.ModuleType("server.motorscontroller")
+
+    class MotorsController:
+        def start(self):
+            events.append("motors.start")
+
+        def stop(self):
+            events.append("motors.stop")
+            failure = stop_failures.get("motors")
+            if failure is not None:
+                raise failure
+
+        def reset(self):
+            events.append("motors.reset")
+
+    motorscontroller.MotorsController = MotorsController
+
+    camerascontroller = types.ModuleType("server.camerascontroller")
+
+    class CamerasController:
+        def __init__(self, *, master_controller):
+            self.master_controller = master_controller
+
+        def stop(self):
+            events.append("cameras.stop")
+            failure = stop_failures.get("cameras")
+            if failure is not None:
+                raise failure
+
+        def reset(self):
+            events.append("cameras.reset")
+
+    camerascontroller.CamerasController = CamerasController
+
+    aiagent = types.ModuleType("server.aiagent")
+
+    class AIAgent:
+        def __init__(self, *, master_controller):
+            self.master_controller = master_controller
+
+        def start(self):
+            events.append("ai.start")
+
+        def stop(self):
+            events.append("ai.stop")
+            failure = stop_failures.get("ai")
+            if failure is not None:
+                raise failure
+
+    aiagent.AIAgent = AIAgent
+
+    with mock.patch.dict(
+        sys.modules,
+        {
+            "server.motorscontroller": motorscontroller,
+            "server.camerascontroller": camerascontroller,
+            "server.aiagent": aiagent,
+        },
+    ):
+        module = importlib.import_module("server.mastercontroller")
+
+    return module, events
+
+
 def _reset_fake_master_controller() -> None:
     FakeMasterController.init_count = 0
     FakeMasterController.start_count = 0
@@ -125,10 +205,36 @@ class LifecycleTests(unittest.TestCase):
         with TestClient(module.app):
             self.assertEqual(FakeMasterController.init_count, 1)
             self.assertEqual(FakeMasterController.start_count, 1)
+            self.assertEqual(FakeMasterController.last_instance.start_calls, 1)
             self.assertEqual(module.app.state.master_controller, FakeMasterController.last_instance)
 
         self.assertEqual(FakeMasterController.stop_count, 1)
+        self.assertEqual(FakeMasterController.last_instance.stop_calls, 1)
         self.assertFalse(hasattr(module.app.state, "master_controller"))
+
+    def test_master_controller_stop_orders_camera_ai_and_motor_shutdown(self):
+        mastercontroller, events = _import_real_mastercontroller()
+        controller = mastercontroller.MasterController()
+        controller._started = True
+
+        controller.stop()
+
+        self.assertEqual(events, ["cameras.stop", "ai.stop", "motors.stop"])
+        self.assertFalse(controller._started)
+
+    def test_master_controller_stop_continues_shutdown_after_camera_error(self):
+        mastercontroller, events = _import_real_mastercontroller(
+            stop_failures={"cameras": RuntimeError("camera stop failed")}
+        )
+        controller = mastercontroller.MasterController()
+        controller._started = True
+
+        with self.assertRaises(RuntimeError) as exc_info:
+            controller.stop()
+
+        self.assertEqual(events, ["cameras.stop", "ai.stop", "motors.stop"])
+        self.assertFalse(controller._started)
+        self.assertIn("camera workers", str(exc_info.exception))
 
     def test_lifespan_serves_api_while_deferred_startup_is_running(self):
         module = self._import_main()
