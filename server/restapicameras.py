@@ -70,6 +70,19 @@ CAMERA_NAMES = {
 }
 
 
+def _get_camera_from_snapshot(
+    *,
+    cameras: list[Camera],
+    camera_index: int,
+) -> Camera:
+    if camera_index < 0 or camera_index >= len(cameras):
+        raise HTTPException(
+            status_code=404,
+            detail=f"Camera index {camera_index} not found"
+        )
+    return cameras[camera_index]
+
+
 @router.get("/api/cameras/list")
 async def get_cameras_list():
     """
@@ -95,8 +108,9 @@ async def get_input_devices(
     """
     try:
         input_devices = []
-        
-        for camera in master_controller.cameras_controller.cameras:
+
+        cameras = master_controller.cameras_controller.cameras
+        for camera in cameras:
             device_info = {
                 **camera.settings,
                 "capabilities": camera.capabilities,
@@ -132,7 +146,8 @@ async def update_camera(
     
     try:
         new_index = request.index
-        camera: Camera = master_controller.cameras_controller.cameras[new_index]
+        cameras_list = master_controller.cameras_controller.cameras
+        camera = _get_camera_from_snapshot(cameras=cameras_list, camera_index=new_index)
         updated_camera_config = request.model_dump()
         updated_camera_config["supported_resolutions"] = camera.supported_resolutions
 
@@ -158,7 +173,6 @@ async def update_camera(
         }
 
         # Update Camera instances: old device gets camera_code None, new device gets this camera_code
-        cameras_list = master_controller.cameras_controller.cameras
         n = len(cameras_list)
         if old_index is not None and old_index != new_index and 0 <= old_index < n:
             cameras_list[old_index].camera_code = None
@@ -197,8 +211,9 @@ async def reset_camera(
         camera_config = cameras_config.get(camera_code, {})
         camera_index = camera_config.get("index", 0)
 
+        controller_cameras = master_controller.cameras_controller.cameras
         error_when_searching_for_camera_index = False        
-        if camera_index < 0 or camera_index >= len(master_controller.cameras_controller.cameras):
+        if camera_index < 0 or camera_index >= len(controller_cameras):
             error_when_searching_for_camera_index = True
             print(f"Error: Resetting camera {camera_code}: Camera index {camera_index} not found."
                     "Trying to find the camera index by name.")
@@ -207,9 +222,9 @@ async def reset_camera(
             except Exception as e:
                 camera_index = 0
                 print(f"Error:Camera {camera_code} not found in CAMERA_NAMES.keys()")
-        
-        # Reset the camera settings to default
-        camera: Camera = master_controller.cameras_controller.cameras[camera_index]
+
+        cameras = master_controller.cameras_controller.cameras
+        camera = _get_camera_from_snapshot(cameras=cameras, camera_index=camera_index)
         camera.reset_settings()
 
         def update_reset_camera_settings(settings: dict[str, Any]) -> None:
@@ -243,7 +258,10 @@ async def reset_all_cameras(
     Reloads all cameras from scratch.
     """
     try:
-        master_controller.cameras_controller.reset(reset_to_default=True)
+        await asyncio.to_thread(
+            master_controller.cameras_controller.reset,
+            reset_to_default=True,
+        )
         await settingscontroller.clear_cached_settings()
         for camera_name in CAMERA_NAMES:
             await reset_camera(camera_code=camera_name, master_controller=master_controller)
@@ -277,19 +295,19 @@ async def stop_camera(
         cameras_config = current_settings.get("cameras", {})
         camera_config = cameras_config.get(camera_code, {})
         camera_index = camera_config.get("index", 0)
-        
-        if camera_index < 0 or camera_index >= len(master_controller.cameras_controller.cameras):
-            raise HTTPException(
-                status_code=404,
-                detail=f"Camera index {camera_index} not found"
-            )
-        
-        # Stop the camera
-        camera: Camera = master_controller.cameras_controller.cameras[camera_index]
-        camera.stop()
+
+        controller_cameras = master_controller.cameras_controller.cameras
+        _get_camera_from_snapshot(cameras=controller_cameras, camera_index=camera_index)
+
+        await asyncio.to_thread(
+            master_controller.cameras_controller.stop_camera,
+            index=camera_index,
+        )
         
         return {"success": True}
         
+    except IndexError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except HTTPException:
         raise
     except Exception as e:
@@ -324,11 +342,11 @@ async def generate_camera_frames(
     time_of_last_frame_sent_to_client = 0
     while True:
         try:
-            if index < 0 or index >= len(master_controller.cameras_controller.cameras):
-                break
-            
             now = time.time()
-            camera = master_controller.cameras_controller.cameras[index]           
+            cameras = master_controller.cameras_controller.cameras
+            if index < 0 or index >= len(cameras):
+                break
+            camera = cameras[index]
             # get the image based on the mode
             if mode == 3:
                 frame = camera.frame_masked_ai
@@ -387,16 +405,11 @@ async def stream_camera(
         cameras = settings.get("cameras", {})
         camera_config = cameras.get(item_code, {})
         camera_index = camera_config.get("index", 0)
-        
-        if camera_index < 0 or camera_index >= len(master_controller.cameras_controller.cameras):
-            raise HTTPException(
-                status_code=404,
-                detail=f"Camera index {camera_index} not found"
-            )
 
         # refresh the camera settings
         # necessary otherwise after the resolution change the camera is zoomed in
-        camera: Camera = master_controller.cameras_controller.cameras[camera_index]
+        controller_cameras = master_controller.cameras_controller.cameras
+        camera = _get_camera_from_snapshot(cameras=controller_cameras, camera_index=camera_index)
         camera.settings = camera.settings
         
         return StreamingResponse(

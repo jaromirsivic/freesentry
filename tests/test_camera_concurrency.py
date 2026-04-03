@@ -209,9 +209,13 @@ def _import_camera_stack():
     async def update_settings(mutator):
         return mutator({})
 
+    async def clear_cached_settings():
+        return {"success": True}
+
     settingscontroller.get_settings_sync = get_settings_sync
     settingscontroller.get_settings = get_settings
     settingscontroller.update_settings = update_settings
+    settingscontroller.clear_cached_settings = clear_cached_settings
 
     aiagent = types.ModuleType("server.aiagent")
 
@@ -527,10 +531,24 @@ class CameraConcurrencyTests(unittest.TestCase):
         self.FakeCamera = _make_fake_camera_class(self.camera_module)
 
     def _make_master_controller(self, cameras):
+        class FakeCamerasController:
+            def __init__(self, initial_cameras):
+                self._cameras = list(initial_cameras)
+
+            @property
+            def cameras(self):
+                return list(self._cameras)
+
+            def reset(self, *, reset_to_default=False):
+                return None
+
+            def stop_camera(self, *, index: int):
+                self._cameras[index].stop()
+
         master_controller = SimpleNamespace(ai_agent=mock.Mock())
         for camera in cameras:
             camera._master_controller = master_controller
-        master_controller.cameras_controller = SimpleNamespace(cameras=cameras)
+        master_controller.cameras_controller = FakeCamerasController(cameras)
         return master_controller
 
     def test_camera_settings_are_copy_on_write_and_keep_newer_updates_pending(self):
@@ -636,6 +654,101 @@ class CameraConcurrencyTests(unittest.TestCase):
             new_camera.settings["supported_resolutions"],
             new_camera.supported_resolutions,
         )
+
+    def test_stop_camera_offloads_blocking_stop_from_event_loop(self):
+        camera = self.FakeCamera(
+            index=0,
+            camera_index=0,
+            camera_code="scope_camera",
+            settings={"index": 0, "name": "Scope"},
+            master_controller=SimpleNamespace(ai_agent=mock.Mock()),
+        )
+        stop_release = threading.Event()
+        camera.stop = mock.Mock(side_effect=lambda: stop_release.wait(timeout=0.5))
+        master_controller = self._make_master_controller([camera])
+
+        async def scenario():
+            stop_task = asyncio.create_task(
+                self.restapicameras.stop_camera(
+                    camera_code="scope_camera",
+                    master_controller=master_controller,
+                )
+            )
+            probe_task = asyncio.create_task(asyncio.sleep(0.01, result="probe"))
+            started_at = time.monotonic()
+            done, _ = await asyncio.wait(
+                {stop_task, probe_task},
+                timeout=0.05,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            elapsed = time.monotonic() - started_at
+
+            self.assertLess(elapsed, 0.2)
+            self.assertIn(probe_task, done)
+            self.assertNotIn(stop_task, done)
+
+            stop_release.set()
+            result = await asyncio.wait_for(stop_task, timeout=1.0)
+            self.assertEqual(result, {"success": True})
+
+        asyncio.run(scenario())
+        camera.stop.assert_called_once()
+
+    def test_reset_all_cameras_offloads_blocking_reset_from_event_loop(self):
+        cameras = [
+            self.FakeCamera(
+                index=i,
+                camera_index=i,
+                camera_code="scope_camera" if i == 0 else None,
+                settings={"index": i, "name": f"Camera {i}"},
+                master_controller=SimpleNamespace(ai_agent=mock.Mock()),
+            )
+            for i in range(4)
+        ]
+        master_controller = self._make_master_controller(cameras)
+        reset_release = threading.Event()
+        master_controller.cameras_controller.reset = mock.Mock(
+            side_effect=lambda *, reset_to_default=False: reset_release.wait(timeout=0.5)
+        )
+
+        with (
+            mock.patch.object(
+                self.restapicameras.settingscontroller,
+                "clear_cached_settings",
+                new=mock.AsyncMock(return_value={"success": True}),
+            ) as clear_cached_settings_mock,
+            mock.patch.object(
+                self.restapicameras,
+                "reset_camera",
+                new=mock.AsyncMock(return_value={"success": True}),
+            ) as reset_camera_mock,
+        ):
+            async def scenario():
+                reset_task = asyncio.create_task(
+                    self.restapicameras.reset_all_cameras(master_controller=master_controller)
+                )
+                probe_task = asyncio.create_task(asyncio.sleep(0.01, result="probe"))
+                started_at = time.monotonic()
+                done, _ = await asyncio.wait(
+                    {reset_task, probe_task},
+                    timeout=0.05,
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                elapsed = time.monotonic() - started_at
+
+                self.assertLess(elapsed, 0.2)
+                self.assertIn(probe_task, done)
+                self.assertNotIn(reset_task, done)
+
+                reset_release.set()
+                result = await asyncio.wait_for(reset_task, timeout=1.0)
+                self.assertEqual(result, {"success": True})
+
+            asyncio.run(scenario())
+
+        clear_cached_settings_mock.assert_awaited_once()
+        self.assertEqual(reset_camera_mock.await_count, len(self.restapicameras.CAMERA_NAMES))
+        master_controller.cameras_controller.reset.assert_called_once_with(reset_to_default=True)
 
 
 if __name__ == "__main__":

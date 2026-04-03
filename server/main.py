@@ -1,19 +1,34 @@
-from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
-from fastapi.middleware.cors import CORSMiddleware
+from __future__ import annotations
+
+import asyncio
+from collections.abc import Mapping
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
-from contextlib import asynccontextmanager
-from fastapi.responses import FileResponse, JSONResponse
-from starlette.exceptions import HTTPException as StarletteHTTPException
-from starlette.requests import Request
 import subprocess
 import time
-from .context import clear_master_controller, set_master_controller
+from typing import Any
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.requests import Request
+
+from .context import (
+    StartupState,
+    clear_master_controller,
+    clear_startup_state,
+    get_startup_state_from_app,
+    set_master_controller,
+    set_startup_state,
+)
 from .mastercontroller import MasterController
 from .common import get_platform_info
 from . import settingscontroller
+from . import restapihealth
 from . import restapimotors
-from . import restapicameras_old
+#from . import restapicameras_old
 from . import restapicameras
 from . import restapisettings
 from . import restapihotzone
@@ -21,12 +36,10 @@ from . import restapimanualcontrol
 from . import restapiaisetup
 from . import restapiosmanagement
 
-async def execute_startup_script():
+def _execute_startup_script_sync(*, settings: Mapping[str, Any], os_code: str) -> None:
     """Load and execute the OS-specific startup script from settings.json."""
-    os_code = get_platform_info().get("operating_system_code", "")
     print(f"Operating system code: {os_code}")
     try:
-        settings = await settingscontroller.get_settings()
         startup_entry = settings.get("general", {}).get("startupScript", {}).get(os_code, None)
         if startup_entry is None:
             print(f"No startup script found for '{os_code}', skipping.")
@@ -43,14 +56,13 @@ async def execute_startup_script():
             print(f"Unsupported startup script language: '{language}', skipping.")
     except Exception as e:
         print(f"Startup script error: {e}")
+        raise
 
-async def wifi_startup():
+def _wifi_startup_sync(*, settings: Mapping[str, Any], os_code: str) -> None:
     """Configure wifi on Raspberry Pi based on settings.json."""
-    os_code = get_platform_info().get("operating_system_code", "")
     if not os_code.startswith("raspberrypi"):
         return
     try:
-        settings = await settingscontroller.get_settings()
         wifi = settings.get("general", {}).get("wifi", None)
         if wifi is None:
             print("No wifi configuration found in settings, skipping.")
@@ -105,6 +117,7 @@ async def wifi_startup():
             print(f"Unknown wifi mode: '{mode}', skipping.")
     except Exception as e:
         print(f"Wifi startup error: {e}")
+        raise
 
 def log_ai_runtime_diagnostics() -> None:
     """Emit one-shot runtime diagnostics for the active backend interpreter."""
@@ -123,29 +136,60 @@ def log_ai_runtime_diagnostics() -> None:
     except Exception as e:
         print(f"AI runtime diagnostics failed: {e}")
 
-async def onload():
-    print("Server loaded")
-    log_ai_runtime_diagnostics()
-    await wifi_startup()
-    await execute_startup_script()
-    print("Startup script execution completed")
-    print("Open web browser at http://127.0.0.1 to access the application.")
+async def _run_deferred_startup(app: FastAPI) -> None:
+    startup_state = get_startup_state_from_app(app)
+    os_code = get_platform_info().get("operating_system_code", "")
+
+    try:
+        await asyncio.to_thread(log_ai_runtime_diagnostics)
+        settings = await settingscontroller.get_settings()
+        await asyncio.to_thread(_wifi_startup_sync, settings=settings, os_code=os_code)
+        await asyncio.to_thread(_execute_startup_script_sync, settings=settings, os_code=os_code)
+    except asyncio.CancelledError:
+        print("Deferred startup task cancelled.")
+        raise
+    except Exception as e:
+        startup_state.mark_failed(e)
+        print(f"Deferred startup error: {e}")
+    else:
+        startup_state.mark_ready()
+        print("Startup script execution completed")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("Server starting up...")
     master_controller = MasterController()
+    startup_state = StartupState()
     set_master_controller(app, master_controller)
+    set_startup_state(app, startup_state)
     try:
         master_controller.start()
-        await onload()
+        print("Server loaded")
+        startup_state.mark_post_start()
+        startup_state.deferred_startup_task = asyncio.create_task(
+            _run_deferred_startup(app),
+            name="deferred-startup",
+        )
+        print("Open web browser at http://127.0.0.1 to access the application.")
         yield
     finally:
         print("Server shutting down...")
         try:
+            startup_state = get_startup_state_from_app(app)
+        except RuntimeError:
+            startup_state = None
+        if startup_state is not None:
+            startup_state.mark_stopping()
+            deferred_startup_task = startup_state.deferred_startup_task
+            if deferred_startup_task is not None and not deferred_startup_task.done():
+                deferred_startup_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await deferred_startup_task
+        try:
             master_controller.stop()
         finally:
+            clear_startup_state(app)
             clear_master_controller(app)
 
 app = FastAPI(lifespan=lifespan)
@@ -160,10 +204,11 @@ app.add_middleware(
 )
 
 # Include Routers
+app.include_router(restapihealth.router)
 app.include_router(restapisettings.router)
 app.include_router(restapimotors.router)
 app.include_router(restapihotzone.router)
-app.include_router(restapicameras_old.router)
+#app.include_router(restapicameras_old.router)
 app.include_router(restapicameras.router)
 app.include_router(restapimanualcontrol.router)
 app.include_router(restapiaisetup.router)

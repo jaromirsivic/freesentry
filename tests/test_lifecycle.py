@@ -1,5 +1,7 @@
 import importlib
 import sys
+import threading
+import time
 import types
 import unittest
 from unittest import mock
@@ -102,6 +104,7 @@ class LifecycleTests(unittest.TestCase):
             "server.restapimanualcontrol",
             "server.restapiaisetup",
             "server.restapiosmanagement",
+            "server.restapihealth",
         ):
             sys.modules.pop(module_name, None)
 
@@ -126,6 +129,68 @@ class LifecycleTests(unittest.TestCase):
 
         self.assertEqual(FakeMasterController.stop_count, 1)
         self.assertFalse(hasattr(module.app.state, "master_controller"))
+
+    def test_lifespan_serves_api_while_deferred_startup_is_running(self):
+        module = self._import_main()
+        startup_entered = threading.Event()
+        release_startup = threading.Event()
+
+        def slow_wifi_startup(*, settings, os_code):
+            startup_entered.set()
+            release_startup.wait(timeout=1.0)
+
+        with (
+            mock.patch.object(module, "log_ai_runtime_diagnostics", return_value=None),
+            mock.patch.object(module, "_wifi_startup_sync", side_effect=slow_wifi_startup),
+            mock.patch.object(module, "_execute_startup_script_sync", return_value=None),
+        ):
+            started_at = time.monotonic()
+            with TestClient(module.app) as client:
+                self.assertLess(time.monotonic() - started_at, 0.3)
+                self.assertTrue(startup_entered.wait(timeout=1.0))
+
+                response = client.get("/api/health/readiness")
+                self.assertEqual(response.status_code, 503)
+                self.assertEqual(response.json()["phase"], "post_start")
+                self.assertFalse(response.json()["ready"])
+
+                release_startup.set()
+                deadline = time.monotonic() + 1.0
+                while time.monotonic() < deadline:
+                    response = client.get("/api/health/readiness")
+                    if response.status_code == 200:
+                        break
+                    time.sleep(0.01)
+
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.json()["phase"], "ready")
+                self.assertTrue(response.json()["ready"])
+
+    def test_readiness_reports_failed_deferred_startup(self):
+        module = self._import_main()
+
+        with (
+            mock.patch.object(module, "log_ai_runtime_diagnostics", return_value=None),
+            mock.patch.object(module, "_wifi_startup_sync", return_value=None),
+            mock.patch.object(
+                module,
+                "_execute_startup_script_sync",
+                side_effect=RuntimeError("startup script failed"),
+            ),
+        ):
+            with TestClient(module.app) as client:
+                deadline = time.monotonic() + 1.0
+                response = None
+                while time.monotonic() < deadline:
+                    response = client.get("/api/health/readiness")
+                    if response.json()["phase"] == "failed":
+                        break
+                    time.sleep(0.01)
+
+                self.assertIsNotNone(response)
+                self.assertEqual(response.status_code, 503)
+                self.assertEqual(response.json()["phase"], "failed")
+                self.assertIn("startup script failed", response.json()["lastError"])
 
     def test_ai_agent_init_does_not_start_thread(self):
         aiagent = importlib.import_module("server.aiagent")
