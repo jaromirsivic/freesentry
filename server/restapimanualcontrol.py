@@ -2,7 +2,7 @@
 REST API for Manual Control page motor settings.
 Handles loading and saving motor visibility settings for the Manual Control interface.
 """
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from . import settingscontroller
