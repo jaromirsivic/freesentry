@@ -48,6 +48,11 @@ class SpeedHistogram:
         # check that last item has pwmMultiplier 1
         if self._speed_histogram[-1]["pwmMultiplier"] != 1:
             raise ValueError("Last item in speed histogram must have pwmMultiplier 1")
+        # check that max speed timings stay strictly positive so motion math cannot divide by zero
+        if self._speed_histogram[-1]["forwardSeconds"] <= 0:
+            raise ValueError("Last item in speed histogram must have forwardSeconds greater than 0")
+        if self._speed_histogram[-1]["reverseSeconds"] <= 0:
+            raise ValueError("Last item in speed histogram must have reverseSeconds greater than 0")
         # check that each item has forwardSeconds less than or equal previous item
         for i in range(1, len(self._speed_histogram)):
             if self._speed_histogram[i-1]["forwardSeconds"] > 0 and self._speed_histogram[i]["forwardSeconds"] >= self._speed_histogram[i - 1]["forwardSeconds"]:
@@ -74,6 +79,10 @@ class SpeedHistogram:
         # get max forward and reverse seconds
         self.max_forward_speed_seconds = self._speed_histogram[-1]["forwardSeconds"]
         self.max_reverse_speed_seconds = self._speed_histogram[-1]["reverseSeconds"]
+        if self.max_forward_speed_seconds <= 0:
+            raise ValueError("max forward speed seconds must be greater than 0")
+        if self.max_reverse_speed_seconds <= 0:
+            raise ValueError("max reverse speed seconds must be greater than 0")
         # normalize speed histogram adds new parameter forwardSpeed and reverseSpeed
         for i in range(0, len(self._speed_histogram)):
             if self._speed_histogram[i]["forwardSeconds"] == 0:

@@ -192,6 +192,94 @@ class SettingsStoreTests(unittest.TestCase):
         self.assertEqual(store.get_copy()["aiSetup"], {})
         self.assertEqual(_read_settings(self.settings_path)["aiSetup"], {})
 
+    def test_load_normalizes_z_suffixed_ai_datetimes_without_rewriting_disk(self):
+        payload = _make_settings()
+        payload["aiSetup"] = {
+            "activationDateTime": "2199-12-31T23:59:59Z",
+            "exitStrategy": {
+                "fixedDateTime": "2200-01-01T00:00:00Z",
+            },
+        }
+        _write_settings(self.settings_path, payload)
+
+        store = self.settingscontroller.SettingsStore(self.settings_path)
+        normalized_settings = store.get_copy()
+
+        self.assertEqual(
+            normalized_settings["aiSetup"]["activationDateTime"],
+            "2199-12-31T23:59:59+00:00",
+        )
+        self.assertEqual(
+            normalized_settings["aiSetup"]["exitStrategy"]["fixedDateTime"],
+            "2200-01-01T00:00:00+00:00",
+        )
+        self.assertEqual(
+            _read_settings(self.settings_path)["aiSetup"]["activationDateTime"],
+            "2199-12-31T23:59:59Z",
+        )
+
+    def test_save_rejects_histogram_with_zero_max_timing(self):
+        store = self.settingscontroller.SettingsStore(self.settings_path)
+
+        invalid_cases = (
+            (
+                "forward",
+                [
+                    {"pwmMultiplier": 0, "forwardSeconds": 0, "reverseSeconds": 0},
+                    {"pwmMultiplier": 1, "forwardSeconds": 0, "reverseSeconds": 10},
+                ],
+                "forwardSeconds greater than 0",
+            ),
+            (
+                "reverse",
+                [
+                    {"pwmMultiplier": 0, "forwardSeconds": 0, "reverseSeconds": 0},
+                    {"pwmMultiplier": 1, "forwardSeconds": 10, "reverseSeconds": 0},
+                ],
+                "reverseSeconds greater than 0",
+            ),
+        )
+
+        for case_name, histogram, message in invalid_cases:
+            with self.subTest(case=case_name):
+                payload = _make_settings()
+                payload["motors"] = [{"name": "Linear test motor", "histogram": histogram}]
+
+                with self.assertRaisesRegex(ValueError, message):
+                    store.save(payload)
+
+    def test_save_normalizes_naive_and_utc_ai_datetime_inputs(self):
+        store = self.settingscontroller.SettingsStore(self.settings_path)
+        payload = _make_settings()
+        payload["aiSetup"] = {
+            "activationDateTime": "2026-01-01T12:34:56",
+            "exitStrategy": {
+                "fixedDateTime": "2030-05-06T07:08:09+00:00",
+            },
+        }
+
+        store.save(payload)
+        saved_settings = _read_settings(self.settings_path)
+
+        self.assertEqual(
+            saved_settings["aiSetup"]["activationDateTime"],
+            "2026-01-01T12:34:56",
+        )
+        self.assertEqual(
+            saved_settings["aiSetup"]["exitStrategy"]["fixedDateTime"],
+            "2030-05-06T07:08:09+00:00",
+        )
+
+    def test_load_rejects_invalid_ai_datetime_string(self):
+        payload = _make_settings()
+        payload["aiSetup"] = {"activationDateTime": "definitely-not-a-datetime"}
+        _write_settings(self.settings_path, payload)
+
+        store = self.settingscontroller.SettingsStore(self.settings_path)
+
+        with self.assertRaisesRegex(ValueError, "activationDateTime"):
+            store.get_copy()
+
 
 if __name__ == "__main__":
     unittest.main()

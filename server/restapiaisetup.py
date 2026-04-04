@@ -55,14 +55,14 @@ class ExitStrategyConfig(BaseModel):
     """Exit strategy configuration."""
     maxEngagements: int = 1000000000
     timeoutAfterFirstEngagement: float = 10000000000
-    fixedDateTime: str = "2199-12-31T23:59:59Z"
+    fixedDateTime: str = "2199-12-31T23:59:59+00:00"
     exitStrategyDuration: float = 0.5
     motors: list[MotorConfig] = []
 
 
 class AISetupConfig(BaseModel):
     """Complete AI Setup configuration."""
-    activationDateTime: str = "2199-12-31T23:59:59Z"
+    activationDateTime: str = "2199-12-31T23:59:59+00:00"
     minFpsToAllowEngagement: int = 0
     organMustBeVisibleSeconds: float = 0
     detectionRadiusFromReticle: int = 50
@@ -87,7 +87,7 @@ def _build_ai_setup_response(ai_setup_settings: dict | None) -> dict:
     ai_setup = deepcopy(ai_setup_settings) if isinstance(ai_setup_settings, dict) else {}
 
     if "activationDateTime" not in ai_setup:
-        ai_setup["activationDateTime"] = "2199-12-31T23:59:59Z"
+        ai_setup["activationDateTime"] = "2199-12-31T23:59:59+00:00"
     if "minFpsToAllowEngagement" not in ai_setup:
         ai_setup["minFpsToAllowEngagement"] = 0
     if "organMustBeVisibleSeconds" not in ai_setup:
@@ -121,7 +121,7 @@ def _build_ai_setup_response(ai_setup_settings: dict | None) -> dict:
         ai_setup["exitStrategy"] = {
             "maxEngagements": 1000000000,
             "timeoutAfterFirstEngagement": 10000000000,
-            "fixedDateTime": "2199-12-31T23:59:59Z",
+            "fixedDateTime": "2199-12-31T23:59:59+00:00",
             "exitStrategyDuration": 0.5,
             "motors": [],
         }

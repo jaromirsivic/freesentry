@@ -16,6 +16,7 @@ from .settingserrors import (
     SettingsSaveError,
     SettingsUpdateError,
 )
+from .settingsschema import normalize_settings
 
 # Get the directory of the current file
 BASE_DIR = Path(__file__).resolve().parent
@@ -172,7 +173,7 @@ class SettingsStore:
                 raise TypeError(
                     f"settings['{section_name}'] must be of type {expected_type.__name__}"
                 )
-        return normalized
+        return normalize_settings(normalized)
 
     def _write_locked(self, settings: dict[str, Any]) -> None:
         self._settings_file.parent.mkdir(parents=True, exist_ok=True)

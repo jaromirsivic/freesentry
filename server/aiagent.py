@@ -2,6 +2,7 @@ from ast import Return
 from collections import deque
 from .motorerrors import MotorOverrideConflictError
 from .settingscontroller import get_settings_sync
+from .isodatetime import coerce_iso_datetime, compare_datetimes
 from .common import Vector2D, Circle, AICircle
 import time
 import random
@@ -239,21 +240,21 @@ class AIAgent(threading.Thread):
         Returns the current datetime if the activation condition is satisfied,
         or None if the activation time is still in the future (result is updated accordingly).
         """
-        activation_date_time = ai_setup.get("activationDateTime", "2026-01-01T00:00:00.000Z")
-        result.activation_date_time_str = activation_date_time
-        activation_date_time_dt = datetime.fromisoformat(activation_date_time)
-        try:
-            now_dt = datetime.now(activation_date_time_dt.tzinfo) if activation_date_time_dt.tzinfo else datetime.now()
-            if now_dt < activation_date_time_dt:
-                result.activation_date_time_condition_satisfied = False
-                result.status = EngagementStatus.WAITING_TO_START
-                return None
-        except Exception:
-            now_dt = datetime.now()
-            if now_dt.replace(tzinfo=None) < activation_date_time_dt.replace(tzinfo=None):
-                result.activation_date_time_condition_satisfied = False
-                result.status = EngagementStatus.WAITING_TO_START
-                return None
+        activation_date_time = ai_setup.get("activationDateTime", "2026-01-01T00:00:00+00:00")
+        normalized_activation_date_time, activation_date_time_dt = coerce_iso_datetime(
+            activation_date_time,
+            field_name="aiSetup.activationDateTime",
+        )
+        result.activation_date_time_str = normalized_activation_date_time
+        now_dt = (
+            datetime.now(activation_date_time_dt.tzinfo)
+            if activation_date_time_dt.tzinfo
+            else datetime.now()
+        )
+        if compare_datetimes(now_dt, activation_date_time_dt) < 0:
+            result.activation_date_time_condition_satisfied = False
+            result.status = EngagementStatus.WAITING_TO_START
+            return None
         result.activation_date_time_condition_satisfied = True
         return now_dt
 
@@ -277,7 +278,7 @@ class AIAgent(threading.Thread):
         exit_strategy = ai_setup.get("exitStrategy", {})
         max_engagements = exit_strategy.get("maxEngagements", 1000000)
         timeout_after_first = exit_strategy.get("timeoutAfterFirstEngagement", 1000000)
-        fixed_date_time_str = exit_strategy.get("fixedDateTime", "2199-12-31T23:59:59Z")
+        fixed_date_time_str = exit_strategy.get("fixedDateTime", "2199-12-31T23:59:59+00:00")
 
         total_engagements = len(self._engagement_history)
         first_engagement = self._engagement_history[0] if total_engagements > 0 else None
@@ -320,7 +321,11 @@ class AIAgent(threading.Thread):
         )
         if not exit_triggered:
             try:
-                exit_triggered = datetime.fromisoformat(fixed_date_time_str) <= now_dt
+                _, fixed_date_time_dt = coerce_iso_datetime(
+                    fixed_date_time_str,
+                    field_name="aiSetup.exitStrategy.fixedDateTime",
+                )
+                exit_triggered = compare_datetimes(fixed_date_time_dt, now_dt) <= 0
             except Exception:
                 pass
 
@@ -489,6 +494,12 @@ class AIAgent(threading.Thread):
                 color = (0, 128, 0)
             case EngagementStatus.NOT_ENGAGING:
                 color = (0, 255, 0)
+            case EngagementStatus.ARMING:
+                text_color = (0, 128, 255)
+                color = (0, 128, 255)
+            case EngagementStatus.DISENGAGING:
+                text_color = (255, 128, 0)
+                color = (255, 128, 0)
             case EngagementStatus.ENGAGING:
                 text_color = (0, 0, 255)
                 color = (0, 0, 255)

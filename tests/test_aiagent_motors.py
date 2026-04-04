@@ -3,6 +3,7 @@ import sys
 import threading
 import types
 import unittest
+from datetime import datetime, timezone
 from unittest import mock
 
 import numpy as np
@@ -107,6 +108,25 @@ def _make_settings(*, mission_motors: list[dict] | None = None) -> dict:
     }
 
 
+def _make_result(*, timestamp: float = 0.0) -> aiagent.EngagementResult:
+    return aiagent.EngagementResult(
+        timestamp=timestamp,
+        is_valid=False,
+        activation_date_time_str="",
+        activation_date_time_condition_satisfied=False,
+        fps=0,
+        min_fps_to_allow_engagement=0,
+        fps_satisfied=False,
+        immediate_engagement_condition_satisfied=False,
+        engaging=False,
+        engagement_counter=0,
+        time_until_current_engagement_ends=0,
+        exit_strategy_under_execution=False,
+        exit_strategy_executed=False,
+        status=aiagent.EngagementStatus.NOT_ENGAGING,
+    )
+
+
 class AIAgentMotorTests(unittest.TestCase):
     def _make_agent(self, *, available_indexes: set[int]) -> tuple[aiagent.AIAgent, FakeMotorsController]:
         motors_controller = FakeMotorsController(available_indexes=available_indexes)
@@ -152,6 +172,54 @@ class AIAgentMotorTests(unittest.TestCase):
 
         self.assertEqual(motors_controller.commands, [])
         print_mock.assert_any_call("AI motor config references unavailable motor index 99")
+
+    def test_check_activation_datetime_accepts_z_suffix_and_normalizes_result(self):
+        agent, _ = self._make_agent(available_indexes=set())
+        result = _make_result()
+
+        class FixedDatetime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                current = datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+                if tz is None:
+                    return current.replace(tzinfo=None)
+                return current.astimezone(tz)
+
+        with mock.patch("server.aiagent.datetime", FixedDatetime):
+            now_dt = agent._check_activation_datetime(
+                ai_setup={"activationDateTime": "2026-01-01T00:00:00Z"},
+                result=result,
+            )
+
+        self.assertIsNotNone(now_dt)
+        self.assertEqual(result.activation_date_time_str, "2026-01-01T00:00:00+00:00")
+        self.assertTrue(result.activation_date_time_condition_satisfied)
+
+    def test_engage_triggers_exit_strategy_with_z_fixed_datetime(self):
+        agent, motors_controller = self._make_agent(available_indexes={0})
+        settings = _make_settings(mission_motors=[])
+        settings["aiSetup"]["activationDateTime"] = "2000-01-01T00:00:00+00:00"
+        settings["aiSetup"]["exitStrategy"] = {
+            "maxEngagements": 100,
+            "timeoutAfterFirstEngagement": 1000.0,
+            "fixedDateTime": "2029-12-31T23:59:59Z",
+            "motors": [{"enabled": True, "index": 0, "speed": 0.5}],
+        }
+
+        class FixedDatetime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                current = datetime(2030, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+                if tz is None:
+                    return current.replace(tzinfo=None)
+                return current.astimezone(tz)
+
+        with mock.patch("server.aiagent.datetime", FixedDatetime):
+            with mock.patch("server.aiagent.time.time", return_value=1000.0):
+                result = agent.engage(frame=_make_frame(), settings=settings)
+
+        self.assertEqual(result.status, aiagent.EngagementStatus.EXIT_STRATEGY_UNDER_EXECUTION)
+        self.assertEqual(motors_controller.commands, [(0, 0.5)])
 
 
 class MotorsControllerApiTests(unittest.TestCase):
