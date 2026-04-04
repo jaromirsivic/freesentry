@@ -339,6 +339,27 @@ class LifecycleTests(unittest.TestCase):
                 self.assertEqual(response.json()["phase"], "failed")
                 self.assertIn("platform probe failed", response.json()["lastError"])
 
+    def test_settings_error_handler_returns_json_500_and_logs_traceback(self):
+        module = self._import_main()
+        from server.settingserrors import SettingsLoadError
+
+        @module.app.get("/api/test/settings-error")
+        async def settings_error_endpoint():
+            raise SettingsLoadError("Failed to load settings: disk offline")
+
+        module.app.router.routes.insert(0, module.app.router.routes.pop())
+
+        with mock.patch.object(module.logger, "error") as logger_error:
+            with TestClient(module.app) as client:
+                response = client.get("/api/test/settings-error")
+
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(response.json(), {"detail": "Failed to load settings: disk offline"})
+        logger_error.assert_called_once()
+        _, kwargs = logger_error.call_args
+        self.assertIn("exc_info", kwargs)
+        self.assertEqual(kwargs["exc_info"][0], SettingsLoadError)
+
     def test_wifi_startup_skips_when_required_capabilities_are_missing(self):
         module = self._import_main()
         capabilities = _make_capabilities(

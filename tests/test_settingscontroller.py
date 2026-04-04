@@ -9,6 +9,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
 
+from fastapi import HTTPException
+
 
 def _write_settings(path: Path, payload: dict) -> None:
     path.write_text(json.dumps(payload, indent=4), encoding="utf-8")
@@ -41,6 +43,7 @@ class SettingsStoreTests(unittest.TestCase):
         self._temp_dir = TemporaryDirectory()
         self.settings_path = Path(self._temp_dir.name) / "settings.json"
         _write_settings(self.settings_path, _make_settings())
+        self.settingserrors = importlib.import_module("server.settingserrors")
         self.settingscontroller = importlib.import_module("server.settingscontroller")
 
     def tearDown(self) -> None:
@@ -72,6 +75,65 @@ class SettingsStoreTests(unittest.TestCase):
 
         self.assertEqual(_read_settings(self.settings_path), original_settings)
         self.assertEqual(store.get_copy(), original_settings)
+
+    def test_get_settings_sync_raises_domain_error_with_original_cause(self):
+        with mock.patch.object(
+            self.settingscontroller._SETTINGS_STORE,
+            "get_snapshot",
+            side_effect=OSError("snapshot failed"),
+        ):
+            with self.assertRaises(self.settingserrors.SettingsLoadError) as raised:
+                self.settingscontroller.get_settings_sync()
+
+        self.assertEqual(str(raised.exception), "Failed to load settings: snapshot failed")
+        self.assertIsInstance(raised.exception.__cause__, OSError)
+        self.assertNotIsInstance(raised.exception, HTTPException)
+
+    def test_async_public_helpers_raise_operation_specific_domain_errors(self):
+        cases = (
+            (
+                "get_settings",
+                "get_copy",
+                self.settingserrors.SettingsLoadError,
+                "Failed to load settings: copy failed",
+                tuple(),
+            ),
+            (
+                "save_settings",
+                "save",
+                self.settingserrors.SettingsSaveError,
+                "Failed to save settings: save failed",
+                ({},),
+            ),
+            (
+                "update_settings",
+                "update",
+                self.settingserrors.SettingsUpdateError,
+                "Failed to update settings: update failed",
+                (lambda settings: None,),
+            ),
+            (
+                "clear_cached_settings",
+                "clear_cache",
+                self.settingserrors.SettingsCacheClearError,
+                "Failed to drop cached settings: clear failed",
+                tuple(),
+            ),
+        )
+
+        for helper_name, store_method_name, error_type, expected_message, args in cases:
+            with self.subTest(helper=helper_name):
+                with mock.patch.object(
+                    self.settingscontroller._SETTINGS_STORE,
+                    store_method_name,
+                    side_effect=OSError(expected_message.split(": ", 1)[1]),
+                ):
+                    with self.assertRaises(error_type) as raised:
+                        asyncio.run(getattr(self.settingscontroller, helper_name)(*args))
+
+                self.assertEqual(str(raised.exception), expected_message)
+                self.assertIsInstance(raised.exception.__cause__, OSError)
+                self.assertNotIsInstance(raised.exception, HTTPException)
 
     def test_concurrent_updates_do_not_lose_changes(self):
         store = self.settingscontroller.SettingsStore(self.settings_path)

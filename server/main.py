@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Mapping
 from contextlib import asynccontextmanager, suppress
+import logging
 from pathlib import Path
 import subprocess
 import time
@@ -35,6 +36,9 @@ from . import restapihotzone
 from . import restapimanualcontrol
 from . import restapiaisetup
 from . import restapiosmanagement
+from .settingserrors import SettingsError
+
+logger = logging.getLogger(__name__)
 
 def _resolve_startup_script_entry(
     *,
@@ -240,6 +244,17 @@ app.include_router(restapicameras.router)
 app.include_router(restapimanualcontrol.router)
 app.include_router(restapiaisetup.router)
 app.include_router(restapiosmanagement.router)
+
+
+@app.exception_handler(SettingsError)
+async def settings_error_handler(request: Request, exc: SettingsError):
+    logger.error(
+        "Settings request failed for %s: %s",
+        request.url.path,
+        exc,
+        exc_info=(type(exc), exc, exc.__traceback__),
+    )
+    return JSONResponse(status_code=exc.status_code, content={"detail": str(exc)})
 
 
 @app.exception_handler(404)

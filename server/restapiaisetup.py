@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from . import settingscontroller
 from .ai_setup_constants import DEFAULT_DEVICE
+from .settingserrors import SettingsError
 from .yolomodels import YOLOModels
 
 router = APIRouter()
@@ -159,6 +160,8 @@ async def get_ai_setup():
             "motors": motors_info
         }
 
+    except SettingsError:
+        raise
     except Exception as e:
         print(f"Error getting AI setup: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -178,6 +181,8 @@ async def save_ai_setup(*, request: SaveAISetupRequest):
 
         return {"success": True}
 
+    except SettingsError:
+        raise
     except Exception as e:
         print(f"Error saving AI setup: {e}")
         raise HTTPException(status_code=500, detail=str(e))

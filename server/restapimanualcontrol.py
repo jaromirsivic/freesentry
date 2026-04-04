@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 from fastapi import APIRouter, Depends, HTTPException
 from . import settingscontroller
 from .motorerrors import MotorOverrideConflictError
+from .settingserrors import SettingsError
 from pydantic import BaseModel
 from .context import get_master_controller
 from .common import epsilon, Vector2D, Line2D, fit_vector_to_polygon, rotate_vector
@@ -128,6 +129,8 @@ async def get_manual_control_motors():
         
         return {"success": True, "motors": result, "camera": camera_settings}
     
+    except SettingsError:
+        raise
     except Exception as e:
         print(f"Error getting manual control motors: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -179,6 +182,8 @@ async def save_manual_control_motors(*, request: SaveMotorVisibilityRequest):
         
         return {"success": True}
     
+    except SettingsError:
+        raise
     except Exception as e:
         print(f"Error saving manual control motors: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -279,6 +284,8 @@ async def manual_control_action(
         
         return {"success": True, "motors": result_motors}
     
+    except SettingsError:
+        raise
     except MotorOverrideConflictError as e:
         raise HTTPException(status_code=409, detail=str(e)) from e
     except HTTPException:

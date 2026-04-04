@@ -16,6 +16,7 @@ from .camera import Camera
 from .common import EPSILON_DELAY
 from . import settingscontroller
 from .context import get_master_controller
+from .settingserrors import SettingsError
 
 if TYPE_CHECKING:
     from .mastercontroller import MasterController
@@ -135,6 +136,8 @@ async def get_cameras_list():
         settings = await settingscontroller.get_settings()
         cameras = settings.get("cameras", {})
         return {"success": True, "cameras": cameras}
+    except SettingsError:
+        raise
     except Exception as e:
         print(f"Error getting cameras list: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -223,6 +226,8 @@ async def update_camera(
 
         return {"success": True}
 
+    except SettingsError:
+        raise
     except HTTPException:
         raise
     except Exception as e:
@@ -266,6 +271,8 @@ async def reset_camera(
         await settingscontroller.update_settings(update_reset_camera_settings)
         return {"success": True}
 
+    except SettingsError:
+        raise
     except HTTPException:
         raise
     except Exception as e:
@@ -290,6 +297,10 @@ async def reset_all_cameras(
         for camera_name in CAMERA_NAMES:
             await reset_camera(camera_code=camera_name, master_controller=master_controller)
         return {"success": True}
+    except SettingsError:
+        raise
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Error resetting all cameras: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -329,6 +340,8 @@ async def stop_camera(
 
         return {"success": True}
 
+    except SettingsError:
+        raise
     except IndexError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except HTTPException:
@@ -443,7 +456,9 @@ async def stream_camera(
             ),
             media_type='multipart/x-mixed-replace; boundary=frame'
         )
-        
+
+    except SettingsError:
+        raise
     except HTTPException:
         raise
     except Exception as e:

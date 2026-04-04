@@ -2,13 +2,20 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from copy import deepcopy
-from fastapi import HTTPException
 from pathlib import Path
 from tempfile import mkstemp
-from typing import Any, TypeVar
+from typing import Any, NoReturn, TypeVar
 import json
 import os
 import threading
+
+from .settingserrors import (
+    SettingsCacheClearError,
+    SettingsError,
+    SettingsLoadError,
+    SettingsSaveError,
+    SettingsUpdateError,
+)
 
 # Get the directory of the current file
 BASE_DIR = Path(__file__).resolve().parent
@@ -206,49 +213,94 @@ class SettingsStore:
 _SETTINGS_STORE = SettingsStore(SETTINGS_FILE)
 
 
+def _raise_settings_error(
+    error_type: type[SettingsError],
+    *,
+    message: str,
+    cause: Exception,
+) -> NoReturn:
+    raise error_type(message) from cause
+
+
 def get_settings_sync() -> Mapping[str, Any]:
     """Get a read-only in-memory snapshot of current settings."""
     try:
         return _SETTINGS_STORE.get_snapshot()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to load settings: {str(e)}")
+    except SettingsError:
+        raise
+    except Exception as exc:
+        _raise_settings_error(
+            SettingsLoadError,
+            message=f"Failed to load settings: {exc}",
+            cause=exc,
+        )
 
 
 async def get_settings() -> dict[str, Any]:
     """Get a detached mutable copy of current settings."""
     try:
         return _SETTINGS_STORE.get_copy()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to load settings: {str(e)}")
+    except SettingsError:
+        raise
+    except Exception as exc:
+        _raise_settings_error(
+            SettingsLoadError,
+            message=f"Failed to load settings: {exc}",
+            cause=exc,
+        )
 
 
 async def save_settings(settings: dict[str, Any]) -> dict[str, str | bool]:
     """Replace settings.json with the provided settings atomically."""
     try:
         return _SETTINGS_STORE.save(settings)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to save settings: {str(e)}")
+    except SettingsError:
+        raise
+    except Exception as exc:
+        _raise_settings_error(
+            SettingsSaveError,
+            message=f"Failed to save settings: {exc}",
+            cause=exc,
+        )
 
 
 async def update_settings(mutator: Callable[[dict[str, Any]], T]) -> T:
     """Run a serialized read-modify-write transaction over settings.json."""
     try:
         return _SETTINGS_STORE.update(mutator)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to update settings: {str(e)}")
+    except SettingsError:
+        raise
+    except Exception as exc:
+        _raise_settings_error(
+            SettingsUpdateError,
+            message=f"Failed to update settings: {exc}",
+            cause=exc,
+        )
 
 
 def clear_cached_settings_sync() -> dict[str, str | bool]:
     """Drop the cached settings snapshot."""
     try:
         return _SETTINGS_STORE.clear_cache()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to drop cached settings: {str(e)}")
+    except SettingsError:
+        raise
+    except Exception as exc:
+        _raise_settings_error(
+            SettingsCacheClearError,
+            message=f"Failed to drop cached settings: {exc}",
+            cause=exc,
+        )
 
 
 async def clear_cached_settings() -> dict[str, str | bool]:
     """Drop the cached settings snapshot."""
     try:
         return _SETTINGS_STORE.clear_cache()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to drop cached settings: {str(e)}")
+    except SettingsError:
+        raise
+    except Exception as exc:
+        _raise_settings_error(
+            SettingsCacheClearError,
+            message=f"Failed to drop cached settings: {exc}",
+            cause=exc,
+        )

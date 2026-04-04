@@ -8,6 +8,7 @@ from unittest import mock
 
 from pydantic import BaseModel
 from server.motorerrors import MotorOverrideConflictError
+from server.settingserrors import SettingsLoadError
 
 
 def _reset_modules(*module_names: str) -> None:
@@ -15,7 +16,12 @@ def _reset_modules(*module_names: str) -> None:
         sys.modules.pop(module_name, None)
 
 
-def _import_manualcontrol_module(*, initial_settings: dict):
+def _import_manualcontrol_module(
+    *,
+    initial_settings: dict,
+    get_settings_exception: Exception | None = None,
+    update_settings_exception: Exception | None = None,
+):
     _reset_modules(
         "server.restapimanualcontrol",
         "server.settingscontroller",
@@ -28,9 +34,13 @@ def _import_manualcontrol_module(*, initial_settings: dict):
     settingscontroller = types.ModuleType("server.settingscontroller")
 
     async def get_settings():
+        if get_settings_exception is not None:
+            raise get_settings_exception
         return deepcopy(settings_payload)
 
     async def update_settings(mutator):
+        if update_settings_exception is not None:
+            raise update_settings_exception
         mutator(settings_payload)
         return None
 
@@ -70,6 +80,17 @@ def _import_manualcontrol_module(*, initial_settings: dict):
 
 
 class ManualControlApiTests(unittest.TestCase):
+    def test_get_manual_control_motors_reraises_settings_errors(self):
+        module, _ = _import_manualcontrol_module(
+            initial_settings={},
+            get_settings_exception=SettingsLoadError("Failed to load settings: disk offline"),
+        )
+
+        with self.assertRaises(SettingsLoadError) as raised:
+            asyncio.run(module.get_manual_control_motors())
+
+        self.assertEqual(str(raised.exception), "Failed to load settings: disk offline")
+
     def test_save_manual_control_motors_updates_settings_and_camera(self):
         module, settings_payload = _import_manualcontrol_module(
             initial_settings={
