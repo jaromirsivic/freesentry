@@ -5,6 +5,7 @@ import math
 from enum import Enum
 import threading
 from .common import epsilon, Device
+from .platformcapabilities import get_host_capabilities
 #from periphery import PWM
 import subprocess
 
@@ -20,18 +21,25 @@ class PWMWrapper:
         self._value = initial_value
         self._pwm_frequency = pwm_frequency
         self._pwm = None
+        self._using_hardware_pwm = False
         self._device = device
         self._pin_factory = pin_factory
         periphery_available = False
+        capabilities = get_host_capabilities()
         # check if periphery is available
-        try:
-            from periphery import PWM
-            periphery_available = True
-        except Exception as e:
-            print(f"Failed to import periphery: {e} for pin {self._gpio_index}")
-            periphery_available = False
+        if (
+            capabilities.supports_hardware_pwm
+            and self._device == Device.RASPBERRY_PI_5
+            and self._gpio_index in [12, 13, 18, 19]
+        ):
+            try:
+                from periphery import PWM
+                periphery_available = True
+            except Exception as e:
+                print(f"Failed to import periphery: {e} for pin {self._gpio_index}")
+                periphery_available = False
         # if periphery is available, use it to create the pwm object for hardware pwm
-        if periphery_available and self._device == Device.RASPBERRY_PI_5 and self._gpio_index in [12, 13, 18, 19] and self._force_pin_muxing():
+        if periphery_available and self._force_pin_muxing():
             gpi = self._gpio_index
             PWM_CHIP = 0
             CHANNEL = 0 if gpi == 12 else 1 if gpi == 13 else 2 if gpi == 18 else 3
@@ -39,6 +47,7 @@ class PWMWrapper:
             self._pwm.period_ns = 1_000_000_000 // pwm_frequency
             self._pwm.duty_cycle_ns = int(self._pwm.period_ns * self._value)
             self._pwm.enable()
+            self._using_hardware_pwm = True
         # if periphery is not available, use gpiozero to create the pwm object for software pwm
         else:
             self._pwm = PWMOutputDevice(f"J8:{self._index}", 
@@ -57,6 +66,8 @@ class PWMWrapper:
         GPIO 18 -> Alt3 (PWM0 Chan 2)
         GPIO 19 -> Alt3 (PWM0 Chan 3)
         """
+        if not get_host_capabilities().supports_hardware_pwm:
+            return False
         print("Configuring Pin Muxing via pinctrl...")
         try:
             # We run these shell commands to force the mode
@@ -93,7 +104,7 @@ class PWMWrapper:
         Set the value of the pin
         """
         self._value = value
-        if self._device == Device.RASPBERRY_PI_5 and self._gpio_index in [12, 13, 18, 19]:
+        if self._using_hardware_pwm:
             self._pwm.duty_cycle_ns = int(self._pwm.period_ns * self._value)
         else:
             self._pwm.value = value
@@ -111,7 +122,7 @@ class PWMWrapper:
         Set the pwm frequency of the pin
         """
         self._pwm_frequency = pwm_frequency
-        if self._device == Device.RASPBERRY_PI_5 and self._gpio_index in [12, 13, 18, 19]:
+        if self._using_hardware_pwm:
             self._pwm.period_ns = 1_000_000_000 // pwm_frequency
             self._pwm.duty_cycle_ns = int(self._pwm.period_ns * self._value)
         else:
@@ -133,7 +144,7 @@ class PWMWrapper:
         """
         Close the pin
         """
-        if self._device == Device.RASPBERRY_PI_5 and self._gpio_index in [12, 13, 18, 19]:
+        if self._using_hardware_pwm:
             self.value = 0
             self._pwm.disable()
             self._pwm.close()

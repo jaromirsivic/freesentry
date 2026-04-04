@@ -6,9 +6,9 @@ import numpy as np
 from copy import deepcopy
 from threading import Lock
 from enum import Enum
-import platform
 import psutil
-import os
+
+from .platformcapabilities import get_host_capabilities
 
 # epsilon is used to compare floating point numbers
 epsilon = 0.000001
@@ -23,36 +23,23 @@ def get_platform_info() -> dict:
     """
     Get system information.
     """
-    # operating system uname
-    OPERATING_SYSTEM = platform.uname()._asdict()
-    # user name
-    USER_NAME = os.getlogin()
-    # user home directory
-    USER_HOME_DIRECTORY = os.path.expanduser("~")
-    # user current directory
-    #USER_CURRENT_DIRECTORY = os.getcwd()
-    # user current process
-    #USER_CURRENT_PROCESS = os.getpid()
+    capabilities = get_host_capabilities()
     # total memory
     TOTAL_MEMORY = psutil.virtual_memory()
     # cpu total system usage
     CPU_TOTAL_SYSTEM_USAGE = psutil.cpu_percent()
 
-    operating_system = f"{OPERATING_SYSTEM['system']} {OPERATING_SYSTEM['release']} ({OPERATING_SYSTEM['version']})"
-    architecture = f"{OPERATING_SYSTEM['processor']} ({OPERATING_SYSTEM['machine']})"
-    user = f"{OPERATING_SYSTEM['node']}/{USER_NAME} (HomeDir: {USER_HOME_DIRECTORY})"
+    operating_system = f"{capabilities.system_name} {capabilities.release} ({capabilities.version})"
+    architecture = f"{capabilities.processor} ({capabilities.machine})"
+    user = f"{capabilities.node_name}/{capabilities.user_name} (HomeDir: {capabilities.user_home_directory})"
     cpu = f"{CPU_TOTAL_SYSTEM_USAGE:.2f}%"
     # total system ram usage
     ram_used = TOTAL_MEMORY.total - TOTAL_MEMORY.available
     ram_total = TOTAL_MEMORY.total
     ram_percent = ram_used / ram_total * 100
     ram = f"{ram_percent:.2f}% - {ram_used / 1024 / 1024 / 1024:.2f} GB (used) / {ram_total / 1024 / 1024 / 1024:.2f} GB (total)"
-    # get operating system code
-    operating_system_code = f"{OPERATING_SYSTEM['system'].lower()}"
-    if operating_system_code == "linux" and operating_system.find("rpi") != -1:
-        operating_system_code = "raspberrypi5"
     return {
-        "operating_system_code": operating_system_code,
+        "operating_system_code": capabilities.operating_system_code,
         "operating_system": operating_system,
         "architecture": architecture,
         "user": user,

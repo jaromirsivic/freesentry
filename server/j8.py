@@ -1,4 +1,5 @@
 from .pin import Pin
+from .platformcapabilities import get_host_capabilities
 from .settingscontroller import get_settings_sync
 import threading
 
@@ -66,6 +67,15 @@ class J8(list):
             self._hard_reset_required = False
             self.reset()
 
+    def _set_dummy_pins_locked(self, *, error_message: str) -> None:
+        self._initialized = False
+        self._error_message = error_message
+        self._pin_factory = None
+        self._pins = [
+            Pin(index=0, gpio_index=None, name=f"Dummy GPIO {index}", pin_factory=None)
+            for index in range(41)
+        ]
+
     def reset(self):
         """
         Reset the J8.
@@ -79,6 +89,19 @@ class J8(list):
             # try to initialize pins
             try:
                 self.release()
+                capabilities = get_host_capabilities()
+                if not capabilities.is_raspberry_pi:
+                    self._set_dummy_pins_locked(
+                        error_message="GPIO control is unavailable on this host because it is not a Raspberry Pi."
+                    )
+                    print(self._error_message)
+                    return
+                if not capabilities.has_lgpio:
+                    self._set_dummy_pins_locked(
+                        error_message="GPIO control is unavailable because lgpio support is not installed."
+                    )
+                    print(self._error_message)
+                    return
                 # try to get the controller setup from settings.json
                 settings = get_settings_sync()
                 controller_setup = settings.get('general', {}).get('controllerSetup', {})
@@ -119,9 +142,11 @@ class J8(list):
                     from gpiozero.pins.lgpio import LGPIOFactory
                     self._pin_factory = LGPIOFactory()
                 except Exception as e:
-                    self._error_message = f"Failed to initialize J8 pins using lgpio: {e}. Reverting to pin_factory=None."
+                    self._set_dummy_pins_locked(
+                        error_message=f"Failed to initialize J8 pins using lgpio: {e}"
+                    )
                     print(self._error_message)
-                    self._pin_factory = None
+                    return
                 # setup the pins                
                 self._pins.append(Pin(index=0, gpio_index=None, name="Dummy GPIO 0", pin_factory=self._pin_factory))
                 self._pins.append(Pin(index=1, gpio_index=None, name="3v3 Power", pin_factory=self._pin_factory))
@@ -166,9 +191,8 @@ class J8(list):
                 self._pins.append(Pin(index=40, gpio_index=21, name="GPIO 21", pin_factory=self._pin_factory))
                 self._initialized = True
             except Exception as e:
-                self._error_message = f"Failed to initialize J8 pins: {e}"
+                self._set_dummy_pins_locked(error_message=f"Failed to initialize J8 pins: {e}")
                 self._hard_reset_required = True
-                self._pins = [Pin(index=0, gpio_index=None, name=f"Dummy GPIO {index}", pin_factory=None) for index in range(41)]
 
     @property
     def initialized(self):

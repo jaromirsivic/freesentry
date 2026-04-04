@@ -47,6 +47,19 @@ def _make_router_module(name: str) -> types.ModuleType:
     return module
 
 
+def _make_capabilities(**overrides):
+    data = {
+        "system_name": "TestOS",
+        "system_code": "test",
+        "operating_system_code": "test",
+        "startup_script_os_codes": ("test",),
+        "supports_wifi_configuration": False,
+        "is_raspberry_pi": False,
+    }
+    data.update(overrides)
+    return types.SimpleNamespace(**data)
+
+
 def _make_stub_modules() -> dict[str, types.ModuleType]:
     async def get_settings():
         return {}
@@ -61,12 +74,17 @@ def _make_stub_modules() -> dict[str, types.ModuleType]:
     common = types.ModuleType("server.common")
     common.get_platform_info = lambda: {"operating_system_code": "test"}
 
+    platformcapabilities = types.ModuleType("server.platformcapabilities")
+    platformcapabilities.HostCapabilities = object
+    platformcapabilities.get_host_capabilities = lambda: _make_capabilities()
+
     mastercontroller = types.ModuleType("server.mastercontroller")
     mastercontroller.MasterController = FakeMasterController
 
     modules = {
         "server.settingscontroller": settingscontroller,
         "server.common": common,
+        "server.platformcapabilities": platformcapabilities,
         "server.mastercontroller": mastercontroller,
     }
 
@@ -175,6 +193,7 @@ class LifecycleTests(unittest.TestCase):
             "server.main",
             "server.settingscontroller",
             "server.common",
+            "server.platformcapabilities",
             "server.mastercontroller",
             "server.restapimotors",
             "server.restapicameras_old",
@@ -241,7 +260,7 @@ class LifecycleTests(unittest.TestCase):
         startup_entered = threading.Event()
         release_startup = threading.Event()
 
-        def slow_wifi_startup(*, settings, os_code):
+        def slow_wifi_startup(*, settings, capabilities):
             startup_entered.set()
             release_startup.wait(timeout=1.0)
 
@@ -297,6 +316,73 @@ class LifecycleTests(unittest.TestCase):
                 self.assertEqual(response.status_code, 503)
                 self.assertEqual(response.json()["phase"], "failed")
                 self.assertIn("startup script failed", response.json()["lastError"])
+
+    def test_readiness_reports_failed_platform_probe(self):
+        module = self._import_main()
+
+        with mock.patch.object(
+            module,
+            "get_host_capabilities",
+            side_effect=RuntimeError("platform probe failed"),
+        ):
+            with TestClient(module.app) as client:
+                deadline = time.monotonic() + 1.0
+                response = None
+                while time.monotonic() < deadline:
+                    response = client.get("/api/health/readiness")
+                    if response.json()["phase"] == "failed":
+                        break
+                    time.sleep(0.01)
+
+                self.assertIsNotNone(response)
+                self.assertEqual(response.status_code, 503)
+                self.assertEqual(response.json()["phase"], "failed")
+                self.assertIn("platform probe failed", response.json()["lastError"])
+
+    def test_wifi_startup_skips_when_required_capabilities_are_missing(self):
+        module = self._import_main()
+        capabilities = _make_capabilities(
+            operating_system_code="raspberrypi5",
+            supports_wifi_configuration=False,
+            is_raspberry_pi=True,
+        )
+
+        with mock.patch.object(
+            module.subprocess,
+            "run",
+            side_effect=AssertionError("nmcli should not be executed"),
+        ):
+            module._wifi_startup_sync(
+                settings={"general": {"wifi": {"mode": "client"}}},
+                capabilities=capabilities,
+            )
+
+    def test_startup_script_lookup_supports_macos_alias(self):
+        module = self._import_main()
+        capabilities = _make_capabilities(
+            system_name="Darwin",
+            system_code="darwin",
+            operating_system_code="macos",
+            startup_script_os_codes=("macos", "darwin"),
+        )
+
+        selected_os_code, startup_entry = module._resolve_startup_script_entry(
+            settings={
+                "general": {
+                    "startupScript": {
+                        "macos": {
+                            "language": "python",
+                            "script": "print('hello')",
+                        }
+                    }
+                }
+            },
+            capabilities=capabilities,
+        )
+
+        self.assertEqual(selected_os_code, "macos")
+        self.assertIsNotNone(startup_entry)
+        self.assertEqual(startup_entry["language"], "python")
 
     def test_ai_agent_init_does_not_start_thread(self):
         aiagent = importlib.import_module("server.aiagent")

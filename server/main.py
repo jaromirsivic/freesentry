@@ -24,8 +24,8 @@ from .context import (
     set_startup_state,
 )
 from .mastercontroller import MasterController
-from .common import get_platform_info
 from . import settingscontroller
+from .platformcapabilities import HostCapabilities, get_host_capabilities
 from . import restapihealth
 from . import restapimotors
 #from . import restapicameras_old
@@ -36,20 +36,40 @@ from . import restapimanualcontrol
 from . import restapiaisetup
 from . import restapiosmanagement
 
-def _execute_startup_script_sync(*, settings: Mapping[str, Any], os_code: str) -> None:
+def _resolve_startup_script_entry(
+    *,
+    settings: Mapping[str, Any],
+    capabilities: HostCapabilities,
+) -> tuple[str | None, Mapping[str, Any] | None]:
+    startup_scripts = settings.get("general", {}).get("startupScript", {})
+    if not isinstance(startup_scripts, Mapping):
+        return None, None
+
+    for os_code in capabilities.startup_script_os_codes:
+        startup_entry = startup_scripts.get(os_code)
+        if isinstance(startup_entry, Mapping):
+            return os_code, startup_entry
+
+    return None, None
+
+
+def _execute_startup_script_sync(*, settings: Mapping[str, Any], capabilities: HostCapabilities) -> None:
     """Load and execute the OS-specific startup script from settings.json."""
-    print(f"Operating system code: {os_code}")
+    print(f"Operating system code: {capabilities.operating_system_code}")
     try:
-        startup_entry = settings.get("general", {}).get("startupScript", {}).get(os_code, None)
+        selected_os_code, startup_entry = _resolve_startup_script_entry(
+            settings=settings,
+            capabilities=capabilities,
+        )
         if startup_entry is None:
-            print(f"No startup script found for '{os_code}', skipping.")
+            print(f"No startup script found for '{capabilities.operating_system_code}', skipping.")
             return
         language = startup_entry.get("language", "")
         script = startup_entry.get("script", "")
         if not script:
-            print(f"Startup script for '{os_code}' is empty, skipping.")
+            print(f"Startup script for '{selected_os_code}' is empty, skipping.")
             return
-        print(f"Executing startup script for '{os_code}' (language: {language})...")
+        print(f"Executing startup script for '{selected_os_code}' (language: {language})...")
         if language == "python":
             exec(script)
         else:
@@ -58,9 +78,12 @@ def _execute_startup_script_sync(*, settings: Mapping[str, Any], os_code: str) -
         print(f"Startup script error: {e}")
         raise
 
-def _wifi_startup_sync(*, settings: Mapping[str, Any], os_code: str) -> None:
+def _wifi_startup_sync(*, settings: Mapping[str, Any], capabilities: HostCapabilities) -> None:
     """Configure wifi on Raspberry Pi based on settings.json."""
-    if not os_code.startswith("raspberrypi"):
+    if not capabilities.operating_system_code.startswith("raspberrypi"):
+        return
+    if not capabilities.supports_wifi_configuration:
+        print("Wifi startup skipped: required Raspberry Pi wifi capabilities are unavailable.")
         return
     try:
         wifi = settings.get("general", {}).get("wifi", None)
@@ -138,13 +161,17 @@ def log_ai_runtime_diagnostics() -> None:
 
 async def _run_deferred_startup(app: FastAPI) -> None:
     startup_state = get_startup_state_from_app(app)
-    os_code = get_platform_info().get("operating_system_code", "")
 
     try:
+        capabilities = get_host_capabilities()
         await asyncio.to_thread(log_ai_runtime_diagnostics)
         settings = await settingscontroller.get_settings()
-        await asyncio.to_thread(_wifi_startup_sync, settings=settings, os_code=os_code)
-        await asyncio.to_thread(_execute_startup_script_sync, settings=settings, os_code=os_code)
+        await asyncio.to_thread(_wifi_startup_sync, settings=settings, capabilities=capabilities)
+        await asyncio.to_thread(
+            _execute_startup_script_sync,
+            settings=settings,
+            capabilities=capabilities,
+        )
     except asyncio.CancelledError:
         print("Deferred startup task cancelled.")
         raise
