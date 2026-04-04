@@ -11,11 +11,25 @@ from server import aiagent, common
 
 
 class FakeMotor:
-    def __init__(self):
+    def __init__(self, *, current_speed: float = 0.0, target_speed: float = 0.0):
         self.speeds: list[float] = []
+        self.current_speed = current_speed
+        self.target_speed = target_speed
 
     def move(self, *, speed: float):
-        self.speeds.append(speed)
+        resolved_speed = float(speed)
+        self.speeds.append(resolved_speed)
+        self.target_speed = resolved_speed
+
+
+class FakePin:
+    def __init__(self):
+        self.value = 0.0
+        self.reset_calls = 0
+
+    def reset(self):
+        self.value = 0.0
+        self.reset_calls += 1
 
 
 class FakeMotorsController:
@@ -163,16 +177,36 @@ class MotorsControllerApiTests(unittest.TestCase):
         with mock.patch.dict(sys.modules, {"gpiozero": gpiozero}):
             return importlib.import_module("server.motorscontroller")
 
+    def _make_controller(
+        self,
+        motorscontroller,
+        *,
+        motors_by_index: dict[int, FakeMotor] | None = None,
+        motors_by_name: dict[str, FakeMotor] | None = None,
+        pin_count: int = 8,
+    ):
+        controller = motorscontroller.MotorsController.__new__(motorscontroller.MotorsController)
+        controller._lock = threading.RLock()
+        controller._j8 = [FakePin() for _ in range(pin_count)]
+        controller._motors_by_index = motors_by_index or {}
+        controller._motors = motors_by_name or {}
+        controller._manual_override_pin_index = None
+        controller._manual_override_pwm_multiplier = None
+        controller._paused = threading.Event()
+        controller._paused.set()
+        controller._running = False
+        controller._thread_started = False
+        return controller
+
     def test_set_motor_speed_by_index_moves_matching_motor(self):
         motorscontroller = self._import_motorscontroller()
         motor = FakeMotor()
-        controller = types.SimpleNamespace(
-            _lock=threading.RLock(),
-            _motors_by_index={2: motor},
+        controller = self._make_controller(
+            motorscontroller,
+            motors_by_index={2: motor},
         )
 
-        applied = motorscontroller.MotorsController.set_motor_speed_by_index(
-            controller,
+        applied = controller.set_motor_speed_by_index(
             motor_index=2,
             speed=0.75,
         )
@@ -183,18 +217,72 @@ class MotorsControllerApiTests(unittest.TestCase):
     def test_set_motor_speed_by_index_returns_false_for_unknown_index(self):
         motorscontroller = self._import_motorscontroller()
         motor = FakeMotor()
-        controller = types.SimpleNamespace(
-            _lock=threading.RLock(),
-            _motors_by_index={0: motor},
+        controller = self._make_controller(
+            motorscontroller,
+            motors_by_index={0: motor},
         )
 
-        applied = motorscontroller.MotorsController.set_motor_speed_by_index(
-            controller,
+        applied = controller.set_motor_speed_by_index(
             motor_index=5,
             speed=0.75,
         )
 
         self.assertFalse(applied)
+        self.assertEqual(motor.speeds, [])
+
+    def test_start_manual_override_pauses_loop_and_sets_pin(self):
+        motorscontroller = self._import_motorscontroller()
+        controller = self._make_controller(motorscontroller)
+
+        active_pin = controller.start_manual_override(pin_index=2, pwm_multiplier=0.4)
+
+        self.assertEqual(active_pin, 2)
+        self.assertTrue(controller.manual_override_active)
+        self.assertEqual(controller.manual_override_pin_index, 2)
+        self.assertFalse(controller._paused.is_set())
+        self.assertEqual(controller._j8[2].value, 0.4)
+
+    def test_stop_manual_override_resets_pin_and_resumes_loop(self):
+        motorscontroller = self._import_motorscontroller()
+        controller = self._make_controller(motorscontroller)
+        controller.start_manual_override(pin_index=3, pwm_multiplier=0.6)
+
+        stopped_pin = controller.stop_manual_override(pin_index=3)
+
+        self.assertEqual(stopped_pin, 3)
+        self.assertFalse(controller.manual_override_active)
+        self.assertIsNone(controller.manual_override_pin_index)
+        self.assertTrue(controller._paused.is_set())
+        self.assertEqual(controller._j8[3].value, 0.0)
+        self.assertEqual(controller._j8[3].reset_calls, 1)
+
+    def test_start_manual_override_refuses_busy_motor(self):
+        motorscontroller = self._import_motorscontroller()
+        busy_motor = FakeMotor(current_speed=0.2, target_speed=0.2)
+        controller = self._make_controller(
+            motorscontroller,
+            motors_by_name={"leftArm": busy_motor},
+        )
+
+        with self.assertRaises(motorscontroller.MotorOverrideConflictError):
+            controller.start_manual_override(pin_index=1, pwm_multiplier=0.5)
+
+        self.assertTrue(controller._paused.is_set())
+        self.assertFalse(controller.manual_override_active)
+
+    def test_set_motor_speed_by_index_refuses_commands_during_manual_override(self):
+        motorscontroller = self._import_motorscontroller()
+        motor = FakeMotor()
+        controller = self._make_controller(
+            motorscontroller,
+            motors_by_index={0: motor},
+            motors_by_name={"leftArm": motor},
+        )
+        controller.start_manual_override(pin_index=2, pwm_multiplier=0.5)
+
+        with self.assertRaises(motorscontroller.MotorOverrideConflictError):
+            controller.set_motor_speed_by_index(motor_index=0, speed=0.75)
+
         self.assertEqual(motor.speeds, [])
 
 

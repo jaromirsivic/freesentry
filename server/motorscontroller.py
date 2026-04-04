@@ -1,7 +1,9 @@
 import threading
 import time
+from .common import epsilon
 from .j8 import J8
 from .motor import Motor
+from .motorerrors import MotorOverrideConflictError
 from .motorlinearactuator import MotorLinearActuator
 from .speedhistogram import SpeedHistogram
 from .pin import PinType
@@ -17,6 +19,8 @@ class MotorsController(threading.Thread):
         self._j8 = J8()
         self._motors: dict[str, Motor] = {}
         self._motors_by_index: dict[int, Motor] = {}
+        self._manual_override_pin_index: int | None = None
+        self._manual_override_pwm_multiplier: float | None = None
         self._running = False
         self._paused = threading.Event()
         self._paused.set()  # Start in "running" (not paused) state
@@ -32,6 +36,84 @@ class MotorsController(threading.Thread):
     def motors(self) -> dict[str, Motor]:
         with self._lock:
             return self._motors
+
+    @property
+    def manual_override_active(self) -> bool:
+        with self._lock:
+            return self._manual_override_pin_index is not None
+
+    @property
+    def manual_override_pin_index(self) -> int | None:
+        with self._lock:
+            return self._manual_override_pin_index
+
+    def _resolve_motor_speed(self, *, speed: float) -> float:
+        try:
+            return float(speed)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("speed must be a number.") from exc
+
+    def _resolve_pin_index(self, *, pin_index: int) -> int:
+        try:
+            resolved_pin_index = int(pin_index)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("pin_index must be an integer.") from exc
+
+        if resolved_pin_index < 0:
+            raise ValueError("pin_index must be non-negative.")
+
+        try:
+            self._j8[resolved_pin_index]
+        except IndexError as exc:
+            raise ValueError(f"Unknown J8 pin index: {resolved_pin_index}") from exc
+
+        return resolved_pin_index
+
+    def _resolve_pwm_multiplier(self, *, pwm_multiplier: float) -> float:
+        try:
+            resolved_pwm_multiplier = float(pwm_multiplier)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("pwm_multiplier must be a number.") from exc
+
+        if not 0 <= resolved_pwm_multiplier <= 1:
+            raise ValueError("pwm_multiplier must be between 0 and 1.")
+
+        return resolved_pwm_multiplier
+
+    def _motor_is_idle_locked(self, *, motor: Motor) -> bool:
+        try:
+            current_speed = float(getattr(motor, "current_speed"))
+            target_speed = float(getattr(motor, "target_speed"))
+        except (AttributeError, TypeError, ValueError):
+            return False
+
+        return abs(current_speed) <= epsilon and abs(target_speed) <= epsilon
+
+    def _motors_are_idle_locked(self) -> bool:
+        return all(self._motor_is_idle_locked(motor=motor) for motor in self._motors.values())
+
+    def _ensure_no_manual_override_locked(self) -> None:
+        active_pin = self._manual_override_pin_index
+        if active_pin is not None:
+            raise MotorOverrideConflictError(
+                f"Manual hardware override is active on pin {active_pin}. "
+                "Stop it before sending managed motor commands."
+            )
+
+    def _set_motor_speed_locked(self, *, motor: Motor | None, speed: float) -> bool:
+        self._ensure_no_manual_override_locked()
+        if motor is None:
+            return False
+        motor.move(speed=speed)
+        return True
+
+    def _clear_manual_override_locked(self) -> int | None:
+        active_pin = self._manual_override_pin_index
+        self._manual_override_pin_index = None
+        self._manual_override_pwm_multiplier = None
+        if active_pin is not None:
+            self._j8[active_pin].reset()
+        return active_pin
 
     def _initialize_motors(self, *, is_hard_reset: bool = False):
         """
@@ -100,16 +182,81 @@ class MotorsController(threading.Thread):
         """
         try:
             resolved_index = int(motor_index)
-            resolved_speed = float(speed)
         except (TypeError, ValueError):
             return False
 
+        resolved_speed = self._resolve_motor_speed(speed=speed)
+
         with self._lock:
             motor = self._motors_by_index.get(resolved_index)
-            if motor is None:
-                return False
-            motor.move(speed=resolved_speed)
-            return True
+            return self._set_motor_speed_locked(motor=motor, speed=resolved_speed)
+
+    def set_motor_speed_by_name(self, *, motor_name: str, speed: float) -> bool:
+        """Set a motor target speed by configured name."""
+        if not isinstance(motor_name, str) or len(motor_name.strip()) == 0:
+            return False
+
+        resolved_speed = self._resolve_motor_speed(speed=speed)
+
+        with self._lock:
+            motor = self._motors.get(motor_name)
+            return self._set_motor_speed_locked(motor=motor, speed=resolved_speed)
+
+    def start_manual_override(self, *, pin_index: int, pwm_multiplier: float) -> int:
+        """Pause managed motor control and drive a single pin directly for test use."""
+        resolved_pin_index = self._resolve_pin_index(pin_index=pin_index)
+        resolved_pwm_multiplier = self._resolve_pwm_multiplier(pwm_multiplier=pwm_multiplier)
+
+        with self._lock:
+            active_pin = self._manual_override_pin_index
+            if active_pin is not None:
+                if active_pin != resolved_pin_index:
+                    raise MotorOverrideConflictError(
+                        f"Manual hardware override is already active on pin {active_pin}. "
+                        "Stop it before switching pins."
+                    )
+                self._manual_override_pwm_multiplier = resolved_pwm_multiplier
+                self._j8[resolved_pin_index].value = resolved_pwm_multiplier
+                return resolved_pin_index
+
+            if not self._motors_are_idle_locked():
+                raise MotorOverrideConflictError(
+                    "Manual hardware override requires all managed motors to be idle."
+                )
+
+            self.pause()
+            try:
+                self._j8[resolved_pin_index].value = resolved_pwm_multiplier
+            except Exception:
+                self._paused.set()
+                raise
+
+            self._manual_override_pin_index = resolved_pin_index
+            self._manual_override_pwm_multiplier = resolved_pwm_multiplier
+            return resolved_pin_index
+
+    def stop_manual_override(self, *, pin_index: int | None = None) -> int | None:
+        """Stop the active manual override and resume managed motor control."""
+        if pin_index is not None:
+            self._resolve_pin_index(pin_index=pin_index)
+
+        with self._lock:
+            active_pin = self._manual_override_pin_index
+            if active_pin is None:
+                return None
+
+            cleanup_error: Exception | None = None
+            try:
+                self._clear_manual_override_locked()
+            except Exception as exc:
+                cleanup_error = exc
+            finally:
+                self.resume()
+
+            if cleanup_error is not None:
+                raise cleanup_error
+
+            return active_pin
 
     def reset(self, *, is_hard_reset: bool = False):
         """
@@ -119,6 +266,7 @@ class MotorsController(threading.Thread):
         with self._lock:
             self.pause()
             try:
+                self._clear_manual_override_locked()
                 self._initialize_motors(is_hard_reset=is_hard_reset)
             finally:
                 self.resume()
@@ -133,7 +281,10 @@ class MotorsController(threading.Thread):
         """
         Resume the motor execution loop after pause.
         """
-        self._paused.set()
+        with self._lock:
+            if self._manual_override_pin_index is not None:
+                return
+            self._paused.set()
 
     def run(self):
         """
@@ -171,11 +322,12 @@ class MotorsController(threading.Thread):
         """
         self._running = False
         # Resume if paused to allow thread to exit
-        self.resume()
+        self._paused.set()
         if self._thread_started and self.is_alive():
             self.join(timeout=1.0)
         
         with self._lock:
+            self._clear_manual_override_locked()
             # Delete all motors
             self._motors = {}
             self._motors_by_index = {}

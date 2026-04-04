@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 from . import settingscontroller
 from .context import get_master_controller
+from .motorerrors import MotorOverrideConflictError
 
 if TYPE_CHECKING:
     from .mastercontroller import MasterController
@@ -25,6 +26,14 @@ class MotorSpeedRequest(BaseModel):
 async def get_j8(master_controller: "MasterController"):
     """Get the J8 instance from the motors controller"""
     return master_controller.motors_controller.j8
+
+
+def _raise_motor_http_error(exc: Exception) -> None:
+    if isinstance(exc, MotorOverrideConflictError):
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if isinstance(exc, ValueError):
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 @router.get("/api/settings/motors")
 async def get_motors_settings_endpoint():
@@ -67,30 +76,48 @@ async def start_motor_action(
     request: MotorActionStartRequest,
     master_controller: "MasterController" = Depends(get_master_controller),
 ):
-    """Start motor action: set J8[pin_index] to pwm_multiplier"""
+    """Start an exclusive manual hardware override for histogram quick-test."""
     try:
-        j8 = await get_j8(master_controller=master_controller)
-        # Note: We do not reset the controller here because it would interrupt the automatic execution loop.
-        
-        j8[request.pin_index].value = request.pwm_multiplier
-        return {"success": True, "message": f"Pin {request.pin_index} set to {request.pwm_multiplier}"}
+        active_pin = master_controller.motors_controller.start_manual_override(
+            pin_index=request.pin_index,
+            pwm_multiplier=request.pwm_multiplier,
+        )
+        return {
+            "success": True,
+            "pin_index": active_pin,
+            "message": f"Manual hardware override active on pin {active_pin}",
+        }
+    except HTTPException:
+        raise
     except Exception as e:
         print(str(e))
-        raise HTTPException(status_code=500, detail=str(e))
+        _raise_motor_http_error(e)
 
 @router.post("/api/motors/action/stop")
 async def stop_motor_action(
     request: MotorActionStopRequest,
     master_controller: "MasterController" = Depends(get_master_controller),
 ):
-    """Stop motor action: reset J8[pin_index]"""
+    """Stop the active manual hardware override and resume managed control."""
     try:
-        j8 = await get_j8(master_controller=master_controller)
-        j8[request.pin_index].reset()
-        return {"success": True, "message": f"Pin {request.pin_index} reset"}
+        stopped_pin = master_controller.motors_controller.stop_manual_override(
+            pin_index=request.pin_index
+        )
+        if stopped_pin is None:
+            return {
+                "success": True,
+                "message": "No manual hardware override was active.",
+            }
+        return {
+            "success": True,
+            "pin_index": stopped_pin,
+            "message": f"Manual hardware override on pin {stopped_pin} stopped",
+        }
+    except HTTPException:
+        raise
     except Exception as e:
         print(str(e))
-        raise HTTPException(status_code=500, detail=str(e))
+        _raise_motor_http_error(e)
 
 @router.post("/api/motors/speed")
 async def set_motor_speed(
@@ -99,15 +126,18 @@ async def set_motor_speed(
 ):
     """Set motor speed via REST API"""
     try:
-        motors = master_controller.motors_controller.motors
-        if request.motor_name in motors:
-            motors[request.motor_name].move(speed=float(request.speed))
-            return {"success": True, "motor_name": request.motor_name, "speed": request.speed}
-        else:
+        applied = master_controller.motors_controller.set_motor_speed_by_name(
+            motor_name=request.motor_name,
+            speed=request.speed,
+        )
+        if not applied:
             raise HTTPException(status_code=404, detail=f"Motor not found: {request.motor_name}")
+        return {"success": True, "motor_name": request.motor_name, "speed": request.speed}
+    except HTTPException:
+        raise
     except Exception as e:
         print(str(e))
-        raise HTTPException(status_code=500, detail=str(e))
+        _raise_motor_http_error(e)
 
 @router.get("/api/motors/speedhistogram")
 async def get_speed_histogram_endpoint():

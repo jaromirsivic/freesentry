@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from . import settingscontroller
+from .motorerrors import MotorOverrideConflictError
 from pydantic import BaseModel
 from .context import get_master_controller
 from .common import epsilon, Vector2D, Line2D, fit_vector_to_polygon, rotate_vector
@@ -228,22 +229,25 @@ async def manual_control_action(
         # Set speed for motors 0 and 1 based on Polygon joystick
         # Motor 0 uses joystick.x, Motor 1 uses joystick.y
         if 0 in index_to_name:
-            motor_name = index_to_name[0]
-            if motor_name in motors_controller.motors:
-                motors_controller.motors[motor_name].move(speed=request.joystick.x)
+            motors_controller.set_motor_speed_by_index(
+                motor_index=0,
+                speed=request.joystick.x,
+            )
         
         if 1 in index_to_name:
-            motor_name = index_to_name[1]
-            if motor_name in motors_controller.motors:
-                motors_controller.motors[motor_name].move(speed=request.joystick.y)
+            motors_controller.set_motor_speed_by_index(
+                motor_index=1,
+                speed=request.joystick.y,
+            )
         
         # Set speed for other motors based on their Joystick1D values
         for motor_action in request.motors:
             motor_index = motor_action.index
             if motor_index in index_to_name:
-                motor_name = index_to_name[motor_index]
-                if motor_name in motors_controller.motors:
-                    motors_controller.motors[motor_name].move(speed=motor_action.value)
+                motors_controller.set_motor_speed_by_index(
+                    motor_index=motor_index,
+                    speed=motor_action.value,
+                )
         
         # Collect motor status for response
         # Include motors 0, 1 and all motors from the request
@@ -251,12 +255,13 @@ async def manual_control_action(
         for motor_action in request.motors:
             motor_indices_to_report.add(motor_action.index)
         
+        motors_snapshot = motors_controller.motors
         result_motors = []
         for motor_index in sorted(motor_indices_to_report):
             if motor_index in index_to_name:
                 motor_name = index_to_name[motor_index]
-                if motor_name in motors_controller.motors:
-                    motor = motors_controller.motors[motor_name]
+                if motor_name in motors_snapshot:
+                    motor = motors_snapshot[motor_name]
                     result_motors.append({
                         "index": motor_index,
                         "position": motor.position,
@@ -274,6 +279,10 @@ async def manual_control_action(
         
         return {"success": True, "motors": result_motors}
     
+    except MotorOverrideConflictError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Error in manual control action: {e}")
         raise HTTPException(status_code=500, detail=str(e))

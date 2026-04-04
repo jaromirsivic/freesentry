@@ -41,6 +41,7 @@ const Motors = () => {
     // Histogram Quick Test Timer state
     const [motorActionTimer, setMotorActionTimer] = useState(0); // timer in ms
     const [motorActionActive, setMotorActionActive] = useState(false);
+    const [motorActionError, setMotorActionError] = useState('');
     const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
     const [showPinDiagram, setShowPinDiagram] = useState(false);
     const timerIntervalRef = useRef(null);
@@ -132,6 +133,7 @@ const Motors = () => {
 
         setEditingMotor(motorCopy);
         setEditingMotorIndex(index);
+        setMotorActionError('');
         setShowPinDiagram(false);
         setIsModalOpen(true);
     };
@@ -146,6 +148,7 @@ const Motors = () => {
         startTimeRef.current = Date.now();
         setMotorActionTimer(0);
         setMotorActionActive(true);
+        setMotorActionError('');
         // Start new interval - calculate elapsed time from saved datetime
         timerIntervalRef.current = setInterval(() => {
             const elapsed = Date.now() - startTimeRef.current;
@@ -170,6 +173,7 @@ const Motors = () => {
     const stopActiveMotorAction = useCallback(async ({ resetUiState = true, errorContext = 'cleanup' } = {}) => {
         const activePin = activeMotorPinRef.current;
         activeMotorPinRef.current = null;
+        setMotorActionError('');
         stopMotorActionTimer({
             resetUiState,
             resetTimerValue: resetUiState
@@ -192,6 +196,7 @@ const Motors = () => {
         setIsModalOpen(false);
         setEditingMotor(null);
         setEditingMotorIndex(-1);
+        setMotorActionError('');
         setShowPinDiagram(false);
     };
 
@@ -1027,6 +1032,10 @@ const Motors = () => {
                                                             activeMotorPinRef.current = pinIndex;
                                                             startMotorActionTimer();
                                                         } catch (error) {
+                                                            activeMotorPinRef.current = null;
+                                                            stopMotorActionTimer();
+                                                            updateSpeedHistogramField('defaultState', 'stop');
+                                                            setMotorActionError(error?.message || 'Motor action is unavailable right now.');
                                                             console.error('Failed to start motor action:', error);
                                                         }
                                                     } else if (val === 'stop') {
@@ -1044,6 +1053,15 @@ const Motors = () => {
                                                 fontWeight: motorActionActive ? 'bold' : 'normal'
                                             }}
                                         />
+                                        {motorActionError && (
+                                            <StaticText
+                                                text={motorActionError}
+                                                style={{
+                                                    fontSize: '0.9rem',
+                                                    color: '#dc2626'
+                                                }}
+                                            />
+                                        )}
                                     </div>
 
                                     <HorizontalSeparator label="Speed Histogram" fullWidth={true} bleed="1rem" />

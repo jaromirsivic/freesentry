@@ -7,6 +7,7 @@ from copy import deepcopy
 from unittest import mock
 
 from pydantic import BaseModel
+from server.motorerrors import MotorOverrideConflictError
 
 
 def _reset_modules(*module_names: str) -> None:
@@ -126,6 +127,47 @@ class ManualControlApiTests(unittest.TestCase):
                 "spotterCamera3Mode": 1,
             },
         )
+
+    def test_manual_control_action_returns_409_when_override_is_active(self):
+        module, _ = _import_manualcontrol_module(
+            initial_settings={
+                "motors": [
+                    {"name": "Left motor", "enabled": True},
+                    {"name": "Right motor", "enabled": True},
+                ],
+                "polygon": [],
+                "general": {"joystickSetup": {"rotationAngle": 0}},
+            },
+        )
+
+        class ConflictMotorsController:
+            motors = {}
+
+            def set_motor_speed_by_index(self, *, motor_index: int, speed: float) -> bool:
+                raise MotorOverrideConflictError(
+                    "Manual hardware override is active on pin 12. "
+                    "Stop it before sending managed motor commands."
+                )
+
+        request = module.ManualControlActionRequest(
+            fullscreen=False,
+            joystick=module.Vector2D(x=0.25, y=-0.5),
+            motors=[],
+        )
+        master_controller = types.SimpleNamespace(
+            motors_controller=ConflictMotorsController()
+        )
+
+        with self.assertRaises(module.HTTPException) as raised:
+            asyncio.run(
+                module.manual_control_action(
+                    request=request,
+                    master_controller=master_controller,
+                )
+            )
+
+        self.assertEqual(raised.exception.status_code, 409)
+        self.assertIn("Manual hardware override is active on pin 12", raised.exception.detail)
 
 
 if __name__ == "__main__":

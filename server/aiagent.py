@@ -1,5 +1,6 @@
 from ast import Return
 from collections import deque
+from .motorerrors import MotorOverrideConflictError
 from .settingscontroller import get_settings_sync
 from .common import Vector2D, Circle, AICircle
 import time
@@ -96,12 +97,34 @@ class AIAgent(threading.Thread):
             print(f"Error looking up motor for role '{role}': {e}")
         return None
 
+    def _get_motor_index_by_role(self, *, role: str) -> int | None:
+        """Return the settings index for the enabled motor with the given role."""
+        try:
+            settings = get_settings_sync()
+            for motor_index, motor_config in enumerate(settings.get("motors", [])):
+                if motor_config.get("role") == role and motor_config.get("enabled", False):
+                    return motor_index
+        except Exception as e:
+            print(f"Error looking up motor index for role '{role}': {e}")
+        return None
+
     def _stop_arm_motors(self) -> None:
         """Set both arm motors to speed 0."""
         for role in ("leftArm", "rightArm"):
-            motor = self._get_motor_by_role(role=role)
-            if motor is not None:
-                motor.move(speed=0)
+            motor_index = self._get_motor_index_by_role(role=role)
+            if motor_index is None:
+                continue
+
+            try:
+                self._master_controller.motors_controller.set_motor_speed_by_index(
+                    motor_index=motor_index,
+                    speed=0,
+                )
+            except MotorOverrideConflictError as e:
+                print(f"AI motor stop blocked by manual hardware override: {e}")
+                return
+            except Exception as e:
+                print(f"Error stopping motor for role '{role}': {e}")
 
     def run(self) -> None:
         """Thread main loop: randomly move leftArm and rightArm motors."""
@@ -408,6 +431,9 @@ class AIAgent(threading.Thread):
                     )
                     if not applied:
                         print(f"AI motor config references unavailable motor index {motor_index}")
+                except MotorOverrideConflictError as e:
+                    print(f"AI motor control blocked by manual hardware override: {e}")
+                    return
                 except Exception as e:
                     print(f"Error applying AI motor config for index {motor_index}: {e}")
 
