@@ -218,6 +218,18 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(FakeMasterController.init_count, 0)
         self.assertFalse(hasattr(module.app.state, "master_controller"))
 
+    def test_main_does_not_import_or_mount_legacy_camera_router(self):
+        module = self._import_main()
+
+        endpoint_modules = {
+            getattr(route.endpoint, "__module__", None)
+            for route in module.app.routes
+            if hasattr(route, "endpoint")
+        }
+
+        self.assertNotIn("restapicameras_old", module.__dict__)
+        self.assertNotIn("server.restapicameras_old", endpoint_modules)
+
     def test_lifespan_constructs_and_stops_master_controller_once(self):
         module = self._import_main()
 

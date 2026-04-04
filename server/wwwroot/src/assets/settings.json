@@ -808,12 +808,12 @@
     },
     "manualControl": {
         "camera": {
-            "selectedCamera": "scope_camera",
-            "streamQuality": 70,
-            "scopeCameraMode": 3,
+            "selectedCamera": "spotter_camera1",
+            "streamQuality": 65,
+            "scopeCameraMode": 1,
             "spotterCamera1Mode": 3,
-            "spotterCamera2Mode": 3,
-            "spotterCamera3Mode": 3
+            "spotterCamera2Mode": 2,
+            "spotterCamera3Mode": 1
         },
         "motors": [
             {
