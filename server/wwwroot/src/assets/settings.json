@@ -517,8 +517,8 @@
             "static_reticle_color": "#88ff00cc",
             "static_reticle_size": 1.0,
             "mask_polygons": [],
-            "width": 1920,
-            "height": 1080,
+            "width": 640,
+            "height": 480,
             "fps": 30.0,
             "bitrate": -1,
             "buffer_size": 1,
@@ -740,7 +740,7 @@
         },
         "modelName": "Simple and Fast",
         "device": "cuda:0 (Nvidia GPU)",
-        "minFpsToAllowEngagement": 4,
+        "minFpsToAllowEngagement": 1,
         "organMustBeVisibleSeconds": 0.5,
         "detectionRadiusFromReticle": 70,
         "organs": {
@@ -808,9 +808,9 @@
     },
     "manualControl": {
         "camera": {
-            "selectedCamera": "spotter_camera1",
+            "selectedCamera": "scope_camera",
             "streamQuality": 65,
-            "scopeCameraMode": 1,
+            "scopeCameraMode": 3,
             "spotterCamera1Mode": 3,
             "spotterCamera2Mode": 2,
             "spotterCamera3Mode": 1

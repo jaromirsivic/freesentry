@@ -44,14 +44,24 @@ def _make_fake_ultralytics_module():
     fake_ultralytics = types.ModuleType("ultralytics")
 
     class FakeYOLO:
-        def __init__(self, *args, **kwargs):
+        def __init__(self, model_path=None, *args, **kwargs):
+            self.model_path = str(model_path) if model_path is not None else None
             self.to_calls = []
+            self.predict_calls = []
+            self.call_calls = []
 
         def to(self, *, device: str):
+            if self.model_path is not None and "ncnn_model" in self.model_path:
+                raise TypeError("Exported NCNN models should not receive model.to().")
             self.to_calls.append(device)
             return self
 
         def __call__(self, image, **kwargs):
+            self.call_calls.append((image, dict(kwargs)))
+            return self.predict(source=image, **kwargs)
+
+        def predict(self, source=None, **kwargs):
+            self.predict_calls.append((source, dict(kwargs)))
             return [SimpleNamespace(keypoints=None)]
 
     fake_ultralytics.YOLO = FakeYOLO
@@ -436,6 +446,54 @@ class YOLOModelsTests(unittest.TestCase):
             "cuda:1 (Nvidia GPU)",
         )
 
+    def test_get_model_skips_model_to_for_arm_cpu_ncnn_models(self):
+        yolomodels = _import_yolomodels_module(cuda_available=False)
+        manager = yolomodels.YOLOModels()
+
+        with mock.patch.object(yolomodels.Path, "exists", return_value=True):
+            model = manager.get_model(
+                model_name=yolomodels.YOLOModels.DEFAULT_MODEL_NAME,
+                device="arm_cpu",
+            )
+
+        self.assertIn("_ncnn_model", model.model_path)
+        self.assertEqual(model.to_calls, [])
+
+    def test_get_model_keeps_model_to_for_cuda_pt_models(self):
+        yolomodels = _import_yolomodels_module(cuda_available=True, cuda_device_count=2, cuda_version="13.0")
+        manager = yolomodels.YOLOModels()
+
+        with mock.patch.object(yolomodels.Path, "exists", return_value=True):
+            model = manager.get_model(
+                model_name=yolomodels.YOLOModels.DEFAULT_MODEL_NAME,
+                device="cuda:1 (Nvidia GPU)",
+            )
+
+        self.assertTrue(model.model_path.endswith(".pt"))
+        self.assertEqual(model.to_calls, ["cuda:1"])
+
+    def test_predict_uses_explicit_predict_api_for_arm_cpu_ncnn_models(self):
+        yolomodels = _import_yolomodels_module(cuda_available=False)
+        manager = yolomodels.YOLOModels()
+        image = np.zeros((2, 2, 3), dtype=np.uint8)
+
+        with mock.patch.object(yolomodels.Path, "exists", return_value=True):
+            results = manager.predict(
+                model_name=yolomodels.YOLOModels.DEFAULT_MODEL_NAME,
+                device="arm_cpu",
+                image=image,
+                verbose=False,
+            )
+            model = manager.get_model(
+                model_name=yolomodels.YOLOModels.DEFAULT_MODEL_NAME,
+                device="arm_cpu",
+            )
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(len(model.predict_calls), 1)
+        self.assertEqual(model.predict_calls[0][1], {"verbose": False})
+        self.assertEqual(model.call_calls, [])
+
     def test_cuda_request_falls_back_to_cpu_and_reuses_cpu_cache_on_cpu_only_runtime(self):
         yolomodels = _import_yolomodels_module(cuda_available=False)
         manager = yolomodels.YOLOModels()
@@ -478,7 +536,7 @@ class YOLOModelsTests(unittest.TestCase):
                 self.max_active_calls = 0
                 self._lock = threading.Lock()
 
-            def __call__(self, image, **kwargs):
+            def predict(self, source=None, **kwargs):
                 with self._lock:
                     self.active_calls += 1
                     self.max_active_calls = max(self.max_active_calls, self.active_calls)

@@ -21,6 +21,8 @@ findings_python.md
 /server/new_components
 Untitled
 Untitled *
+*.FCBak
+*.FCStd
 
 # Virtual environments
 .venv

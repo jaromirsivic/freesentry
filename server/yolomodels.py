@@ -316,7 +316,9 @@ class YOLOModels:
             return None
 
         model = YOLO(model_path)
-        model.to(device=device)
+        # Exported runtimes such as NCNN do not support PyTorch-style device transfers.
+        if model_type == "pt":
+            model.to(device=device)
         return _ModelCacheEntry(model=model, inference_lock=threading.Lock())
 
     def _get_or_load_model_entry(self, *, model_name: str, device: str = "cpu") -> _ModelCacheEntry | None:
@@ -364,7 +366,7 @@ class YOLOModels:
         if model_entry is None:
             raise RuntimeError(f"Unable to load YOLO model '{model_name}' for device '{device}'")
         with model_entry.inference_lock:
-            return model_entry.model(image, **kwargs)
+            return model_entry.model.predict(source=image, **kwargs)
 
     @property
     def default_model_name(self) -> str:
