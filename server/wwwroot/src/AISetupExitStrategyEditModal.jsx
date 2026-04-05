@@ -151,7 +151,7 @@ const AISetupExitStrategyEditModal = ({ isOpen, onClose, onSave, initialSettings
                 />
 
                 {/* On Execute Event */}
-                <HorizontalSeparator label="On Execute Event" fullWidth={true} bleed="1rem" />
+                <HorizontalSeparator label="On Execute Event" fullWidth={true} bleed="1rem" weight="bold" />
 
                 {/* Motor sections */}
                 {tempSettings.motors.map((motor) => (

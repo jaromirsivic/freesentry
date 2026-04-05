@@ -205,7 +205,7 @@ def _import_camera_stack():
     yolomodels.YOLOModels = StubYOLOModels
 
     cameraai = types.ModuleType("server.cameraai")
-    cameraai.draw_pose = lambda image, pose, ai_setup: image
+    cameraai.draw_pose = lambda image, pose, ai_setup, copy_image=True: image
     cameraai.get_pose_dict = lambda keypoints, ai_setup: []
     cameraai.translate_raw_pose_to_pose_dict = lambda raw_pose, ai_setup: raw_pose
 
@@ -656,6 +656,96 @@ class CameraConcurrencyTests(unittest.TestCase):
             camera._master_controller = master_controller
         master_controller.cameras_controller = FakeCamerasController(cameras)
         return master_controller
+
+    def test_crop_and_resize_skips_resize_when_dimensions_are_unchanged(self):
+        camera = self.FakeCamera(
+            index=0,
+            camera_index=0,
+            camera_code="scope_camera",
+            settings={"crop_top": 0.0, "crop_left": 0.0, "crop_bottom": 0.0, "crop_right": 0.0},
+            master_controller=SimpleNamespace(ai_agent=mock.Mock()),
+        )
+        image = np.zeros((8, 8, 3), dtype=np.uint8)
+
+        with mock.patch.object(self.camera_module.cv2, "resize", wraps=self.camera_module.cv2.resize) as resize_mock:
+            result = camera._crop_and_resize(image=image, settings=camera.settings)
+
+        resize_mock.assert_not_called()
+        self.assertIs(result, image)
+
+    def test_mask_image_reuses_cached_mask_for_same_polygons(self):
+        camera = self.FakeCamera(
+            index=0,
+            camera_index=0,
+            camera_code="scope_camera",
+            settings={"mask_polygons": [[{"x": 0.1, "y": 0.1}, {"x": 0.9, "y": 0.1}, {"x": 0.5, "y": 0.9}]]},
+            master_controller=SimpleNamespace(ai_agent=mock.Mock()),
+        )
+        image = np.zeros((8, 8, 3), dtype=np.uint8)
+
+        with mock.patch.object(self.camera_module.cv2, "fillPoly", wraps=self.camera_module.cv2.fillPoly) as fill_poly_mock:
+            camera._mask_image(image=image, settings=camera.settings)
+            camera._mask_image(image=image, settings=camera.settings)
+
+        fill_poly_mock.assert_called_once()
+
+    def test_get_ai_inference_options_use_fixed_imgsz_for_arm_cpu(self):
+        camera = self.FakeCamera(
+            index=0,
+            camera_index=0,
+            camera_code="scope_camera",
+            settings={},
+            master_controller=SimpleNamespace(ai_agent=mock.Mock()),
+        )
+
+        options = camera._get_ai_inference_options(
+            ai_setup={"inferenceImageSize": 320},
+            device="arm_cpu (optimized for ARM)",
+        )
+
+        self.assertEqual(options["verbose"], False)
+        self.assertEqual(options["imgsz"], 320)
+
+    def test_get_frame_does_not_wait_for_ai_worker(self):
+        camera = self.FakeCamera(
+            index=0,
+            camera_index=0,
+            camera_code="scope_camera",
+            settings={},
+            master_controller=SimpleNamespace(ai_agent=mock.Mock()),
+        )
+        camera._last_access_time_masked_frame = time.time()
+        camera._last_access_time_masked_ai_frame = time.time()
+
+        inference_started = threading.Event()
+        release_inference = threading.Event()
+
+        def blocking_ai(*, image, settings):
+            inference_started.set()
+            release_inference.wait(timeout=1.0)
+            return self.camera_module.Frame(valid=True, image=image, time=time.time(), pose=None), {
+                "predict_ms": 0.0,
+                "keypoint_extract_ms": 0.0,
+                "raw_pose_ms": 0.0,
+                "translate_ms": 0.0,
+                "draw_ms": 0.0,
+                "total_ms": 0.0,
+            }
+
+        camera._start_ai_worker()
+        try:
+            with mock.patch.object(camera, "_mask_ai_image_with_metrics", side_effect=blocking_ai):
+                camera._get_frame()
+                self.assertTrue(inference_started.wait(timeout=0.2))
+
+                started_at = time.monotonic()
+                camera._get_frame()
+                elapsed = time.monotonic() - started_at
+
+            self.assertLess(elapsed, 0.05)
+        finally:
+            release_inference.set()
+            camera._stop_ai_worker()
 
     def test_camera_settings_are_copy_on_write_and_keep_newer_updates_pending(self):
         camera = self.FakeCamera(

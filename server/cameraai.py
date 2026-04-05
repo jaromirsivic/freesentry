@@ -61,12 +61,11 @@ def draw_aicircle(*, image: np.ndarray, aicircle: AICircle, size_multiplier: flo
         # draw circle
         cv2.circle(image, p, max(radius * circle_outline_size, 0), color, 2 * circle_outline_size)
 
-def draw_pose(*, image: np.ndarray, pose: dict | list, ai_setup: dict) -> np.ndarray:
+def draw_pose(*, image: np.ndarray, pose: dict | list, ai_setup: dict, copy_image: bool = True) -> np.ndarray:
     """Draw keypoints on a frame."""
     # if the pose is a list, iterate over all poses
     poses = pose if isinstance(pose, list) else [pose]
-    # create a copy of the image
-    result = image.copy()
+    result = image.copy() if copy_image else image
     # get the organs from the ai setup
     organs = ai_setup.get("organs", {})
     # brain settings

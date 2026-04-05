@@ -232,7 +232,7 @@ const AISetupEssentialsEditModal = ({ isOpen, onClose, onSave, initialSettings }
                 />
 
                 {/* Organs / Body Parts */}
-                <HorizontalSeparator label="Organs / Body Parts" fullWidth={true} bleed="1rem" />
+                <HorizontalSeparator label="Organs / Body Parts" fullWidth={true} bleed="1rem" weight="bold" />
 
                 {/* Brain */}
                 <OrganSection

@@ -738,8 +738,8 @@
             ],
             "exitStrategyDuration": 1000
         },
-        "modelName": "Simple and Fast",
-        "device": "cuda:0 (Nvidia GPU)",
+        "modelName": "Mid. Quality Mid. Speed",
+        "device": "arm_cpu (optimized for ARM)",
         "minFpsToAllowEngagement": 1,
         "organMustBeVisibleSeconds": 0.5,
         "detectionRadiusFromReticle": 70,

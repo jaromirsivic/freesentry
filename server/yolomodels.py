@@ -69,7 +69,7 @@ class YOLOModels:
             MODEL_NAMES[2]: "yolo26m-pose_ncnn_model",
             MODEL_NAMES[3]: "yolo26l-pose_ncnn_model",
             MODEL_NAMES[4]: "yolo26x-pose_ncnn_model",
-        },
+        }
     }
 
     def __new__(cls):

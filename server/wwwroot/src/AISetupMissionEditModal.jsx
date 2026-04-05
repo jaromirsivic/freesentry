@@ -148,7 +148,7 @@ const AISetupMissionEditModal = ({ isOpen, onClose, onSave, initialSettings, mot
                 />
 
                 {/* On Engagement Event */}
-                <HorizontalSeparator label="On Engagement Event" fullWidth={true} bleed="1rem" />
+                <HorizontalSeparator label="On Engagement Event" fullWidth={true} bleed="1rem" weight="bold" />
 
                 {/* Motor sections */}
                 {tempSettings.motors.map((motor) => (
