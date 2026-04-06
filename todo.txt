@@ -5,3 +5,5 @@ Fix 640x480
 Update camera settings to get_settings and set_settings
 Change No camera detected to wait
 Switch CUDA, CPU
+disable setup of pigpio
+add a refresh button on system performance

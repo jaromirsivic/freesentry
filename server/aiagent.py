@@ -508,14 +508,28 @@ class AIAgent(threading.Thread):
             case EngagementStatus.EXIT_STRATEGY_UNDER_EXECUTION:
                 color = (255, 0, 128)
         # draw rectangle around the frame.image
-        cv2.rectangle(frame.image, (0, 0), (450, 140), text_background, -1)
-        cv2.rectangle(frame.image, (0, 0), (frame.image.shape[1], frame.image.shape[0]), color, 20)
+        scale = max(frame.image.shape[1], 1) / 1280
+        text_pos_x = int(20 * scale)
+        cv2.rectangle(frame.image, (0, 0), (int(450 * scale), int(140 * scale)), text_background, -1)
+        cv2.rectangle(frame.image, (0, 0), (frame.image.shape[1], frame.image.shape[0]), color, int(20 * scale))
         # draw text on the frame.image
         status_str = f'Status: {engagement_result.status.value}'
-        cv2.putText(frame.image, status_str, (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, text_color, 2)
+        cv2.putText(frame.image, status_str, (int(20 * scale), int(40 * scale)), cv2.FONT_HERSHEY_SIMPLEX, scale, text_color, 1)
         # draw engagement counter
         engagement_counter_str = f'Engagement Counter: {len(self._engagement_history)}'
-        cv2.putText(frame.image, engagement_counter_str, (20, 80), cv2.FONT_HERSHEY_SIMPLEX, 1, text_color, 2)
+        cv2.putText(frame.image, engagement_counter_str, (int(20 * scale), int(80 * scale)), cv2.FONT_HERSHEY_SIMPLEX, scale, text_color, 1)
         # draw fps
         fps_str = f'FPS: {engagement_result.fps:.2f}'
-        cv2.putText(frame.image, fps_str, (20, 120), cv2.FONT_HERSHEY_SIMPLEX, 1, text_color, 2)
+        cv2.putText(frame.image, fps_str, (int(20 * scale), int(120 * scale)), cv2.FONT_HERSHEY_SIMPLEX, scale, text_color, 1)
+
+        # cv2.rectangle(frame.image, (0, 0), (450, 140), text_background, -1)
+        # cv2.rectangle(frame.image, (0, 0), (frame.image.shape[1], frame.image.shape[0]), color, 20)
+        # # draw text on the frame.image
+        # status_str = f'Status: {engagement_result.status.value}'
+        # cv2.putText(frame.image, status_str, (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, text_color, 2)
+        # # draw engagement counter
+        # engagement_counter_str = f'Engagement Counter: {len(self._engagement_history)}'
+        # cv2.putText(frame.image, engagement_counter_str, (20, 80), cv2.FONT_HERSHEY_SIMPLEX, 1, text_color, 2)
+        # # draw fps
+        # fps_str = f'FPS: {engagement_result.fps:.2f}'
+        # cv2.putText(frame.image, fps_str, (20, 120), cv2.FONT_HERSHEY_SIMPLEX, 1, text_color, 2)

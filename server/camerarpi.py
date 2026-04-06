@@ -219,7 +219,7 @@ class CameraRPI(Camera):
             supported_resolutions.append({
                 "width": width,
                 "height": height,
-                "label": f"{width} x {height} ({label})"
+                "label": f"{width} x {height}"
             })
         
         return supported_resolutions
