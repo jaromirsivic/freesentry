@@ -472,7 +472,7 @@ class YOLOModelsTests(unittest.TestCase):
         self.assertTrue(model.model_path.endswith(".pt"))
         self.assertEqual(model.to_calls, ["cuda:1"])
 
-    def test_predict_uses_explicit_predict_api_for_arm_cpu_ncnn_models(self):
+    def test_predict_uses_direct_call_for_arm_cpu_ncnn_models(self):
         yolomodels = _import_yolomodels_module(cuda_available=False)
         manager = yolomodels.YOLOModels()
         image = np.zeros((2, 2, 3), dtype=np.uint8)
@@ -490,9 +490,8 @@ class YOLOModelsTests(unittest.TestCase):
             )
 
         self.assertEqual(len(results), 1)
-        self.assertEqual(len(model.predict_calls), 1)
-        self.assertEqual(model.predict_calls[0][1], {"verbose": False})
-        self.assertEqual(model.call_calls, [])
+        self.assertEqual(len(model.call_calls), 1)
+        self.assertEqual(model.call_calls[0][1], {"verbose": False})
 
     def test_cuda_request_falls_back_to_cpu_and_reuses_cpu_cache_on_cpu_only_runtime(self):
         yolomodels = _import_yolomodels_module(cuda_available=False)
@@ -536,7 +535,7 @@ class YOLOModelsTests(unittest.TestCase):
                 self.max_active_calls = 0
                 self._lock = threading.Lock()
 
-            def predict(self, source=None, **kwargs):
+            def __call__(self, image, **kwargs):
                 with self._lock:
                     self.active_calls += 1
                     self.max_active_calls = max(self.max_active_calls, self.active_calls)

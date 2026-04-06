@@ -23,6 +23,8 @@ Untitled
 Untitled *
 *.FCBak
 *.FCStd
+submoamoa/
 
 # Virtual environments
 .venv
+.venv_old

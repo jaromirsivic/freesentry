@@ -95,23 +95,36 @@ class YOLOModels:
             raw_value = DEFAULT_DEVICE
         return (raw_value + " ").split(" ")[0]
 
+    _cuda_available_cache: bool | None = None
+    _cuda_count_cache: int | None = None
+
     @classmethod
     def _is_cuda_available(cls) -> bool:
+        if cls._cuda_available_cache is not None:
+            return cls._cuda_available_cache
         if torch is None:
+            cls._cuda_available_cache = False
             return False
         try:
-            return bool(torch.cuda.is_available())
+            result = bool(torch.cuda.is_available())
         except Exception:
-            return False
+            result = False
+        cls._cuda_available_cache = result
+        return result
 
     @classmethod
     def _get_cuda_device_count(cls) -> int:
+        if cls._cuda_count_cache is not None:
+            return cls._cuda_count_cache
         if not cls._is_cuda_available():
+            cls._cuda_count_cache = 0
             return 0
         try:
-            return int(torch.cuda.device_count())
+            result = int(torch.cuda.device_count())
         except Exception:
-            return 0
+            result = 0
+        cls._cuda_count_cache = result
+        return result
 
     @classmethod
     def _get_cuda_option_value(cls, normalized_device: str) -> str | None:
@@ -182,7 +195,6 @@ class YOLOModels:
         device: str | None = DEFAULT_DEVICE,
     ) -> _ResolvedDeviceConfig:
         normalized_device = cls._normalize_device_token(device)
-        default_device_value = cls.get_default_device_value()
 
         if normalized_device == "arm_cpu":
             return _ResolvedDeviceConfig(
@@ -190,6 +202,16 @@ class YOLOModels:
                 model_type="ncnn",
                 effective_device="cpu",
             )
+
+        if normalized_device == "cpu":
+            return _ResolvedDeviceConfig(
+                device_value=CPU_DEVICE_VALUE,
+                model_type="pt",
+                effective_device="cpu",
+            )
+
+        # Fallback value is only needed for CUDA and unrecognised device paths.
+        default_device_value = cls.get_default_device_value()
 
         if normalized_device.startswith("cuda"):
             cuda_device_count = cls._get_cuda_device_count()
@@ -234,21 +256,14 @@ class YOLOModels:
                 ),
             )
 
-        if normalized_device != "cpu":
-            return _ResolvedDeviceConfig(
-                device_value=default_device_value,
-                model_type="pt",
-                effective_device="cpu",
-                warning_message=(
-                    f"requested unsupported device '{device}'; "
-                    f"falling back to '{default_device_value}'"
-                ),
-            )
-
         return _ResolvedDeviceConfig(
-            device_value=CPU_DEVICE_VALUE,
+            device_value=default_device_value,
             model_type="pt",
             effective_device="cpu",
+            warning_message=(
+                f"requested unsupported device '{device}'; "
+                f"falling back to '{default_device_value}'"
+            ),
         )
 
     @classmethod
@@ -366,7 +381,7 @@ class YOLOModels:
         if model_entry is None:
             raise RuntimeError(f"Unable to load YOLO model '{model_name}' for device '{device}'")
         with model_entry.inference_lock:
-            return model_entry.model.predict(source=image, **kwargs)
+            return model_entry.model(image, **kwargs)
 
     @property
     def default_model_name(self) -> str:

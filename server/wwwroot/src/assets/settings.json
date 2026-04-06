@@ -738,7 +738,7 @@
             ],
             "exitStrategyDuration": 1000
         },
-        "modelName": "Mid. Quality Mid. Speed",
+        "modelName": "Simple and Fast",
         "device": "arm_cpu (optimized for ARM)",
         "minFpsToAllowEngagement": 1,
         "organMustBeVisibleSeconds": 0.5,

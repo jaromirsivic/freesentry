@@ -60,10 +60,25 @@ crontab -e
 #{ sudo crontab -l -u root; echo '@reboot /home/freesentry/freesentry/rpi_01_start.sh &'; } | sudo crontab -u root -
 sudo reboot
 
+# start freesentry server
 echo "start freesentry server"
 cd /home/freesentry/freesentry
 source .venv/bin/activate
 uvicorn server.main:app --app-dir /home/freesentry/freesentry --host 0.0.0.0 --port 80
+
+# create image of sd card:
+#wget https://raw.githubusercontent.com/Drewsif/PiShrink/master/pishrink.sh
+#sudo chmod +x pishrink.sh
+#sudo mv pishrink.sh /usr/local/bin
+sudo apt-get clean
+df -ah --total
+# insert empty usb flash
+lsblk
+sudo mkdir /dev/usb
+sudo mount /dev/sda1 /dev/usb
+# count should be the size of MB returned by df -ah + 1000
+sudo dd if=/dev/mmcblk0 of=/dev/usb/freesentry.img bs=1M count=7000
+sudo umount /dev/usb
 
 
 # found commands
