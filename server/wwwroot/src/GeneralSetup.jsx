@@ -15,6 +15,7 @@ import OperationFeedback from './components/OperationFeedback';
 import { getGeneralSettings, saveGeneralSettings, getSystemInfo, getSystemPlatformInfo, setSystemDateTimeAndTimezone, rebootSystem } from './lib/api';
 import { createOperationFeedback } from './lib/operationFeedback';
 import editIcon from './assets/icons/edit.svg';
+import reloadIcon from './assets/icons/reload.svg';
 import TextField from './components/TextField';
 
 const GeneralSetup = () => {
@@ -48,6 +49,7 @@ const GeneralSetup = () => {
     const [controllerStatus, setControllerStatus] = useState({ initialized: false, error_message: '' });
     const [controllerSaveFeedback, setControllerSaveFeedback] = useState(null);
     const [rebootFeedback, setRebootFeedback] = useState(null);
+    const [isSystemRefreshing, setIsSystemRefreshing] = useState(false);
 
     const fetchControllerStatus = async () => {
         try {
@@ -152,6 +154,16 @@ const GeneralSetup = () => {
         setIsSystemModalOpen(true);
     };
 
+    const handleSystemRefresh = async () => {
+        try {
+            setIsSystemRefreshing(true);
+            await fetchSystemInfo();
+            await fetchPlatformInfo();
+        } finally {
+            setIsSystemRefreshing(false);
+        }
+    };
+
     const handleSystemModalClose = () => {
         setIsSystemModalOpen(false);
     };
@@ -243,11 +255,19 @@ const GeneralSetup = () => {
                         style={{ flex: 1 }}
                         title="System"
                         headerAction={
-                            <Button
-                                label={<img src={editIcon} alt="Edit" width="24" height="24" />}
-                                onClick={handleSystemEdit}
-                                style={{ padding: '0.25rem 0.5rem', fontSize: '0.875rem' }}
-                            />
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                <Button
+                                    label={<img src={reloadIcon} alt="Refresh" width="24" height="24" />}
+                                    onClick={handleSystemRefresh}
+                                    disabled={isSystemRefreshing}
+                                    style={{ padding: '0.25rem 0.5rem', fontSize: '0.875rem' }}
+                                />
+                                <Button
+                                    label={<img src={editIcon} alt="Edit" width="24" height="24" />}
+                                    onClick={handleSystemEdit}
+                                    style={{ padding: '0.25rem 0.5rem', fontSize: '0.875rem' }}
+                                />
+                            </div>
                         }
                     >
                         <ColumnLayout gap="0.5rem">
@@ -333,6 +353,7 @@ const GeneralSetup = () => {
                                 label={<img src={editIcon} alt="Edit" width="24" height="24" />}
                                 onClick={handleEdit}
                                 style={{ padding: '0.25rem 0.5rem', fontSize: '0.875rem' }}
+                                disabled={true}
                             />
                         }
                     >

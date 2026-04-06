@@ -468,13 +468,38 @@
     ],
     "cameras": {
         "scope_camera": {
-            "index": 0,
-            "name": "0: dummy_camera_0",
+            "index": 6,
+            "name": "6: cv2_camera_0",
             "supported_resolutions": [
+                {
+                    "width": 320,
+                    "height": 240,
+                    "label": "320 x 240"
+                },
                 {
                     "width": 640,
                     "height": 480,
                     "label": "640 x 480"
+                },
+                {
+                    "width": 848,
+                    "height": 480,
+                    "label": "848 x 480"
+                },
+                {
+                    "width": 960,
+                    "height": 540,
+                    "label": "960 x 540"
+                },
+                {
+                    "width": 1280,
+                    "height": 720,
+                    "label": "1280 x 720"
+                },
+                {
+                    "width": 1920,
+                    "height": 1080,
+                    "label": "1920 x 1080"
                 }
             ],
             "flip_horizontal": false,
@@ -492,7 +517,6 @@
             "static_reticle_color": "#88ff00cc",
             "static_reticle_size": 1.0,
             "mask_polygons": [],
-            "model_name": "yolo11x-pose",
             "width": 640,
             "height": 480,
             "fps": 30.0,
@@ -502,17 +526,19 @@
             "contrast": 32.0,
             "hue": 0.0,
             "saturation": 64.0,
-            "sharpness": 0.0,
-            "gamma": 100.0,
-            "white_balance_temperature": 4500.0,
-            "backlight": 0.0,
-            "gain": 0.0,
-            "focus": 0.0,
+            "sharpness": 3.0,
+            "gamma": 120.0,
+            "white_balance_temperature": -1.0,
+            "backlight": 1.0,
+            "gain": -1.0,
+            "focus": -1.0,
             "exposure": -6.0,
             "auto_white_balance_temperature": true,
             "auto_focus": true,
             "auto_exposure": true,
-            "static_reticle_outline": "#000000cc"
+            "static_reticle_outline": "#000000cc",
+            "camera_index": 0,
+            "camera_type": "unknown"
         },
         "spotter_camera1": {
             "index": 1,
@@ -533,12 +559,11 @@
             "static_reticle_outline": "#000000cc",
             "static_reticle_size": 1.0,
             "mask_polygons": [],
-            "model_name": "yolo11x-pose",
             "width": 640,
             "height": 480,
             "fps": 30.0,
-            "bitrate": -1,
-            "buffer_size": -1,
+            "bitrate": 4000,
+            "buffer_size": 1,
             "brightness": 128.0,
             "contrast": 32.0,
             "hue": 0.0,
@@ -559,7 +584,9 @@
                     "height": 480,
                     "label": "640 x 480"
                 }
-            ]
+            ],
+            "camera_index": 1,
+            "camera_type": "unknown"
         },
         "spotter_camera2": {
             "index": 2,
@@ -580,12 +607,11 @@
             "static_reticle_outline": "#000000cc",
             "static_reticle_size": 1.0,
             "mask_polygons": [],
-            "model_name": "yolo11x-pose",
             "width": 640,
             "height": 480,
             "fps": 30.0,
-            "bitrate": -1,
-            "buffer_size": -1,
+            "bitrate": 4000,
+            "buffer_size": 1,
             "brightness": 128.0,
             "contrast": 32.0,
             "hue": 0.0,
@@ -606,7 +632,9 @@
                     "height": 480,
                     "label": "640 x 480"
                 }
-            ]
+            ],
+            "camera_index": 2,
+            "camera_type": "unknown"
         },
         "spotter_camera3": {
             "index": 3,
@@ -627,12 +655,11 @@
             "static_reticle_outline": "#000000cc",
             "static_reticle_size": 1.0,
             "mask_polygons": [],
-            "model_name": "yolo11x-pose",
             "width": 640,
             "height": 480,
             "fps": 30.0,
-            "bitrate": -1,
-            "buffer_size": -1,
+            "bitrate": 4000,
+            "buffer_size": 1,
             "brightness": 128.0,
             "contrast": 32.0,
             "hue": 0.0,
@@ -653,14 +680,16 @@
                     "height": 480,
                     "label": "640 x 480"
                 }
-            ]
+            ],
+            "camera_index": 3,
+            "camera_type": "unknown"
         }
     },
     "hotZone": {
-        "units": "in",
+        "units": "cm",
         "computationQuality": 30,
         "centerPole": {
-            "micStickRadius": 80,
+            "micStickRadius": 85,
             "height": 50,
             "yDistanceFromArmPoles": 30
         },
@@ -670,87 +699,20 @@
         },
         "arms": {
             "symmetricArms": true,
-            "leftArmMinLength": 60,
+            "leftArmMinLength": 70,
             "leftArmStrokeLen": 30,
-            "rightArmMinLength": 60,
+            "rightArmMinLength": 70,
             "rightArmStrokeLen": 30,
             "leftArmMaxLength": 105,
             "rightArmMaxLength": 105
         }
     },
     "aiSetup": {
-        "activationDateTime": "2026-01-14T23:24:36.000Z",
-        "modelName": "yolo26n-pose",
-        "device": "cpu (optimized for x86)",
-        "minFpsToAllowEngagement": 4,
-        "organMustBeVisibleSeconds": 0.15,
-        "detectionRadiusFromReticle": 70,
-        "organs": {
-            "brain": {
-                "enabled": true,
-                "sizeMultiplier": 1,
-                "confidenceThreshold": 0.5,
-                "minimumRadius": 1
-            },
-            "chest": {
-                "enabled": true,
-                "sizeMultiplier": 0.7000000000000001,
-                "confidenceThreshold": 0.27,
-                "minimumRadius": 51
-            },
-            "heart": {
-                "enabled": true,
-                "sizeMultiplier": 0.8,
-                "confidenceThreshold": 0.34,
-                "minimumRadius": 18
-            },
-            "liver": {
-                "enabled": true,
-                "sizeMultiplier": 0.8,
-                "confidenceThreshold": 0.25,
-                "minimumRadius": 58
-            },
-            "abdomen": {
-                "enabled": true,
-                "sizeMultiplier": 1,
-                "confidenceThreshold": 0.5,
-                "minimumRadius": 1
-            }
-        },
-        "missions": {
-            "randomWalk": {
-                "enabled": true,
-                "disableDutyCycle": true,
-                "delayBetweenEngagements": 0.5,
-                "engagementDuration": 0.5,
-                "motors": [
-                    {
-                        "index": 2,
-                        "enabled": true,
-                        "speed": 0.78
-                    },
-                    {
-                        "index": 3,
-                        "enabled": false,
-                        "speed": 0
-                    },
-                    {
-                        "index": 4,
-                        "enabled": false,
-                        "speed": 0
-                    },
-                    {
-                        "index": 5,
-                        "enabled": false,
-                        "speed": 0
-                    }
-                ]
-            }
-        },
+        "activationDateTime": "2026-02-14T09:18:16+00:00",
         "exitStrategy": {
+            "fixedDateTime": "2199-12-31T22:59:59+00:00",
             "maxEngagements": 1000000,
             "timeoutAfterFirstEngagement": 1000000,
-            "fixedDateTime": "2199-12-31T22:59:59.000Z",
             "exitDuration": 1000,
             "motors": [
                 {
@@ -775,16 +737,83 @@
                 }
             ],
             "exitStrategyDuration": 1000
+        },
+        "modelName": "Simple and Fast",
+        "device": "cuda:0 (Nvidia GPU)",
+        "minFpsToAllowEngagement": 1,
+        "organMustBeVisibleSeconds": 0.5,
+        "detectionRadiusFromReticle": 70,
+        "organs": {
+            "brain": {
+                "enabled": true,
+                "sizeMultiplier": 1,
+                "confidenceThreshold": 0.25,
+                "minimumRadius": 1
+            },
+            "chest": {
+                "enabled": true,
+                "sizeMultiplier": 1,
+                "confidenceThreshold": 0.2,
+                "minimumRadius": 1
+            },
+            "heart": {
+                "enabled": true,
+                "sizeMultiplier": 1,
+                "confidenceThreshold": 0.1,
+                "minimumRadius": 1
+            },
+            "liver": {
+                "enabled": true,
+                "sizeMultiplier": 1,
+                "confidenceThreshold": 0.17,
+                "minimumRadius": 1
+            },
+            "abdomen": {
+                "enabled": true,
+                "sizeMultiplier": 1,
+                "confidenceThreshold": 0.25,
+                "minimumRadius": 1
+            }
+        },
+        "missions": {
+            "randomWalk": {
+                "enabled": true,
+                "disableDutyCycle": true,
+                "delayBetweenEngagements": 1,
+                "engagementDuration": 0.5,
+                "motors": [
+                    {
+                        "index": 2,
+                        "enabled": true,
+                        "speed": 1
+                    },
+                    {
+                        "index": 3,
+                        "enabled": false,
+                        "speed": 0
+                    },
+                    {
+                        "index": 4,
+                        "enabled": false,
+                        "speed": 0
+                    },
+                    {
+                        "index": 5,
+                        "enabled": false,
+                        "speed": 0
+                    }
+                ]
+            }
         }
     },
     "manualControl": {
         "camera": {
             "selectedCamera": "scope_camera",
-            "streamQuality": 84,
+            "streamQuality": 65,
             "scopeCameraMode": 3,
             "spotterCamera1Mode": 3,
-            "spotterCamera2Mode": 3,
-            "spotterCamera3Mode": 3
+            "spotterCamera2Mode": 2,
+            "spotterCamera3Mode": 1
         },
         "motors": [
             {
@@ -794,7 +823,7 @@
             },
             {
                 "index": 3,
-                "enabled": false,
+                "enabled": true,
                 "mode": "joystick"
             },
             {
@@ -811,7 +840,7 @@
     },
     "general": {
         "controllerSetup": {
-            "controller": "remote",
+            "controller": "localhost",
             "remoteHost": "freesentry",
             "remotePort": 8888
         },
@@ -838,6 +867,39 @@
                 ]
             },
             "rotationAngle": 315
+        },
+        "wifi": {
+            "mode": "accessPoint",
+            "accessPoint": {
+                "connectionName": "default",
+                "ssid": "default",
+                "security": "wpa-psk",
+                "password": "freesentry"
+            },
+            "client": {
+                "connectionName": "default",
+                "ssid": "default",
+                "security": "wpa-psk",
+                "password": "freesentry"
+            }
+        },
+        "startupScript": {
+            "windows": {
+                "language": "python",
+                "script": "import subprocess\nsubprocess.run(['start', 'http://127.0.0.1'], shell=True)"
+            },
+            "linux": {
+                "language": "python",
+                "script": ""
+            },
+            "raspberrypi5": {
+                "language": "python",
+                "script": ""
+            },
+            "macos": {
+                "language": "python",
+                "script": "import subprocess\nsubprocess.run(['open', 'http://127.0.0.1'], shell=True)"
+            }
         }
     }
 }

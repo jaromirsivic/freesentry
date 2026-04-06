@@ -839,6 +839,7 @@
         ]
     },
     "general": {
+        "mode": "production",
         "controllerSetup": {
             "controller": "localhost",
             "remoteHost": "freesentry",
