@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Outlet, useLocation, Link } from 'react-router-dom';
 import menuIcon from './assets/menu-icon.svg';
+import { useGeneralSettings } from './contexts/GeneralSettingsContext.jsx';
 
 // Import icons
 import mainPageIcon from './assets/icons/mainPage.svg';
@@ -40,6 +41,7 @@ const MenuLink = ({ to, icon, label, onNavigate }) => (
 const Layout = () => {
   const location = useLocation();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const { isDebugMode } = useGeneralSettings();
 
   /**
    * Handle menu toggle with custom event dispatch.
@@ -170,6 +172,7 @@ const Layout = () => {
                 </ul>
               </li>
               <li><MenuLink to="/tutorials" icon={tutorialsIcon} label="Tutorials" /></li>
+              {isDebugMode && (
               <li>
                 <div className="btn" style={{ justifyContent: 'flex-start', width: '100%', cursor: 'default', opacity: 0.8, gap: '0.75rem' }}>
                   <img src={manualControlIcon} alt="" width="24" height="24" />
@@ -186,6 +189,7 @@ const Layout = () => {
                   <li><MenuLink to="/sandbox/joystick1d" icon={componentsDemoIcon} label="Joystick1D Demo" onNavigate={handleMenuNavigate} /></li>
                 </ul>
               </li>
+              )}
               <li><MenuLink to="/about" icon={aboutIcon} label="About" onNavigate={handleMenuNavigate} /></li>
             </ul>
           </nav>

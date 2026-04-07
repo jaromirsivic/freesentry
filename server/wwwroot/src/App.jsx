@@ -1,6 +1,7 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './Layout';
+import { useGeneralSettings } from './contexts/GeneralSettingsContext.jsx';
 import MainPage from './MainPage';
 import HotZone from './HotZone';
 import Settings from './Settings';
@@ -24,6 +25,17 @@ import Chart2DDemo from './Chart2DDemo';
 import PolygonZoomPanDemo from './PolygonZoomPanDemo';
 import DateTimePickerDemo from './DateTimePickerDemo';
 import Joystick1DDemo from './Joystick1DDemo';
+
+function SandboxRouteGate() {
+  const { isDebugMode, generalSettingsLoaded } = useGeneralSettings();
+  if (!generalSettingsLoaded) {
+    return null;
+  }
+  if (!isDebugMode) {
+    return <Navigate to="/" replace />;
+  }
+  return <Sandbox />;
+}
 
 function App() {
   const routerBasename =
@@ -49,7 +61,7 @@ function App() {
             <Route path="hot-zone" element={<HotZone />} />
           </Route>
           <Route path="tutorials" element={<Tutorials />} />
-          <Route path="sandbox" element={<Sandbox />}>
+          <Route path="sandbox" element={<SandboxRouteGate />}>
             <Route path="components-demo" element={<ComponentsDemo />} />
             <Route path="modal-windows-demo" element={<ModalWindowsDemo />} />
             <Route path="editable-chart" element={<EditableChartDemo />} />
