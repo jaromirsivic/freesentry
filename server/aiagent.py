@@ -151,6 +151,7 @@ class AIAgent(threading.Thread):
             left_motor = self._get_motor_by_role(role="leftArm")
             right_motor = self._get_motor_by_role(role="rightArm")
 
+
             # if left_motor is not None and direction is not None:
             #     left_motor.move(speed=direction.x)
             # if right_motor is not None and direction is not None:
