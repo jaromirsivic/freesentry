@@ -126,6 +126,26 @@ def _get_bound_camera_from_settings(
     return camera_index, camera
 
 
+def _build_input_device_info(camera: Camera) -> dict[str, Any]:
+    device_info = dict(camera.settings)
+    camera_type = getattr(getattr(camera, "_camera_type", None), "value", None)
+    supported_resolutions = getattr(camera, "supported_resolutions", []) or []
+
+    if not isinstance(device_info.get("index"), int) or isinstance(device_info.get("index"), bool):
+        device_info["index"] = getattr(camera, "_index", None)
+    if not isinstance(device_info.get("camera_index"), int) or isinstance(device_info.get("camera_index"), bool):
+        device_info["camera_index"] = getattr(camera, "_camera_index", None)
+    if not isinstance(device_info.get("camera_type"), str) or not device_info["camera_type"]:
+        device_info["camera_type"] = camera_type
+    if not isinstance(device_info.get("name"), str) or not device_info["name"].strip():
+        device_info["name"] = camera.camera_name
+    if not isinstance(device_info.get("supported_resolutions"), list) or not device_info["supported_resolutions"]:
+        device_info["supported_resolutions"] = supported_resolutions
+
+    device_info["capabilities"] = camera.capabilities
+    return device_info
+
+
 @router.get("/api/cameras/list")
 async def get_cameras_list():
     """
@@ -156,10 +176,7 @@ async def get_input_devices(
 
         cameras = master_controller.cameras_controller.cameras
         for camera in cameras:
-            device_info = {
-                **camera.settings,
-                "capabilities": camera.capabilities,
-            }
+            device_info = _build_input_device_info(camera)
             input_devices.append(device_info)
         
         return {"success": True, "input_devices": input_devices}

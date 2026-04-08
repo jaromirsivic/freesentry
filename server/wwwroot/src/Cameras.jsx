@@ -125,6 +125,34 @@ const getResolutionDimensions = (resString) => {
     };
 };
 
+const getInputDeviceIndex = (device) => {
+    const parsedIndex = Number(device?.index);
+    return Number.isInteger(parsedIndex) ? parsedIndex : null;
+};
+
+const normalizeInputDevices = (devices) => {
+    const normalizedDevices = new Map();
+
+    (Array.isArray(devices) ? devices : []).forEach((device) => {
+        const index = getInputDeviceIndex(device);
+        if (index === null || normalizedDevices.has(index)) {
+            return;
+        }
+
+        const label = typeof device?.name === 'string' && device.name.trim()
+            ? device.name.trim()
+            : `Device ${index}`;
+
+        normalizedDevices.set(index, {
+            ...device,
+            index,
+            name: label
+        });
+    });
+
+    return Array.from(normalizedDevices.values());
+};
+
 /**
  * Cameras settings page with three panels:
  * - Scope Camera - AI
@@ -646,7 +674,7 @@ const Cameras = () => {
     // Modal: Input device change handler
     // ========================
     const onInputDeviceChange = useCallback((val) => {
-        const device = inputDevices.find(d => String(d.index) === String(val));
+        const device = normalizeInputDevices(inputDevices).find(d => String(d.index) === String(val));
         if (device) {
             const deviceState = getCameraStateFromConfig(device);
             setTempState(deviceState);
@@ -689,13 +717,15 @@ const Cameras = () => {
     // ========================
     // Compute derived values
     // ========================
-    const inputDeviceOptions = inputDevices.map(d => ({
+    const availableInputDevices = normalizeInputDevices(inputDevices);
+
+    const inputDeviceOptions = availableInputDevices.map(d => ({
         label: d.name,
         value: String(d.index)
     }));
 
     // Resolution options based on selected device in modal
-    const selectedDevice = inputDevices.find(d => d.index === tempState.index);
+    const selectedDevice = availableInputDevices.find(d => String(d.index) === String(tempState.index));
     let resolutionOptions = [];
     if (selectedDevice?.supported_resolutions?.length > 0) {
         resolutionOptions = selectedDevice.supported_resolutions.map(r => ({

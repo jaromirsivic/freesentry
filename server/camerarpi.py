@@ -324,6 +324,55 @@ class CameraRPI(Camera):
             value["max"] = 1000000000
         return result
 
+    def _build_base_camera_properties(self) -> dict:
+        settings = self._settings if self._settings is not None else {}
+        width = settings.get("width", self._current_resolution[0])
+        height = settings.get("height", self._current_resolution[1])
+        fps = settings.get("fps", self._current_fps)
+
+        return {
+            "index": self._index,
+            "camera_index": self._camera_index,
+            "camera_type": CameraType.RPI.value,
+            "name": self._camera_name,
+            "supported_resolutions": self.supported_resolutions,
+            "flip_horizontal": settings.get("flip_horizontal", False),
+            "flip_vertical": settings.get("flip_vertical", False),
+            "rotate": settings.get("rotate", 0),
+            "crop_top": settings.get("crop_top", 0.0),
+            "crop_left": settings.get("crop_left", 0.0),
+            "crop_bottom": settings.get("crop_bottom", 0.0),
+            "crop_right": settings.get("crop_right", 0.0),
+            "stretch_enabled": settings.get("stretch_enabled", False),
+            "stretch_width": settings.get("stretch_width", 320),
+            "stretch_height": settings.get("stretch_height", 240),
+            "static_reticle_x": settings.get("static_reticle_x", 0.5),
+            "static_reticle_y": settings.get("static_reticle_y", 0.5),
+            "static_reticle_color": settings.get("static_reticle_color", "#88ff00cc"),
+            "static_reticle_outline": settings.get("static_reticle_outline", "#000000cc"),
+            "static_reticle_size": settings.get("static_reticle_size", 1.0),
+            "mask_polygons": settings.get("mask_polygons", []),
+            "width": width,
+            "height": height,
+            "fps": fps,
+            "bitrate": settings.get("bitrate", -1),
+            "buffer_size": settings.get("buffer_size", 1),
+            "brightness": settings.get("brightness", 0),
+            "contrast": settings.get("contrast", 100),
+            "hue": settings.get("hue", 0),
+            "saturation": settings.get("saturation", 100),
+            "sharpness": settings.get("sharpness", 100),
+            "gamma": settings.get("gamma", 220),
+            "white_balance_temperature": settings.get("white_balance_temperature", 5500),
+            "backlight": settings.get("backlight", 0),
+            "gain": settings.get("gain", 100),
+            "focus": settings.get("focus", 100),
+            "exposure": settings.get("exposure", 20000),
+            "auto_white_balance_temperature": settings.get("auto_white_balance_temperature", True),
+            "auto_focus": settings.get("auto_focus", True),
+            "auto_exposure": settings.get("auto_exposure", True),
+        }
+
     def _get_camera_properties(self) -> dict:
         """
         Get current camera properties/settings.
@@ -333,7 +382,7 @@ class CameraRPI(Camera):
         """
         with self._lock:
             active = self._active
-            result = {}
+            result = self._build_base_camera_properties()
             
             try:
                 if not active:
@@ -343,48 +392,7 @@ class CameraRPI(Camera):
                 print(f"configuration: {configuration}")
                 controls = self._picam2.camera_controls
                 print(f"controls: {controls}")
-                
-                # Basic info
-                result["index"] = self._index
-                result["camera_index"] = self._camera_index
-                result["camera_type"] = self._camera_type.value
-                result["name"] = self._camera_name
-                result["supported_resolutions"] = self.supported_resolutions
-                
-                # Get settings from stored settings or defaults
-                if self._settings is not None:
-                    result["flip_horizontal"] = self._settings.get("flip_horizontal", False)
-                    result["flip_vertical"] = self._settings.get("flip_vertical", False)
-                    result["rotate"] = self._settings.get("rotate", 0)
-                    result["crop_top"] = self._settings.get("crop_top", 0.0)
-                    result["crop_left"] = self._settings.get("crop_left", 0.0)
-                    result["crop_bottom"] = self._settings.get("crop_bottom", 0.0)
-                    result["crop_right"] = self._settings.get("crop_right", 0.0)
-                    result["stretch_enabled"] = self._settings.get("stretch_enabled", False)
-                    result["stretch_width"] = self._settings.get("stretch_width", 320)
-                    result["stretch_height"] = self._settings.get("stretch_height", 240)
-                    result["static_reticle_x"] = self._settings.get("static_reticle_x", 0.5)
-                    result["static_reticle_y"] = self._settings.get("static_reticle_y", 0.5)
-                    result["static_reticle_color"] = self._settings.get("static_reticle_color", "#88ff00cc")
-                    result["static_reticle_size"] = self._settings.get("static_reticle_size", 1.0)
-                    result["mask_polygons"] = self._settings.get("mask_polygons", [])
-                else:
-                    result["flip_horizontal"] = False
-                    result["flip_vertical"] = False
-                    result["rotate"] = 0
-                    result["crop_top"] = 0.0
-                    result["crop_left"] = 0.0
-                    result["crop_bottom"] = 0.0
-                    result["crop_right"] = 0.0
-                    result["stretch_enabled"] = False
-                    result["stretch_width"] = 320
-                    result["stretch_height"] = 240
-                    result["static_reticle_x"] = 0.5
-                    result["static_reticle_y"] = 0.5
-                    result["static_reticle_color"] = "#88ff00cc"
-                    result["static_reticle_size"] = 1.0
-                    result["mask_polygons"] = []
-                
+
                 # Get resolution from current configuration
                 if self._picam2 is not None:
                     try:
@@ -398,64 +406,9 @@ class CameraRPI(Camera):
                     except Exception:
                         result["width"] = self._current_resolution[0]
                         result["height"] = self._current_resolution[1]
-                else:
-                    result["width"] = self._settings.get("width", 1920) if self._settings else 1920
-                    result["height"] = self._settings.get("height", 1080) if self._settings else 1080
-                
-                result["fps"] = self._settings.get("fps", 30) if self._settings else 30
-                
-                # Image quality settings (convert from Picamera2 ranges to 0-100 scale)
-                # Brightness: Picamera2 uses -1.0 to 1.0, we convert to -100 to 100
-                result["brightness"] = self._settings.get("brightness", 0) if self._settings else 0
-                # Contrast: Picamera2 uses 0.0 to 32.0, default 1.0 = 100
-                result["contrast"] = self._settings.get("contrast", 100) if self._settings else 100
-                # Hue: Not directly supported in Picamera2, but we keep for API compatibility
-                result["hue"] = self._settings.get("hue", 0) if self._settings else 0
-                # Saturation: Picamera2 uses 0.0 to 32.0, default 1.0 = 100
-                result["saturation"] = self._settings.get("saturation", 100) if self._settings else 100
-                # Sharpness: Picamera2 uses 0.0 to 16.0, default 1.0 = 100
-                result["sharpness"] = self._settings.get("sharpness", 100) if self._settings else 100
-                # Gamma: Software-applied, stored as percentage (100 = 1.0, 220 = 2.2)
-                result["gamma"] = self._settings.get("gamma", 220) if self._settings else 220
-                
-                # White balance
-                result["white_balance_temperature"] = self._settings.get("white_balance_temperature", 5500) if self._settings else 5500
-                result["backlight"] = 0  # Not directly supported
-                
-                # Gain: Picamera2 uses 1.0 to 16.0, we convert to 100 to 1600
-                result["gain"] = self._settings.get("gain", 100) if self._settings else 100
-                
-                # Focus: Picamera2 uses 0.0 to 10.0 diopters, we convert to 0 to 1000
-                result["focus"] = self._settings.get("focus", 100) if self._settings else 100
-                
-                # Exposure: Picamera2 uses microseconds
-                result["exposure"] = self._settings.get("exposure", 20000) if self._settings else 20000
-                
-                # Auto settings
-                result["auto_white_balance_temperature"] = self._settings.get("auto_white_balance_temperature", True) if self._settings else True
-                result["auto_focus"] = self._settings.get("auto_focus", True) if self._settings else True
-                result["auto_exposure"] = self._settings.get("auto_exposure", True) if self._settings else True
                 
             except Exception as e:
                 print(f"Error getting camera properties: {e}")
-                # Return defaults on error
-                result["width"] = 1920
-                result["height"] = 1080
-                result["fps"] = 30
-                result["brightness"] = 0
-                result["contrast"] = 100
-                result["hue"] = 0
-                result["saturation"] = 100
-                result["sharpness"] = 100
-                result["gamma"] = 220
-                result["white_balance_temperature"] = 5500
-                result["backlight"] = 0
-                result["gain"] = 100
-                result["focus"] = 100
-                result["exposure"] = 20000
-                result["auto_white_balance_temperature"] = True
-                result["auto_focus"] = True
-                result["auto_exposure"] = True
                 
             finally:
                 if not active:

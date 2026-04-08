@@ -790,6 +790,33 @@ class CameraConcurrencyTests(unittest.TestCase):
         self.assertIn("capabilities", response["input_devices"][0])
         self.assertNotIn("capabilities", camera.settings)
 
+    def test_get_input_devices_restores_identity_fields_for_partial_settings(self):
+        camera = self.FakeCamera(
+            index=5,
+            camera_index=1,
+            camera_code="spotter_camera1",
+            settings={"brightness": 0.2},
+            master_controller=SimpleNamespace(ai_agent=mock.Mock()),
+        )
+        camera.settings = {
+            "brightness": 0.2,
+            "name": "   ",
+            "supported_resolutions": [],
+        }
+        master_controller = self._make_master_controller([camera])
+
+        response = asyncio.run(
+            self.restapicameras.get_input_devices(master_controller=master_controller)
+        )
+
+        self.assertTrue(response["success"])
+        device = response["input_devices"][0]
+        self.assertEqual(device["index"], 5)
+        self.assertEqual(device["camera_index"], 1)
+        self.assertEqual(device["name"], camera.camera_name)
+        self.assertEqual(device["supported_resolutions"], camera.supported_resolutions)
+        self.assertIn("capabilities", device)
+
     def test_update_camera_reassigns_codes_and_applies_settings_copy(self):
         old_camera = self.FakeCamera(
             index=0,
