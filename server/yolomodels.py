@@ -18,8 +18,14 @@ from .ai_setup_constants import (
     CUDA_DEVICE_1_VALUE,
     DEFAULT_DEVICE,
     DEVICE_OPTIONS,
+    VULKAN_DEVICE_0_VALUE,
+    VULKAN_DEVICE_1_VALUE,
 )
 
+_VULKAN_DEVICE_VALUE_BY_TOKEN = {
+    "vulkan:0": VULKAN_DEVICE_0_VALUE,
+    "vulkan:1": VULKAN_DEVICE_1_VALUE,
+}
 _CUDA_DEVICE_VALUE_BY_TOKEN = {
     "cuda:0": CUDA_DEVICE_0_VALUE,
     "cuda:1": CUDA_DEVICE_1_VALUE,
@@ -131,6 +137,10 @@ class YOLOModels:
         return _CUDA_DEVICE_VALUE_BY_TOKEN.get(normalized_device)
 
     @classmethod
+    def _get_vulkan_option_value(cls, normalized_device: str) -> str | None:
+        return _VULKAN_DEVICE_VALUE_BY_TOKEN.get(normalized_device)
+
+    @classmethod
     def _get_device_option_state(cls, option_value: str) -> tuple[bool, str | None]:
         normalized_device = cls._normalize_device_token(option_value)
         if not normalized_device.startswith("cuda"):
@@ -212,6 +222,24 @@ class YOLOModels:
 
         # Fallback value is only needed for CUDA and unrecognised device paths.
         default_device_value = cls.get_default_device_value()
+
+        if normalized_device.startswith("vulkan"):
+            vulkan_device_value = cls._get_vulkan_option_value(normalized_device)
+            if vulkan_device_value is not None:
+                return _ResolvedDeviceConfig(
+                    device_value=vulkan_device_value,
+                    model_type="ncnn",
+                    effective_device=normalized_device,
+                )
+            return _ResolvedDeviceConfig(
+                device_value=default_device_value,
+                model_type="pt",
+                effective_device="cpu",
+                warning_message=(
+                    f"requested unsupported device '{device}'; "
+                    f"falling back to '{default_device_value}'"
+                ),
+            )
 
         if normalized_device.startswith("cuda"):
             cuda_device_count = cls._get_cuda_device_count()
@@ -336,7 +364,9 @@ class YOLOModels:
             model.to(device=device)
         return _ModelCacheEntry(model=model, inference_lock=threading.Lock())
 
-    def _get_or_load_model_entry(self, *, model_name: str, preferred_device: str = "cpu") -> _ModelCacheEntry | None:
+    def _get_or_load_model_entry(
+        self, *, model_name: str, preferred_device: str = "cpu"
+    ) -> tuple[_ModelCacheEntry | None, _ResolvedDeviceConfig]:
         resolved_device = self._resolve_device_config(device=preferred_device)
         self._log_device_warning_once(warning_message=resolved_device.warning_message)
         resolved_model_name, resolved_model_type, model_filename = self._resolve_model_filename(
@@ -348,7 +378,7 @@ class YOLOModels:
             cached_entry = self._model_cache.get(cache_key)
             if cached_entry is not None:
                 self._update_last_model_locked(cache_key=cache_key, model=cached_entry.model)
-                return cached_entry
+                return cached_entry, resolved_device
 
             cached_entry = self._load_model_entry(
                 model_name=resolved_model_name,
@@ -357,11 +387,11 @@ class YOLOModels:
                 model_filename=model_filename,
             )
             if cached_entry is None:
-                return None
+                return None, resolved_device
 
             self._model_cache[cache_key] = cached_entry
             self._update_last_model_locked(cache_key=cache_key, model=cached_entry.model)
-            return cached_entry
+            return cached_entry, resolved_device
 
     def convert_model(self):
         for model_name in YOLOModels.MODEL_NAMES:
@@ -371,17 +401,26 @@ class YOLOModels:
             model.export(format="openvino")
 
     def get_model(self, *,model_name: str, preferred_device: str = "cpu") -> YOLO:
-        model_entry = self._get_or_load_model_entry(model_name=model_name, preferred_device=preferred_device)
+        model_entry, _ = self._get_or_load_model_entry(
+            model_name=model_name,
+            preferred_device=preferred_device,
+        )
         if model_entry is None:
             raise RuntimeError(f"Unable to load YOLO model '{model_name}' for device '{preferred_device}'")
         return model_entry.model
 
     def predict(self, *, model_name: str, preferred_device: str = "cpu", image: Any, **kwargs) -> Any:
-        model_entry = self._get_or_load_model_entry(model_name=model_name, preferred_device=preferred_device)
+        model_entry, resolved_device = self._get_or_load_model_entry(
+            model_name=model_name,
+            preferred_device=preferred_device,
+        )
         if model_entry is None:
             raise RuntimeError(f"Unable to load YOLO model '{model_name}' for device '{preferred_device}'")
+        inference_kwargs = dict(kwargs)
+        if resolved_device.model_type == "ncnn" and resolved_device.effective_device.startswith("vulkan:"):
+            inference_kwargs.setdefault("device", resolved_device.effective_device)
         with model_entry.inference_lock:
-            return model_entry.model(image, **kwargs)
+            return model_entry.model(image, **inference_kwargs)
 
     @property
     def default_model_name(self) -> str:

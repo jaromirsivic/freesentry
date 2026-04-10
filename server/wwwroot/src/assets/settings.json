@@ -739,7 +739,7 @@
             "exitStrategyDuration": 1000
         },
         "modelName": "Simple and Fast",
-        "device": "cuda:0 (Nvidia GPU)",
+        "device": "vulkan:1 (AMD, Nvidia, ...)",
         "minFpsToAllowEngagement": 1,
         "organMustBeVisibleSeconds": 0.5,
         "detectionRadiusFromReticle": 70,

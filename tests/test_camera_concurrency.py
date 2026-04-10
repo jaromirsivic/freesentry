@@ -378,11 +378,11 @@ class YOLOModelsTests(unittest.TestCase):
         ):
             first = manager.get_model(
                 model_name=yolomodels.YOLOModels.DEFAULT_MODEL_NAME,
-                device="cuda:0 (Nvidia GPU)",
+                preferred_device="cuda:0 (Nvidia GPU)",
             )
             second = manager.get_model(
                 model_name=yolomodels.YOLOModels.DEFAULT_MODEL_NAME,
-                device="cuda:0",
+                preferred_device="cuda:0",
             )
 
         self.assertIs(first, second)
@@ -407,11 +407,11 @@ class YOLOModelsTests(unittest.TestCase):
         ):
             arm_cpu_model = manager.get_model(
                 model_name=yolomodels.YOLOModels.DEFAULT_MODEL_NAME,
-                device="arm_cpu",
+                preferred_device="arm_cpu",
             )
             cuda_model = manager.get_model(
                 model_name=yolomodels.YOLOModels.DEFAULT_MODEL_NAME,
-                device="cuda:0",
+                preferred_device="cuda:0",
             )
 
         self.assertIsNot(arm_cpu_model, cuda_model)
@@ -436,7 +436,7 @@ class YOLOModelsTests(unittest.TestCase):
         ):
             manager.get_model(
                 model_name=yolomodels.YOLOModels.DEFAULT_MODEL_NAME,
-                device="cuda:1 (Nvidia GPU)",
+                preferred_device="cuda:1 (Nvidia GPU)",
             )
 
         self.assertEqual(len(load_calls), 1)
@@ -446,6 +446,47 @@ class YOLOModelsTests(unittest.TestCase):
             "cuda:1 (Nvidia GPU)",
         )
 
+    def test_normalize_device_value_keeps_supported_vulkan_labels(self):
+        yolomodels = _import_yolomodels_module(cuda_available=False)
+
+        self.assertEqual(
+            yolomodels.YOLOModels.normalize_device_value("vulkan:0"),
+            "vulkan:0 (AMD, Nvidia, ...)",
+        )
+        self.assertEqual(
+            yolomodels.YOLOModels.normalize_device_value("vulkan:1 (AMD, Nvidia, ...)"),
+            "vulkan:1 (AMD, Nvidia, ...)",
+        )
+
+    def test_get_model_uses_ncnn_cache_entries_for_distinct_vulkan_devices(self):
+        yolomodels = _import_yolomodels_module(cuda_available=False)
+        manager = yolomodels.YOLOModels()
+        load_calls = []
+
+        def fake_load(_self, *, model_name, model_type, device="cpu", model_filename=None):
+            load_calls.append((model_name, model_type, device, model_filename))
+            return yolomodels._ModelCacheEntry(model=object(), inference_lock=threading.Lock())
+
+        with mock.patch.object(
+            yolomodels.YOLOModels,
+            "_load_model_entry",
+            autospec=True,
+            side_effect=fake_load,
+        ):
+            vulkan0_model = manager.get_model(
+                model_name=yolomodels.YOLOModels.DEFAULT_MODEL_NAME,
+                preferred_device="vulkan:0 (AMD, Nvidia, ...)",
+            )
+            vulkan1_model = manager.get_model(
+                model_name=yolomodels.YOLOModels.DEFAULT_MODEL_NAME,
+                preferred_device="vulkan:1",
+            )
+
+        self.assertIsNot(vulkan0_model, vulkan1_model)
+        self.assertEqual(len(load_calls), 2)
+        self.assertEqual(load_calls[0][1:3], ("ncnn", "vulkan:0"))
+        self.assertEqual(load_calls[1][1:3], ("ncnn", "vulkan:1"))
+
     def test_get_model_skips_model_to_for_arm_cpu_ncnn_models(self):
         yolomodels = _import_yolomodels_module(cuda_available=False)
         manager = yolomodels.YOLOModels()
@@ -453,7 +494,7 @@ class YOLOModelsTests(unittest.TestCase):
         with mock.patch.object(yolomodels.Path, "exists", return_value=True):
             model = manager.get_model(
                 model_name=yolomodels.YOLOModels.DEFAULT_MODEL_NAME,
-                device="arm_cpu",
+                preferred_device="arm_cpu",
             )
 
         self.assertIn("_ncnn_model", model.model_path)
@@ -466,7 +507,7 @@ class YOLOModelsTests(unittest.TestCase):
         with mock.patch.object(yolomodels.Path, "exists", return_value=True):
             model = manager.get_model(
                 model_name=yolomodels.YOLOModels.DEFAULT_MODEL_NAME,
-                device="cuda:1 (Nvidia GPU)",
+                preferred_device="cuda:1 (Nvidia GPU)",
             )
 
         self.assertTrue(model.model_path.endswith(".pt"))
@@ -480,18 +521,40 @@ class YOLOModelsTests(unittest.TestCase):
         with mock.patch.object(yolomodels.Path, "exists", return_value=True):
             results = manager.predict(
                 model_name=yolomodels.YOLOModels.DEFAULT_MODEL_NAME,
-                device="arm_cpu",
+                preferred_device="arm_cpu",
                 image=image,
                 verbose=False,
             )
             model = manager.get_model(
                 model_name=yolomodels.YOLOModels.DEFAULT_MODEL_NAME,
-                device="arm_cpu",
+                preferred_device="arm_cpu",
             )
 
         self.assertEqual(len(results), 1)
         self.assertEqual(len(model.call_calls), 1)
         self.assertEqual(model.call_calls[0][1], {"verbose": False})
+
+    def test_predict_passes_vulkan_device_for_ncnn_models(self):
+        yolomodels = _import_yolomodels_module(cuda_available=False)
+        manager = yolomodels.YOLOModels()
+        image = np.zeros((2, 2, 3), dtype=np.uint8)
+
+        with mock.patch.object(yolomodels.Path, "exists", return_value=True):
+            results = manager.predict(
+                model_name=yolomodels.YOLOModels.DEFAULT_MODEL_NAME,
+                preferred_device="vulkan:0 (AMD, Nvidia, ...)",
+                image=image,
+                verbose=False,
+            )
+            model = manager.get_model(
+                model_name=yolomodels.YOLOModels.DEFAULT_MODEL_NAME,
+                preferred_device="vulkan:0",
+            )
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(model.to_calls, [])
+        self.assertEqual(len(model.call_calls), 1)
+        self.assertEqual(model.call_calls[0][1], {"verbose": False, "device": "vulkan:0"})
 
     def test_cuda_request_falls_back_to_cpu_and_reuses_cpu_cache_on_cpu_only_runtime(self):
         yolomodels = _import_yolomodels_module(cuda_available=False)
@@ -510,11 +573,11 @@ class YOLOModelsTests(unittest.TestCase):
         ):
             cuda_model = manager.get_model(
                 model_name=yolomodels.YOLOModels.DEFAULT_MODEL_NAME,
-                device="cuda:0 (Nvidia GPU)",
+                preferred_device="cuda:0 (Nvidia GPU)",
             )
             cpu_model = manager.get_model(
                 model_name=yolomodels.YOLOModels.DEFAULT_MODEL_NAME,
-                device="cpu (optimized for x86)",
+                preferred_device="cpu (optimized for x86)",
             )
 
         self.assertIs(cuda_model, cpu_model)
@@ -568,7 +631,7 @@ class YOLOModelsTests(unittest.TestCase):
                     start_barrier.wait(timeout=2)
                     manager.predict(
                         model_name=yolomodels.YOLOModels.DEFAULT_MODEL_NAME,
-                        device="arm_cpu",
+                        preferred_device="arm_cpu",
                         image=np.zeros((2, 2, 3), dtype=np.uint8),
                         verbose=False,
                     )
@@ -586,6 +649,33 @@ class YOLOModelsTests(unittest.TestCase):
 
 
 class AISetupDeviceTests(unittest.TestCase):
+    def test_get_ai_setup_includes_vulkan_options_before_cuda(self):
+        restapiaisetup = _import_aisetup_module(
+            cuda_available=False,
+            settings_payload={
+                "aiSetup": {
+                    "device": "vulkan:0",
+                },
+                "motors": [],
+            },
+        )
+
+        response = asyncio.run(restapiaisetup.get_ai_setup())
+
+        self.assertTrue(response["success"])
+        self.assertEqual(response["aiSetup"]["device"], "vulkan:0 (AMD, Nvidia, ...)")
+        self.assertEqual(
+            [option["value"] for option in response["deviceOptions"]],
+            [
+                "cpu (optimized for x86)",
+                "arm_cpu (optimized for ARM)",
+                "vulkan:0 (AMD, Nvidia, ...)",
+                "vulkan:1 (AMD, Nvidia, ...)",
+                "cuda:0 (Nvidia GPU)",
+                "cuda:1 (Nvidia GPU)",
+            ],
+        )
+
     def test_get_ai_setup_keeps_cuda_options_disabled_when_runtime_has_no_cuda(self):
         restapiaisetup = _import_aisetup_module(
             cuda_available=False,
