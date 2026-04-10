@@ -59,6 +59,11 @@ class EngagementResult(BaseModel):
     status: EngagementStatus
 
 class AIAgent(threading.Thread):
+    WAIT_STEP_SECONDS = 0.1
+    MOVEMENT_TIME_MIN_SECONDS = 1.0
+    MOVEMENT_TIME_MAX_SECONDS = 4.0
+    IDLE_TIME_MAX_ADDITIONAL_SECONDS = 40.0
+
     def __init__(self, *, master_controller: "MasterController"):  # pyright: ignore[reportUndefinedVariable]
         super().__init__(daemon=True)
         self._master_controller = master_controller
@@ -73,6 +78,7 @@ class AIAgent(threading.Thread):
         self._paused.set()
         self._stop_event = threading.Event()
         self._thread_started = False
+        self._motor_command_lock = threading.RLock()
 
     ORGAN_NAMES = ("brain", "chest", "abdomen", "liver", "heart")
 
@@ -111,66 +117,126 @@ class AIAgent(threading.Thread):
 
     def _stop_arm_motors(self) -> None:
         """Set both arm motors to speed 0."""
-        for role in ("leftArm", "rightArm"):
-            motor_index = self._get_motor_index_by_role(role=role)
-            if motor_index is None:
+        self._set_arm_speeds(left_speed=0, right_speed=0)
+
+    def _set_motor_speed_for_role(self, *, role: str, speed: float) -> None:
+        """Best-effort speed update for a motor resolved by role."""
+        motor_index = self._get_motor_index_by_role(role=role)
+        if motor_index is None:
+            return
+
+        try:
+            applied = self._master_controller.motors_controller.set_motor_speed_by_index(
+                motor_index=motor_index,
+                speed=speed,
+            )
+            if not applied:
+                print(f"AI role '{role}' references unavailable motor index {motor_index}")
+        except MotorOverrideConflictError as e:
+            print(f"AI motor control for role '{role}' blocked by manual hardware override: {e}")
+        except Exception as e:
+            print(f"Error setting motor speed for role '{role}': {e}")
+
+    def _set_arm_speeds(self, *, left_speed: float, right_speed: float) -> None:
+        """Serialize arm speed updates with other AI-triggered motor writes."""
+        with self._motor_command_lock:
+            self._set_motor_speed_for_role(role="leftArm", speed=left_speed)
+            self._set_motor_speed_for_role(role="rightArm", speed=right_speed)
+
+    def _should_stop(self) -> bool:
+        return not self._running or self._stop_event.is_set()
+
+    def _wait_until_resumed(self) -> bool:
+        """Poll pause/stop state until the loop is allowed to continue."""
+        while True:
+            if self._should_stop():
+                return False
+            if self._paused.wait(timeout=self.WAIT_STEP_SECONDS):
+                return not self._should_stop()
+
+    def _wait_for_duration(self, *, duration: float, on_resume=None) -> bool:
+        """Wait in 100 ms slices while still reacting to pause and stop events."""
+        remaining = max(0.0, float(duration))
+        was_paused = False
+
+        while remaining > 0:
+            if self._should_stop():
+                return False
+
+            if not self._paused.wait(timeout=self.WAIT_STEP_SECONDS):
+                was_paused = True
                 continue
 
-            try:
-                self._master_controller.motors_controller.set_motor_speed_by_index(
-                    motor_index=motor_index,
-                    speed=0,
-                )
-            except MotorOverrideConflictError as e:
-                print(f"AI motor stop blocked by manual hardware override: {e}")
-                return
-            except Exception as e:
-                print(f"Error stopping motor for role '{role}': {e}")
+            if self._should_stop():
+                return False
+
+            if was_paused:
+                if on_resume is not None:
+                    on_resume()
+                    if self._should_stop():
+                        return False
+                was_paused = False
+
+            step = min(self.WAIT_STEP_SECONDS, remaining)
+            if self._stop_event.wait(timeout=step):
+                return False
+            remaining = max(0.0, remaining - step)
+
+        return not self._should_stop()
 
     def run(self) -> None:
         """Thread main loop: randomly move leftArm and rightArm motors."""
-        loop_count = 0
-        direction: Vector2D | None = None
+        try:
+            while not self._should_stop():
+                if not self._wait_until_resumed():
+                    break
 
-        while self._running:
-            if self._stop_event.wait(timeout=1.0):
-                break
-
-            self._paused.wait()
-            if not self._running:
-                break
-
-            duration = random.uniform(1, 4)
-
-            if loop_count == 0 or random.random() >= 0.5:
                 direction = Vector2D(
                     x=random.uniform(-1.0, 1.0),
                     y=random.uniform(-1.0, 1.0),
                 )
+                movement_time = random.uniform(
+                    self.MOVEMENT_TIME_MIN_SECONDS,
+                    self.MOVEMENT_TIME_MAX_SECONDS,
+                )
 
-            left_motor = self._get_motor_by_role(role="leftArm")
-            right_motor = self._get_motor_by_role(role="rightArm")
+                self._set_arm_speeds(
+                    left_speed=direction.x,
+                    right_speed=direction.y,
+                )
 
+                if not self._wait_for_duration(
+                    duration=movement_time,
+                    on_resume=lambda: self._set_arm_speeds(
+                        left_speed=direction.x,
+                        right_speed=direction.y,
+                    ),
+                ):
+                    break
 
-            # if left_motor is not None and direction is not None:
-            #     left_motor.move(speed=direction.x)
-            # if right_motor is not None and direction is not None:
-            #     right_motor.move(speed=direction.y)
+                self._stop_arm_motors()
 
-            # if self._stop_event.wait(timeout=duration):
-            #     self._stop_arm_motors()
-            #     break
-
-            # self._stop_arm_motors()
-            loop_count += 1
+                idle_time = movement_time + random.uniform(
+                    0.0,
+                    self.IDLE_TIME_MAX_ADDITIONAL_SECONDS,
+                )
+                if not self._wait_for_duration(duration=idle_time):
+                    break
+        except Exception as e:
+            print(f"Error in AI agent thread: {e}")
+        finally:
+            self._stop_arm_motors()
 
     def stop(self) -> None:
         """Stop the thread and ensure motors are halted."""
         self._running = False
         self._stop_event.set()
         self._paused.set()
-        if self.is_alive():
-            self.join(timeout=2.0)
+        try:
+            if self.is_alive():
+                self.join(timeout=2.0)
+        finally:
+            self._stop_arm_motors()
 
     def pause(self) -> None:
         """Pause the random movement loop and stop both arm motors."""
@@ -426,22 +492,23 @@ class AIAgent(threading.Thread):
         When *use_speed* is True each motor is set to its configured speed;
         otherwise it is set to 0 (stopped).
         """
-        for motor in motors_config:
-            if motor.get("enabled", False):
-                motor_index = motor.get("index")
-                speed = motor.get("speed", 0) if use_speed else 0
-                try:
-                    applied = self._master_controller.motors_controller.set_motor_speed_by_index(
-                        motor_index=motor_index,
-                        speed=speed,
-                    )
-                    if not applied:
-                        print(f"AI motor config references unavailable motor index {motor_index}")
-                except MotorOverrideConflictError as e:
-                    print(f"AI motor control blocked by manual hardware override: {e}")
-                    return
-                except Exception as e:
-                    print(f"Error applying AI motor config for index {motor_index}: {e}")
+        with self._motor_command_lock:
+            for motor in motors_config:
+                if motor.get("enabled", False):
+                    motor_index = motor.get("index")
+                    speed = motor.get("speed", 0) if use_speed else 0
+                    try:
+                        applied = self._master_controller.motors_controller.set_motor_speed_by_index(
+                            motor_index=motor_index,
+                            speed=speed,
+                        )
+                        if not applied:
+                            print(f"AI motor config references unavailable motor index {motor_index}")
+                    except MotorOverrideConflictError as e:
+                        print(f"AI motor control blocked by manual hardware override: {e}")
+                        return
+                    except Exception as e:
+                        print(f"Error applying AI motor config for index {motor_index}: {e}")
 
     def _random_walk_on_status_changed(self, *, new_status: EngagementStatus, old_status: EngagementStatus, settings: dict):
         """Called when the engagement status changes to start/stop motors."""

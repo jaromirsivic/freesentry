@@ -34,14 +34,30 @@ class FakePin:
 
 
 class FakeMotorsController:
-    def __init__(self, *, available_indexes: set[int]):
+    def __init__(
+        self,
+        *,
+        available_indexes: set[int],
+        conflicting_indexes: set[int] | None = None,
+    ):
         self.available_indexes = set(available_indexes)
+        self.conflicting_indexes = set(conflicting_indexes or set())
+        self.attempts: list[tuple[int, float]] = []
         self.commands: list[tuple[int, float]] = []
 
     def set_motor_speed_by_index(self, *, motor_index: int, speed: float) -> bool:
-        if motor_index not in self.available_indexes:
+        resolved_index = int(motor_index)
+        resolved_speed = float(speed)
+        self.attempts.append((resolved_index, resolved_speed))
+
+        if resolved_index in self.conflicting_indexes:
+            raise aiagent.MotorOverrideConflictError(
+                f"manual override active for index {resolved_index}"
+            )
+
+        if resolved_index not in self.available_indexes:
             return False
-        self.commands.append((motor_index, float(speed)))
+        self.commands.append((resolved_index, resolved_speed))
         return True
 
 
@@ -128,10 +144,22 @@ def _make_result(*, timestamp: float = 0.0) -> aiagent.EngagementResult:
 
 
 class AIAgentMotorTests(unittest.TestCase):
-    def _make_agent(self, *, available_indexes: set[int]) -> tuple[aiagent.AIAgent, FakeMotorsController]:
-        motors_controller = FakeMotorsController(available_indexes=available_indexes)
+    def _make_agent(
+        self,
+        *,
+        available_indexes: set[int],
+        conflicting_indexes: set[int] | None = None,
+    ) -> tuple[aiagent.AIAgent, FakeMotorsController]:
+        motors_controller = FakeMotorsController(
+            available_indexes=available_indexes,
+            conflicting_indexes=conflicting_indexes,
+        )
         master_controller = types.SimpleNamespace(motors_controller=motors_controller)
         return aiagent.AIAgent(master_controller=master_controller), motors_controller
+
+    @staticmethod
+    def _role_to_index(*, role: str) -> int | None:
+        return {"leftArm": 0, "rightArm": 1}.get(role)
 
     def test_engagement_state_machine_applies_start_and_stop_motor_commands(self):
         agent, motors_controller = self._make_agent(available_indexes={0, 1})
@@ -220,6 +248,96 @@ class AIAgentMotorTests(unittest.TestCase):
 
         self.assertEqual(result.status, aiagent.EngagementStatus.EXIT_STRATEGY_UNDER_EXECUTION)
         self.assertEqual(motors_controller.commands, [(0, 0.5)])
+
+    def test_run_applies_random_arm_vector_and_stops_after_movement(self):
+        agent, motors_controller = self._make_agent(available_indexes={0, 1})
+        agent._running = True
+        agent._stop_event.clear()
+
+        with (
+            mock.patch.object(agent, "_wait_until_resumed", side_effect=[True, False]),
+            mock.patch.object(agent, "_wait_for_duration", side_effect=[True, True]),
+            mock.patch.object(agent, "_get_motor_index_by_role", side_effect=self._role_to_index),
+            mock.patch("server.aiagent.random.uniform", side_effect=[0.25, -0.75, 1.5, 8.0]),
+        ):
+            agent.run()
+
+        self.assertEqual(
+            motors_controller.commands,
+            [
+                (0, 0.25),
+                (1, -0.75),
+                (0, 0.0),
+                (1, 0.0),
+                (0, 0.0),
+                (1, 0.0),
+            ],
+        )
+
+    def test_run_stops_arms_when_stop_requested_during_movement_wait(self):
+        agent, motors_controller = self._make_agent(available_indexes={0, 1})
+        agent._running = True
+        agent._stop_event.clear()
+
+        def interrupt_wait(*, duration: float, on_resume=None) -> bool:
+            agent._running = False
+            agent._stop_event.set()
+            return False
+
+        with (
+            mock.patch.object(agent, "_wait_until_resumed", return_value=True),
+            mock.patch.object(agent, "_wait_for_duration", side_effect=interrupt_wait),
+            mock.patch.object(agent, "_get_motor_index_by_role", side_effect=self._role_to_index),
+            mock.patch("server.aiagent.random.uniform", side_effect=[0.6, -0.2, 2.5]),
+        ):
+            agent.run()
+
+        self.assertEqual(
+            motors_controller.commands,
+            [
+                (0, 0.6),
+                (1, -0.2),
+                (0, 0.0),
+                (1, 0.0),
+            ],
+        )
+
+    def test_run_ignores_missing_arm_roles_without_raising(self):
+        agent, motors_controller = self._make_agent(available_indexes={0, 1})
+        agent._running = True
+        agent._stop_event.clear()
+
+        with (
+            mock.patch.object(agent, "_wait_until_resumed", side_effect=[True, False]),
+            mock.patch.object(agent, "_wait_for_duration", side_effect=[True, True]),
+            mock.patch.object(agent, "_get_motor_index_by_role", return_value=None),
+            mock.patch("server.aiagent.random.uniform", side_effect=[0.1, -0.1, 1.0, 0.0]),
+        ):
+            agent.run()
+
+        self.assertEqual(motors_controller.commands, [])
+
+    def test_stop_arm_motors_continues_after_manual_override_conflict(self):
+        agent, motors_controller = self._make_agent(
+            available_indexes={0, 1},
+            conflicting_indexes={0},
+        )
+
+        with mock.patch.object(
+            agent,
+            "_get_motor_index_by_role",
+            side_effect=self._role_to_index,
+        ):
+            agent._stop_arm_motors()
+
+        self.assertEqual(
+            motors_controller.attempts,
+            [
+                (0, 0.0),
+                (1, 0.0),
+            ],
+        )
+        self.assertEqual(motors_controller.commands, [(1, 0.0)])
 
 
 class MotorsControllerApiTests(unittest.TestCase):
