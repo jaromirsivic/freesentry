@@ -517,8 +517,8 @@
             "static_reticle_color": "#88ff00cc",
             "static_reticle_size": 1.0,
             "mask_polygons": [],
-            "width": 640,
-            "height": 480,
+            "width": 1920,
+            "height": 1080,
             "fps": 30.0,
             "bitrate": -1,
             "buffer_size": 1,
@@ -708,11 +708,11 @@
         }
     },
     "aiSetup": {
-        "activationDateTime": "2026-02-14T09:18:16+00:00",
+        "activationDateTime": "2026-04-10T15:32:49+00:00",
         "exitStrategy": {
             "fixedDateTime": "2199-12-31T22:59:59+00:00",
-            "maxEngagements": 1000000,
-            "timeoutAfterFirstEngagement": 1000000,
+            "maxEngagements": 15,
+            "timeoutAfterFirstEngagement": 15,
             "exitDuration": 1000,
             "motors": [
                 {

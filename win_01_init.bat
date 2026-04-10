@@ -1,6 +1,6 @@
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex" && set Path=C:\Users\User\.local\bin;%Path%
 uv init
-git init
+rem git init
 IF NOT EXIST .venv\Scripts\activate (uv venv)
 call .venv\Scripts\activate
 rem uv pip install -U ultralytics
@@ -21,7 +21,7 @@ uv add numpy
 uv add opencv-python
 uv add ultralytics
 uv add debugpy
-uv add tensorrt
+rem uv add tensorrt
 uv add picamera2
 uv pip install python-periphery
 uv add torch torchvision torchaudio

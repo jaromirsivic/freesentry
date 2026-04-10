@@ -7,3 +7,6 @@ Change No camera detected to wait
 Switch CUDA, CPU
 disable setup of pigpio
 add a refresh button on system performance
+reset ai counters
+cr lf for sh scripts
+create distribution
