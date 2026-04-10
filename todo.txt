@@ -1,12 +1,6 @@
 Update main page
 Add hw selection where the agent is executed
-Camera load profile for raspberry pi
-Fix 640x480
 Update camera settings to get_settings and set_settings
 Change No camera detected to wait
 Switch CUDA, CPU
-disable setup of pigpio
-add a refresh button on system performance
 reset ai counters
-cr lf for sh scripts
-create distribution

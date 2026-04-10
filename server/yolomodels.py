@@ -336,8 +336,8 @@ class YOLOModels:
             model.to(device=device)
         return _ModelCacheEntry(model=model, inference_lock=threading.Lock())
 
-    def _get_or_load_model_entry(self, *, model_name: str, device: str = "cpu") -> _ModelCacheEntry | None:
-        resolved_device = self._resolve_device_config(device=device)
+    def _get_or_load_model_entry(self, *, model_name: str, preferred_device: str = "cpu") -> _ModelCacheEntry | None:
+        resolved_device = self._resolve_device_config(device=preferred_device)
         self._log_device_warning_once(warning_message=resolved_device.warning_message)
         resolved_model_name, resolved_model_type, model_filename = self._resolve_model_filename(
             model_name=model_name,
@@ -365,21 +365,21 @@ class YOLOModels:
 
     def convert_model(self):
         for model_name in YOLOModels.MODEL_NAMES:
-            model = self.get_model(model_name=model_name, device="cpu")
+            model = self.get_model(model_name=model_name, preferred_device="cpu")
             model.export(format="ncnn")
             model.export(format="engine")
             model.export(format="openvino")
 
-    def get_model(self, *,model_name: str, device: str = "cpu") -> YOLO:
-        model_entry = self._get_or_load_model_entry(model_name=model_name, device=device)
+    def get_model(self, *,model_name: str, preferred_device: str = "cpu") -> YOLO:
+        model_entry = self._get_or_load_model_entry(model_name=model_name, preferred_device=preferred_device)
         if model_entry is None:
-            raise RuntimeError(f"Unable to load YOLO model '{model_name}' for device '{device}'")
+            raise RuntimeError(f"Unable to load YOLO model '{model_name}' for device '{preferred_device}'")
         return model_entry.model
 
-    def predict(self, *, model_name: str, device: str = "cpu", image: Any, **kwargs) -> Any:
-        model_entry = self._get_or_load_model_entry(model_name=model_name, device=device)
+    def predict(self, *, model_name: str, preferred_device: str = "cpu", image: Any, **kwargs) -> Any:
+        model_entry = self._get_or_load_model_entry(model_name=model_name, preferred_device=preferred_device)
         if model_entry is None:
-            raise RuntimeError(f"Unable to load YOLO model '{model_name}' for device '{device}'")
+            raise RuntimeError(f"Unable to load YOLO model '{model_name}' for device '{preferred_device}'")
         with model_entry.inference_lock:
             return model_entry.model(image, **kwargs)
 

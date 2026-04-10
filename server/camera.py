@@ -383,18 +383,11 @@ class Camera(threading.Thread):
 
         # Run YOLO inference
         try:
-            # if self._yolomodels is None:
-            #     #self._yolomodels = YOLO("C:/git/freesentry/submoamoa/package/src/submoamoa/ai_models/yolo/yolo26n-pose_ncnn_model")
-            #     yolomodels = YOLOModels().get_model(model_name=model_name, device=device)
-            # start_time = time.time()
-            # results = self._yolomodels(image, verbose=False)
-            # end_time = time.time()
-            # print(f"AI processing time: {end_time - start_time} seconds")
             results = YOLOModels().predict(
                 model_name=model_name,
-                device=device,
+                preferred_device=device,
                 image=image,
-                verbose=False,
+                verbose=False
             )
             result = results[0]
 

@@ -25,7 +25,7 @@
                 "80"
             ],
             "jinja": true,
-            "preLaunchTask": "compile",
+            //"preLaunchTask": "compile",
         },
         // {
         //     "name": "Python Debugger: Current File",

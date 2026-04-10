@@ -307,7 +307,6 @@ class CameraCV2(Camera):
                 self._camera.set(cv2.CAP_PROP_FRAME_HEIGHT, value["height"])
                 self._camera.set(cv2.CAP_PROP_FPS, value["fps"])
                 # self._camera.set(cv2.CAP_PROP_BITRATE, value["bitrate"])
-                # self._camera.set(cv2.CAP_PROP_BUFFERSIZE, value["buffer_size"])
                 self._camera.set(cv2.CAP_PROP_BRIGHTNESS, value["brightness"])
                 self._camera.set(cv2.CAP_PROP_CONTRAST, value["contrast"])
                 self._camera.set(cv2.CAP_PROP_HUE, value["hue"])
@@ -322,6 +321,8 @@ class CameraCV2(Camera):
                 self._camera.set(cv2.CAP_PROP_AUTO_WB, 1.0 if value["auto_white_balance_temperature"] else 0.0)
                 self._camera.set(cv2.CAP_PROP_AUTOFOCUS, 1.0 if value["auto_focus"] else 0.0)
                 self._camera.set(cv2.CAP_PROP_AUTO_EXPOSURE, 1.0 if value["auto_exposure"] else 0.0)
+                # make sure the buffer size is 1, therefore image is processed immediately
+                self._camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
             except Exception as e:
                 print(f"Error setting settings: {e}")
 
