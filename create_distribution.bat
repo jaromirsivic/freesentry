@@ -14,6 +14,8 @@ pause
 if exist "%TARGET_DIR%" (
     choice /C YN /M "Target directory already exists. Do you want to delete it?"
     if errorlevel 2 exit /b 0
+    echo deleting target directory
+    echo this may take a few minutes...
     rmdir /S /Q "%TARGET_DIR%"
     if exist "%TARGET_DIR%" (
         echo Failed to delete target directory.

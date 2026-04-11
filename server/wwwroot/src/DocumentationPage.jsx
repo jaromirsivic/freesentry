@@ -32,7 +32,13 @@ const DocumentationPage = ({ pageId }) => {
   return (
     <div
       className="page-container"
-      style={{ display: 'flex', flexDirection: 'column', minHeight: 0, height: '100%' }}
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        minHeight: 0,
+        height: '100%',
+        backgroundColor: '#ffffff',
+      }}
     >
       <MarkdownViewer
         value={page.document}
@@ -43,6 +49,7 @@ const DocumentationPage = ({ pageId }) => {
           flex: 1,
           minHeight: 0,
           overflowY: 'auto',
+          backgroundColor: '#ffffff',
           padding: VIEWER_PADDING,
           paddingBottom: `calc(${VIEWER_PADDING} + var(--safe-area-bottom))`,
         }}
