@@ -32,6 +32,25 @@ run_if_available() {
     fi
 }
 
+install_or_ask_continue() {
+    local package_name="$1"
+    shift
+
+    echo "Installing $package_name"
+    if "$@"; then
+        return 0
+    fi
+
+    echo "Installation of $package_name failed."
+    if prompt_yes_no "Do you want to continue the initialization script anyway?" "N"; then
+        echo "Continuing without $package_name"
+        return 0
+    fi
+
+    echo "Stopping initialization."
+    exit 1
+}
+
 main() {
     if ! prompt_yes_no "Freesentry project in this folder will be initialized from scratch. Do you want to continue?" "N"; then
         exit 0
@@ -78,26 +97,17 @@ main() {
     echo "Installing dependencies..."
     echo "--------------------------------"
 
-    echo "Insatlling fastapi"
-    uv add fastapi --extra standard
-    echo "Insatlling uvicorn"
-    uv add uvicorn --extra standard
-    echo "Insatlling gpiozero pigpio"
-    uv add gpiozero pigpio
-    echo "Insatlling numpy"
-    uv add numpy
-    echo "Insatlling opencv-python"
-    uv add opencv-python
-    echo "Insatlling opencv-python-headless"
-    uv pip install "opencv-python-headless"
-    echo "Insatlling ultralytics"
-    uv add ultralytics
-    echo "Insatlling debugpy"
-    uv add debugpy
-    echo "Insatlling picamera2"
-    uv add picamera2
-    echo "Insatlling python-periphery"
-    uv pip install python-periphery
+    install_or_ask_continue "fastapi" uv add fastapi --extra standard
+    install_or_ask_continue "uvicorn" uv add uvicorn --extra standard
+    install_or_ask_continue "gpiozero pigpio" uv add gpiozero pigpio
+    install_or_ask_continue "numpy" uv add numpy
+    install_or_ask_continue "opencv-python" uv add opencv-python
+    install_or_ask_continue "opencv-python-headless" uv pip install "opencv-python-headless"
+    install_or_ask_continue "ultralytics" uv add ultralytics
+    install_or_ask_continue "ncnn" uv add ncnn
+    install_or_ask_continue "debugpy" uv add debugpy
+    install_or_ask_continue "picamera2" uv add picamera2
+    install_or_ask_continue "python-periphery" uv pip install python-periphery
 
     echo "Current user: $(id -un)"
 
