@@ -77,6 +77,11 @@ class ManualControlActionResponse(BaseModel):
     motors: list[MotorStatus]
 
 
+class ManualControlResetResponse(BaseModel):
+    """Response model for resetting AI engagement runtime state."""
+    success: bool
+
+
 @router.get("/api/manualcontrol/motors")
 async def get_manual_control_motors():
     """
@@ -186,6 +191,23 @@ async def save_manual_control_motors(*, request: SaveMotorVisibilityRequest):
         raise
     except Exception as e:
         print(f"Error saving manual control motors: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/manualcontrol/reset-ai-engagements", response_model=ManualControlResetResponse)
+async def reset_ai_engagements(
+    *,
+    master_controller: "MasterController" = Depends(get_master_controller),
+):
+    """Reset AI engagement runtime state from Manual Control."""
+    try:
+        master_controller.ai_agent.reset_engagement_history()
+        return {"success": True}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error resetting AI engagements: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

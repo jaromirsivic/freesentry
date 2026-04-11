@@ -78,6 +78,7 @@ class AIAgent(threading.Thread):
         self._paused.set()
         self._stop_event = threading.Event()
         self._thread_started = False
+        self._engagement_state_lock = threading.RLock()
         self._motor_command_lock = threading.RLock()
 
     ORGAN_NAMES = ("brain", "chest", "abdomen", "liver", "heart")
@@ -91,6 +92,29 @@ class AIAgent(threading.Thread):
         self._paused.set()
         self._thread_started = True
         super().start()
+
+    def reset_engagement_history(self) -> None:
+        """Clear engagement history and return the runtime state to idle."""
+        try:
+            settings = get_settings_sync()
+        except Exception as e:
+            print(f"Error loading settings for AI engagement reset: {e}")
+            settings = {}
+
+        with self._engagement_state_lock:
+            self._engagement_history.clear()
+            self._immediate_engagement_history.clear()
+            self._latest_status = EngagementStatus.NOT_ENGAGING
+            self._latest_processed_timestamp = 0
+            self._engaging_started_at = 0
+            self._disengaging_started_at = 0
+
+            # Stop any AI-driven motors so the cleared state takes effect immediately.
+            ai_setup = settings.get("aiSetup", {})
+            mission_motors = ai_setup.get("missions", {}).get("randomWalk", {}).get("motors", [])
+            exit_strategy_motors = ai_setup.get("exitStrategy", {}).get("motors", [])
+            self._apply_motors(motors_config=mission_motors, use_speed=False)
+            self._apply_motors(motors_config=exit_strategy_motors, use_speed=False)
 
     def _get_motor_by_role(self, *, role: str) -> "Motor | None":  # pyright: ignore[reportUndefinedVariable]
         """Return the Motor instance whose settings entry has the given role, or None."""
@@ -463,27 +487,28 @@ class AIAgent(threading.Thread):
         result.immediate_engagement_condition_satisfied = self._is_condition_for_immediate_engagement_satisfied(
             pose=pose, reticle_position=reticle_position, ai_setup=ai_setup
         )
-        # Add to history (deque auto-evicts oldest)
-        self._immediate_engagement_history.append(result)
-
-        # Compute FPS
         now = result.timestamp
         result.min_fps_to_allow_engagement = ai_setup.get("minFpsToAllowEngagement", 0)
-        result.fps = self._get_fps(now=now)
-        result.fps_satisfied = result.fps >= result.min_fps_to_allow_engagement
+        with self._engagement_state_lock:
+            # Add to history (deque auto-evicts oldest)
+            self._immediate_engagement_history.append(result)
 
-        # Compute next status via state machine
-        old_status = self._latest_status
-        self._compute_next_status(result=result, now=now, now_dt=now_dt, ai_setup=ai_setup)
+            # Compute FPS
+            result.fps = self._get_fps(now=now)
+            result.fps_satisfied = result.fps >= result.min_fps_to_allow_engagement
 
-        result.is_valid = True
-        result.engaging = result.status == EngagementStatus.ENGAGING
-        result.engagement_counter = len(self._engagement_history)
-        result.exit_strategy_under_execution = result.status == EngagementStatus.EXIT_STRATEGY_UNDER_EXECUTION
+            # Compute next status via state machine
+            old_status = self._latest_status
+            self._compute_next_status(result=result, now=now, now_dt=now_dt, ai_setup=ai_setup)
 
-        # Fire status change callback if status changed
-        if result.status != old_status:
-            self._random_walk_on_status_changed(new_status=result.status, old_status=old_status, settings=settings)
+            result.is_valid = True
+            result.engaging = result.status == EngagementStatus.ENGAGING
+            result.engagement_counter = len(self._engagement_history)
+            result.exit_strategy_under_execution = result.status == EngagementStatus.EXIT_STRATEGY_UNDER_EXECUTION
+
+            # Fire status change callback if status changed
+            if result.status != old_status:
+                self._random_walk_on_status_changed(new_status=result.status, old_status=old_status, settings=settings)
         return result
 
     def _apply_motors(self, *, motors_config: list[dict], use_speed: bool) -> None:
@@ -584,7 +609,9 @@ class AIAgent(threading.Thread):
         status_str = f'Status: {engagement_result.status.value}'
         cv2.putText(frame.image, status_str, (int(20 * scale), int(40 * scale)), cv2.FONT_HERSHEY_SIMPLEX, scale, text_color, 1)
         # draw engagement counter
-        engagement_counter_str = f'Engagement Counter: {len(self._engagement_history)}'
+        with self._engagement_state_lock:
+            engagement_counter = len(self._engagement_history)
+        engagement_counter_str = f'Engagement Counter: {engagement_counter}'
         cv2.putText(frame.image, engagement_counter_str, (int(20 * scale), int(80 * scale)), cv2.FONT_HERSHEY_SIMPLEX, scale, text_color, 1)
         # draw fps
         fps_str = f'FPS: {engagement_result.fps:.2f}'

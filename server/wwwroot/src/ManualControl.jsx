@@ -65,6 +65,7 @@ const ManualControl = () => {
     });
     // Saving state
     const [isSaving, setIsSaving] = useState(false);
+    const [isResetting, setIsResetting] = useState(false);
     
     // Ref to track if component is mounted (for cleanup)
     const isMountedRef = useRef(true);
@@ -589,6 +590,31 @@ const ManualControl = () => {
     }, [tempMotors, tempCameraSettings, stopCameraStream, buildStreamUrl]);
 
     /**
+     * Reset AI engagement counters and runtime state immediately.
+     */
+    const handleResetAiEngagements = useCallback(async () => {
+        try {
+            setIsResetting(true);
+
+            const response = await fetch('/api/manualcontrol/reset-ai-engagements', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            const data = await response.json();
+
+            if (!response.ok || !data.success) {
+                throw new Error(data.detail || 'Failed to reset AI engagements');
+            }
+        } catch (error) {
+            console.error('Error resetting AI engagements:', error);
+        } finally {
+            setIsResetting(false);
+        }
+    }, []);
+
+    /**
      * Send manual control action to backend.
      * Called by the Timer loop, which serializes requests and
      * always sends the latest state snapshot from refs.
@@ -973,7 +999,7 @@ const ManualControl = () => {
                 onCancel={handleCloseModal}
                 okLabel={isSaving ? "Saving..." : "Save"}
                 onOk={handleSaveMotors}
-                okDisabled={isSaving}
+                okDisabled={isSaving || isResetting}
             >
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '0.5rem' }}>
                     {/* Cameras Section */}
@@ -1057,6 +1083,27 @@ const ManualControl = () => {
                                 disabled={tempCameraSettings.selectedCamera !== 'spotter_camera3'}
                                 style={{ flex: 1 }}
                             />
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                            <span style={{ width: '150px', flexShrink: 0 }} />
+                            <button
+                                type="button"
+                                onClick={handleResetAiEngagements}
+                                disabled={isResetting || isSaving}
+                                style={{
+                                    padding: '0.625rem 1rem',
+                                    backgroundColor: '#dc2626',
+                                    border: '1px solid #b91c1c',
+                                    borderRadius: '0.375rem',
+                                    color: '#ffffff',
+                                    fontWeight: 600,
+                                    cursor: isResetting || isSaving ? 'not-allowed' : 'pointer',
+                                    opacity: isResetting || isSaving ? 0.7 : 1,
+                                    transition: 'opacity 0.2s ease, background-color 0.2s ease'
+                                }}
+                            >
+                                {isResetting ? 'Resetting...' : 'Reset AI Engagements'}
+                            </button>
                         </div>
                     </div>
 

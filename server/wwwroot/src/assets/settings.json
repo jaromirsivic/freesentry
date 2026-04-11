@@ -736,10 +736,10 @@
                     "speed": 0
                 }
             ],
-            "exitStrategyDuration": 1000
+            "exitStrategyDuration": 10
         },
         "modelName": "Simple and Fast",
-        "device": "cuda:0 (Nvidia GPU)",
+        "device": "cuda:0 (Nvidia GPU Only)",
         "minFpsToAllowEngagement": 1,
         "organMustBeVisibleSeconds": 0.5,
         "detectionRadiusFromReticle": 70,
