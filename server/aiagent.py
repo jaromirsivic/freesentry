@@ -565,7 +565,7 @@ class AIAgent(threading.Thread):
                 color = (0, 255, 0)
             case EngagementStatus.ARMING:
                 # text_color = (0, 128, 255)
-                color = (0, 128, 255)
+                color = (0, 192, 255)
             case EngagementStatus.DISENGAGING:
                 # text_color = (255, 128, 0)
                 color = (255, 128, 0)

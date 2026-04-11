@@ -7,13 +7,15 @@ import HotZone from './HotZone';
 import Settings from './Settings';
 import Tools from './Tools';
 import ManualControl from './ManualControl';
-import Tutorials from './Tutorials';
 import About from './About';
 import AIAgent from './AIAgent';
 import ImportExport from './ImportExport';
 import GeneralSetup from './GeneralSetup';
 import Motors from './Motors';
 import AISetup from './AISetup';
+import SystemGuide from './SystemGuide';
+import WhatToBuy from './WhatToBuy';
+import Electronics from './Electronics';
 
 import Cameras from './Cameras';
 import ComponentsDemo from './ComponentsDemo';
@@ -26,7 +28,7 @@ import PolygonZoomPanDemo from './PolygonZoomPanDemo';
 import DateTimePickerDemo from './DateTimePickerDemo';
 import Joystick1DDemo from './Joystick1DDemo';
 
-function SandboxRouteGate() {
+function DebugOnlyRouteGate({ children }) {
   const { isDebugMode, generalSettingsLoaded } = useGeneralSettings();
   if (!generalSettingsLoaded) {
     return null;
@@ -34,7 +36,7 @@ function SandboxRouteGate() {
   if (!isDebugMode) {
     return <Navigate to="/" replace />;
   }
-  return <Sandbox />;
+  return children;
 }
 
 function App() {
@@ -49,7 +51,14 @@ function App() {
         <Route path="/" element={<Layout />}>
           <Route index element={<MainPage />} />
           <Route path="manual-control" element={<ManualControl />} />
-          <Route path="ai-agent" element={<AIAgent />} />
+          <Route
+            path="ai-agent"
+            element={(
+              <DebugOnlyRouteGate>
+                <AIAgent />
+              </DebugOnlyRouteGate>
+            )}
+          />
           <Route path="settings" element={<Settings />}>
             <Route path="import-export" element={<ImportExport />} />
             <Route path="general-setup" element={<GeneralSetup />} />
@@ -60,8 +69,20 @@ function App() {
           <Route path="tools" element={<Tools />}>
             <Route path="hot-zone" element={<HotZone />} />
           </Route>
-          <Route path="tutorials" element={<Tutorials />} />
-          <Route path="sandbox" element={<SandboxRouteGate />}>
+          <Route path="tutorials">
+            <Route index element={<Navigate to="system-guide" replace />} />
+            <Route path="system-guide" element={<SystemGuide />} />
+            <Route path="what-to-buy" element={<WhatToBuy />} />
+            <Route path="electronics" element={<Electronics />} />
+          </Route>
+          <Route
+            path="sandbox"
+            element={(
+              <DebugOnlyRouteGate>
+                <Sandbox />
+              </DebugOnlyRouteGate>
+            )}
+          >
             <Route path="components-demo" element={<ComponentsDemo />} />
             <Route path="modal-windows-demo" element={<ModalWindowsDemo />} />
             <Route path="editable-chart" element={<EditableChartDemo />} />

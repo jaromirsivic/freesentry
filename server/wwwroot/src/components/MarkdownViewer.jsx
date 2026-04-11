@@ -175,8 +175,18 @@ function buildMarkdownViewUrl({ rootFolder, path, name, hash = '' }) {
  *                              container DOM node (e.g. to let the parent scroll it).
  * @param {string} rootFolder - Root folder key used to resolve relative images and links.
  * @param {string} docPath    - Path of the document's parent folder within rootFolder.
+ * @param {Function|null} resolveAssetUrl   - Optional resolver for relative file references.
+ * @param {Function|null} resolveMarkdownHref - Optional resolver for relative markdown links.
  */
-const MarkdownViewer = ({ value = '', style = {}, scrollRef = null, rootFolder = '', docPath = '' }) => {
+const MarkdownViewer = ({
+    value = '',
+    style = {},
+    scrollRef = null,
+    rootFolder = '',
+    docPath = '',
+    resolveAssetUrl = null,
+    resolveMarkdownHref = null,
+}) => {
     const navigate = useNavigate();
     const internalRef = useRef(null);
     const containerRef = scrollRef ?? internalRef;
@@ -203,7 +213,7 @@ const MarkdownViewer = ({ value = '', style = {}, scrollRef = null, rootFolder =
         blobUrlsRef.current = [];
 
         const container = containerRef.current;
-        if (!container || !rootFolder) return;
+        if (!container) return;
 
         const imgs = container.querySelectorAll('img');
         imgs.forEach(img => {
@@ -212,6 +222,18 @@ const MarkdownViewer = ({ value = '', style = {}, scrollRef = null, rootFolder =
 
             const target = resolveRelativePath(rawSrc, docPath);
             if (!target) return;
+
+            const resolvedUrl = typeof resolveAssetUrl === 'function'
+                ? resolveAssetUrl(target)
+                : null;
+
+            if (resolvedUrl) {
+                img.src = resolvedUrl;
+                return;
+            }
+
+            if (!rootFolder) return;
+
             const { path, name } = target;
 
             apiBlob('/api/folder/download', { rootFolder, path, name })
@@ -228,7 +250,7 @@ const MarkdownViewer = ({ value = '', style = {}, scrollRef = null, rootFolder =
             blobUrlsRef.current.forEach(url => URL.revokeObjectURL(url));
             blobUrlsRef.current = [];
         };
-    }, [value, rootFolder, docPath, containerRef]);
+    }, [value, rootFolder, docPath, containerRef, resolveAssetUrl]);
 
     useEffect(() => {
         const container = containerRef.current;
@@ -242,17 +264,26 @@ const MarkdownViewer = ({ value = '', style = {}, scrollRef = null, rootFolder =
             }
             delete link.dataset.markdownPreviewUrl;
 
-            if (!originalHref || !rootFolder || !isRelativeMarkdownHref(originalHref)) return;
+            if (!originalHref || !isRelativeMarkdownHref(originalHref)) return;
 
             const target = resolveRelativePath(originalHref, docPath);
             if (!target) return;
 
-            const previewUrl = buildMarkdownViewUrl({ rootFolder, ...target });
+            let previewUrl = typeof resolveMarkdownHref === 'function'
+                ? resolveMarkdownHref(target)
+                : null;
+
+            if (!previewUrl && rootFolder) {
+                previewUrl = buildMarkdownViewUrl({ rootFolder, ...target });
+            }
+
+            if (!previewUrl) return;
+
             link.dataset.originalMarkdownHref = originalHref;
             link.setAttribute('href', previewUrl);
             link.dataset.markdownPreviewUrl = previewUrl;
         });
-    }, [value, rootFolder, docPath, containerRef]);
+    }, [value, rootFolder, docPath, containerRef, resolveMarkdownHref]);
 
     const rawHtml = markdownParser.parse(value);
     const htmlWithMermaid = extractMermaidBlocks(rawHtml);

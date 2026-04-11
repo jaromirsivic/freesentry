@@ -16,6 +16,9 @@ import toolsIcon from './assets/icons/tools.svg';
 
 import cameraIcon from './assets/icons/camera.svg';
 import tutorialsIcon from './assets/icons/tutorials.svg';
+import systemGuideIcon from './assets/icons/systemguide.svg';
+import whatToBuyIcon from './assets/icons/whattobuy.svg';
+import electronicsIcon from './assets/icons/electronics.svg';
 import componentsDemoIcon from './assets/icons/mainPage.svg'; // Using mainPage icon as fallback for Components Demo
 import aboutIcon from './assets/icons/about.svg';
 import modalWindowsIcon from './assets/icons/tip.svg';
@@ -23,7 +26,10 @@ import modalWindowsIcon from './assets/icons/tip.svg';
 const FULL_BLEED_PATHS = new Set([
   '/manual-control',
   '/ai-agent',
-  '/tools/hot-zone'
+  '/tools/hot-zone',
+  '/tutorials/system-guide',
+  '/tutorials/what-to-buy',
+  '/tutorials/electronics'
 ]);
 
 const MenuLink = ({ to, icon, label, onNavigate }) => (
@@ -87,7 +93,12 @@ const Layout = () => {
       if (path === '/sandbox/joystick1d') return { title: 'Joystick1D Demo', icon: componentsDemoIcon };
       return { title: 'Developers Sandbox', icon: manualControlIcon };
     }
-    if (path === '/tutorials') return { title: 'Tutorials', icon: tutorialsIcon };
+    if (path.startsWith('/tutorials')) {
+      if (path === '/tutorials/system-guide') return { title: 'System Guide', icon: systemGuideIcon };
+      if (path === '/tutorials/what-to-buy') return { title: 'What to Buy', icon: whatToBuyIcon };
+      if (path === '/tutorials/electronics') return { title: 'Electronics', icon: electronicsIcon };
+      return { title: 'Tutorials', icon: tutorialsIcon };
+    }
     if (path === '/about') return { title: 'About', icon: aboutIcon };
     return { title: 'Submoamoa', icon: null };
   };
@@ -148,7 +159,9 @@ const Layout = () => {
             <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               <li><MenuLink to="/" icon={mainPageIcon} label="Main Page" onNavigate={handleMenuNavigate} /></li>
               <li><MenuLink to="/manual-control" icon={manualControlIcon} label="Manual Control" onNavigate={handleMenuNavigate} /></li>
-              <li><MenuLink to="/ai-agent" icon={aiAgentIcon} label="AI Agent" onNavigate={handleMenuNavigate} /></li>
+              {isDebugMode && (
+                <li><MenuLink to="/ai-agent" icon={aiAgentIcon} label="AI Agent" onNavigate={handleMenuNavigate} /></li>
+              )}
               <li>
                 <div className="btn" style={{ justifyContent: 'flex-start', width: '100%', cursor: 'default', opacity: 0.8, gap: '0.75rem' }}>
                   <img src={settingsIcon} alt="" width="24" height="24" />
@@ -171,7 +184,17 @@ const Layout = () => {
                   <li><MenuLink to="/tools/hot-zone" icon={hotZoneIcon} label="Hot Zone" onNavigate={handleMenuNavigate} /></li>
                 </ul>
               </li>
-              <li><MenuLink to="/tutorials" icon={tutorialsIcon} label="Tutorials" /></li>
+              <li>
+                <div className="btn" style={{ justifyContent: 'flex-start', width: '100%', cursor: 'default', opacity: 0.8, gap: '0.75rem' }}>
+                  <img src={tutorialsIcon} alt="" width="24" height="24" />
+                  Tutorials
+                </div>
+                <ul style={{ listStyle: 'none', paddingLeft: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
+                  <li><MenuLink to="/tutorials/system-guide" icon={systemGuideIcon} label="System Guide" onNavigate={handleMenuNavigate} /></li>
+                  <li><MenuLink to="/tutorials/what-to-buy" icon={whatToBuyIcon} label="What to Buy" onNavigate={handleMenuNavigate} /></li>
+                  <li><MenuLink to="/tutorials/electronics" icon={electronicsIcon} label="Electronics" onNavigate={handleMenuNavigate} /></li>
+                </ul>
+              </li>
               {isDebugMode && (
               <li>
                 <div className="btn" style={{ justifyContent: 'flex-start', width: '100%', cursor: 'default', opacity: 0.8, gap: '0.75rem' }}>
