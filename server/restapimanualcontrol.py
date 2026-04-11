@@ -220,7 +220,10 @@ async def manual_control_action(
     """
     Process manual control action from frontend.
     
-    This endpoint is called periodically (every 0.25s) and on joystick movement.
+    This endpoint is called periodically by the Manual Control timer.
+    The frontend serializes requests, always sends the latest joystick and
+    motor snapshot, and starts the next request after the current response
+    based on the configured client interval.
     It sets motor speeds based on joystick positions and returns motor status.
     
     - Motors at index 0 and 1 are controlled by the Polygon joystick (x/y)

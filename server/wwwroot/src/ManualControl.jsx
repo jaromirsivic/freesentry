@@ -1150,10 +1150,10 @@ const ManualControl = () => {
                 </div>
             </ModalWindow>
 
-            {/* Timer for periodic action updates (100 ms cadence) */}
+            {/* Timer for periodic action updates (20 ms cadence) */}
             <Timer
                 enabled={timerEnabled}
-                interval={0.1}
+                interval={0.02}
                 onInterval={sendManualControlAction}
             />
         </div>
