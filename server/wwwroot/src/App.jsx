@@ -51,14 +51,7 @@ function App() {
         <Route path="/" element={<Layout />}>
           <Route index element={<MainPage />} />
           <Route path="manual-control" element={<ManualControl />} />
-          <Route
-            path="ai-agent"
-            element={(
-              <DebugOnlyRouteGate>
-                <AIAgent />
-              </DebugOnlyRouteGate>
-            )}
-          />
+          <Route path="ai-agent" element={<AIAgent />} />
           <Route path="settings" element={<Settings />}>
             <Route path="import-export" element={<ImportExport />} />
             <Route path="general-setup" element={<GeneralSetup />} />

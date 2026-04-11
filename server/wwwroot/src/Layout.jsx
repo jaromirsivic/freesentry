@@ -159,9 +159,7 @@ const Layout = () => {
             <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               <li><MenuLink to="/" icon={mainPageIcon} label="Main Page" onNavigate={handleMenuNavigate} /></li>
               <li><MenuLink to="/manual-control" icon={manualControlIcon} label="Manual Control" onNavigate={handleMenuNavigate} /></li>
-              {isDebugMode && (
-                <li><MenuLink to="/ai-agent" icon={aiAgentIcon} label="AI Agent" onNavigate={handleMenuNavigate} /></li>
-              )}
+              <li><MenuLink to="/ai-agent" icon={aiAgentIcon} label="AI Agent" onNavigate={handleMenuNavigate} /></li>
               <li>
                 <div className="btn" style={{ justifyContent: 'flex-start', width: '100%', cursor: 'default', opacity: 0.8, gap: '0.75rem' }}>
                   <img src={settingsIcon} alt="" width="24" height="24" />
