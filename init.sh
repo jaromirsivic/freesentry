@@ -84,6 +84,8 @@ main() {
     echo "Initializing python environment"
     uv init
     uv venv
+    # python3 -m venv --system-site-packages .venv
+    # source .venv/bin/activate
 
     if [[ ! -f .venv/bin/activate ]]; then
         uv venv
