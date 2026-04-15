@@ -503,7 +503,7 @@ export const activateAIAgent = async () => {
  * @returns {Promise<object>} Activation state response.
  */
 export const stopAIAgent = async () => {
-    return post('/api/aiagent/stop', {});
+    return post('/api/aiagent/deactivate', {});
 };
 
 // ============================================
