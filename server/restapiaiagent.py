@@ -59,7 +59,7 @@ async def activate_aiagent(
 
 
 @router.post("/api/aiagent/deactivate", response_model=AIAgentActivationResponse)
-async def stop_aiagent(
+async def deactivate_aiagent(
     *,
     master_controller: "MasterController" = Depends(get_master_controller),
 ):
@@ -73,5 +73,5 @@ async def stop_aiagent(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error stopping AI agent: {e}")
+        print(f"Error deactivating AI agent: {e}")
         raise HTTPException(status_code=500, detail=str(e))

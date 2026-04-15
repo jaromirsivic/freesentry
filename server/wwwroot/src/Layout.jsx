@@ -54,9 +54,11 @@ const Layout = () => {
     aiagentFullyActivated,
     activationLoaded,
     isActivationBusy,
-    stopAIAgent
+    deactivateAIAgent
   } = useAIAgentActivation();
   const initialActivationRedirectHandledRef = useRef(false);
+  const pathnameRef = useRef(location.pathname);
+  pathnameRef.current = location.pathname;
 
   /**
    * Handle menu toggle with custom event dispatch.
@@ -65,14 +67,16 @@ const Layout = () => {
    * @param {boolean} isNavigating - True if menu is closing due to navigation to another page.
    */
   const handleMenuToggle = useCallback((newState, isNavigating = false) => {
-    const willOpen = typeof newState === 'boolean' ? newState : !isMenuOpen;
-    setIsMenuOpen(willOpen);
-    
-    // Dispatch custom event for pages that need to respond to menu state
-    window.dispatchEvent(new CustomEvent('menuStateChange', { 
-      detail: { isOpen: willOpen, currentPath: location.pathname, isNavigating }
-    }));
-  }, [isMenuOpen, location.pathname]);
+    setIsMenuOpen(prev => {
+      const willOpen = typeof newState === 'boolean' ? newState : !prev;
+
+      window.dispatchEvent(new CustomEvent('menuStateChange', {
+        detail: { isOpen: willOpen, currentPath: pathnameRef.current, isNavigating }
+      }));
+
+      return willOpen;
+    });
+  }, []);
 
   useEffect(() => {
     if (!activationLoaded || initialActivationRedirectHandledRef.current) {
@@ -89,12 +93,12 @@ const Layout = () => {
     handleMenuToggle(false);
 
     try {
-      await stopAIAgent();
+      await deactivateAIAgent();
       navigate('/ai-agent');
     } catch (error) {
       console.error('Failed to stop AI agent:', error);
     }
-  }, [handleMenuToggle, navigate, stopAIAgent]);
+  }, [deactivateAIAgent, handleMenuToggle, navigate]);
 
   const getPageInfo = () => {
     const path = location.pathname;

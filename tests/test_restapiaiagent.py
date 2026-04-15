@@ -72,12 +72,12 @@ class AIAgentRuntimeApiTests(unittest.TestCase):
             {"success": True, "aiagent_fully_activated": True},
         )
 
-    def test_stop_aiagent_disables_runtime_state(self):
+    def test_deactivate_aiagent_disables_runtime_state(self):
         module = _import_aiagent_module()
         master_controller = types.SimpleNamespace(ai_agent=FakeAIAgent(activated=True))
 
         response = asyncio.run(
-            module.stop_aiagent(master_controller=master_controller)
+            module.deactivate_aiagent(master_controller=master_controller)
         )
 
         self.assertEqual(

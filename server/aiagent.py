@@ -1,4 +1,3 @@
-from ast import Return
 from collections import deque
 from .motorerrors import MotorOverrideConflictError
 from .settingscontroller import get_settings_sync
@@ -106,11 +105,9 @@ class AIAgent(threading.Thread):
         with self._activation_lock:
             return self._aiagent_fully_activated
 
-    def _set_activation_state(self, *, activated: bool) -> bool:
+    def _set_activation_state(self, *, activated: bool) -> None:
         with self._activation_lock:
-            changed = self._aiagent_fully_activated != activated
             self._aiagent_fully_activated = activated
-        return changed
 
     def _is_stop_motor_command(self, *, speed: float) -> bool:
         return abs(float(speed)) <= 1e-9
@@ -213,6 +210,7 @@ class AIAgent(threading.Thread):
         if motor_index is None:
             return
 
+        # Activation guard (see also _apply_motors for the batch equivalent)
         if not self._can_apply_ai_motor_speed(speed=speed):
             return
 
@@ -589,6 +587,7 @@ class AIAgent(threading.Thread):
                 if motor.get("enabled", False):
                     motor_index = motor.get("index")
                     speed = motor.get("speed", 0) if use_speed else 0
+                    # Activation guard (see also _set_motor_speed_for_role for the single-motor equivalent)
                     if not self._can_apply_ai_motor_speed(speed=speed):
                         continue
                     try:

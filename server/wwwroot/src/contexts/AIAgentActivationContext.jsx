@@ -3,7 +3,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import {
     activateAIAgent as activateAIAgentApi,
     getAIAgentActivation,
-    stopAIAgent as stopAIAgentApi
+    deactivateAIAgent as deactivateAIAgentApi
 } from '../lib/api';
 
 const AIAgentActivationContext = createContext({
@@ -12,7 +12,7 @@ const AIAgentActivationContext = createContext({
     isActivationBusy: false,
     refreshActivation: async () => false,
     activateAIAgent: async () => false,
-    stopAIAgent: async () => false
+    deactivateAIAgent: async () => false
 });
 
 export function AIAgentActivationProvider({ children }) {
@@ -63,15 +63,15 @@ export function AIAgentActivationProvider({ children }) {
         }
     }, []);
 
-    const stopAIAgent = useCallback(async () => {
+    const deactivateAIAgent = useCallback(async () => {
         setIsActivationBusy(true);
         try {
-            const data = await stopAIAgentApi();
+            const data = await deactivateAIAgentApi();
             const nextState = data?.aiagent_fully_activated === true;
             setAIAgentFullyActivated(nextState);
             return nextState;
         } catch (error) {
-            console.error('Failed to stop AI agent:', error);
+            console.error('Failed to deactivate AI agent:', error);
             throw error;
         } finally {
             setIsActivationBusy(false);
@@ -84,14 +84,14 @@ export function AIAgentActivationProvider({ children }) {
         isActivationBusy,
         refreshActivation,
         activateAIAgent,
-        stopAIAgent
+        deactivateAIAgent
     }), [
         aiagentFullyActivated,
         activationLoaded,
         isActivationBusy,
         refreshActivation,
         activateAIAgent,
-        stopAIAgent
+        deactivateAIAgent
     ]);
 
     return (

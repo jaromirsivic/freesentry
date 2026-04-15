@@ -499,10 +499,10 @@ export const activateAIAgent = async () => {
 };
 
 /**
- * Stop runtime AI Agent motor control.
+ * Deactivate the AI Agent runtime motor control.
  * @returns {Promise<object>} Activation state response.
  */
-export const stopAIAgent = async () => {
+export const deactivateAIAgent = async () => {
     return post('/api/aiagent/deactivate', {});
 };
 
@@ -739,7 +739,7 @@ export default {
     saveAISetupSettings,
     getAIAgentActivation,
     activateAIAgent,
-    stopAIAgent,
+    deactivateAIAgent,
     getSystemInfo,
     getSystemPlatformInfo,
     setSystemDateTime,
