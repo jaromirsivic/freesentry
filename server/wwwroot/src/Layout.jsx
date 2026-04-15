@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
-import { Outlet, useLocation, Link } from 'react-router-dom';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Outlet, useLocation, Link, useNavigate } from 'react-router-dom';
 import menuIcon from './assets/menu-icon.svg';
+import Button from './components/Button';
 import { useGeneralSettings } from './contexts/GeneralSettingsContext.jsx';
+import { useAIAgentActivation } from './contexts/AIAgentActivationContext.jsx';
 
 // Import icons
 import mainPageIcon from './assets/icons/mainPage.svg';
@@ -25,7 +27,6 @@ import modalWindowsIcon from './assets/icons/tip.svg';
 
 const FULL_BLEED_PATHS = new Set([
   '/manual-control',
-  '/ai-agent',
   '/tools/hot-zone',
   '/tutorials/system-guide',
   '/tutorials/what-to-buy',
@@ -45,9 +46,17 @@ const MenuLink = ({ to, icon, label, onNavigate }) => (
 );
 
 const Layout = () => {
+  const navigate = useNavigate();
   const location = useLocation();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { isDebugMode } = useGeneralSettings();
+  const {
+    aiagentFullyActivated,
+    activationLoaded,
+    isActivationBusy,
+    stopAIAgent
+  } = useAIAgentActivation();
+  const initialActivationRedirectHandledRef = useRef(false);
 
   /**
    * Handle menu toggle with custom event dispatch.
@@ -55,7 +64,7 @@ const Layout = () => {
    * @param {boolean} newState - The new menu state (true = open, false = closed).
    * @param {boolean} isNavigating - True if menu is closing due to navigation to another page.
    */
-  const handleMenuToggle = (newState, isNavigating = false) => {
+  const handleMenuToggle = useCallback((newState, isNavigating = false) => {
     const willOpen = typeof newState === 'boolean' ? newState : !isMenuOpen;
     setIsMenuOpen(willOpen);
     
@@ -63,7 +72,29 @@ const Layout = () => {
     window.dispatchEvent(new CustomEvent('menuStateChange', { 
       detail: { isOpen: willOpen, currentPath: location.pathname, isNavigating }
     }));
-  };
+  }, [isMenuOpen, location.pathname]);
+
+  useEffect(() => {
+    if (!activationLoaded || initialActivationRedirectHandledRef.current) {
+      return;
+    }
+
+    initialActivationRedirectHandledRef.current = true;
+    if (aiagentFullyActivated && location.pathname !== '/ai-agent') {
+      navigate('/ai-agent', { replace: true });
+    }
+  }, [activationLoaded, aiagentFullyActivated, location.pathname, navigate]);
+
+  const handleStopAIClick = useCallback(async () => {
+    handleMenuToggle(false);
+
+    try {
+      await stopAIAgent();
+      navigate('/ai-agent');
+    } catch (error) {
+      console.error('Failed to stop AI agent:', error);
+    }
+  }, [handleMenuToggle, navigate, stopAIAgent]);
 
   const getPageInfo = () => {
     const path = location.pathname;
@@ -106,7 +137,8 @@ const Layout = () => {
   const { title, icon } = getPageInfo();
 
   // Pages that should use full-bleed layout (no padding, no scrollbars)
-  const isFullBleedPage = FULL_BLEED_PATHS.has(location.pathname);
+  const isAIAgentFullBleed = location.pathname === '/ai-agent' && (!activationLoaded || aiagentFullyActivated);
+  const isFullBleedPage = FULL_BLEED_PATHS.has(location.pathname) || isAIAgentFullBleed;
   const handleMenuNavigate = () => handleMenuToggle(false, true);
 
   return (
@@ -117,18 +149,34 @@ const Layout = () => {
           <span>{title}</span>
         </div>
         <div className="header-right">
-          <button
-            className="btn menu-btn"
-            onClick={() => handleMenuToggle()}
-            aria-label="Menu"
-          >
-            <span style={{ marginRight: '0.5rem', display: 'none' }} className="menu-text">Menu</span>
-            <img src={menuIcon} alt="Menu" width="24" height="24" />
-          </button>
+          {aiagentFullyActivated ? (
+            <Button
+              label={(
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <img src={aiAgentIcon} alt="" width="24" height="24" />
+                  <span>Stop AI</span>
+                </span>
+              )}
+              onClick={handleStopAIClick}
+              disabled={isActivationBusy}
+              color="#dc2626"
+              hint="Stop AI"
+              style={{ width: 'auto', padding: '0.5rem 0.75rem' }}
+            />
+          ) : (
+            <button
+              className="btn menu-btn"
+              onClick={() => handleMenuToggle()}
+              aria-label="Menu"
+            >
+              <span style={{ marginRight: '0.5rem', display: 'none' }} className="menu-text">Menu</span>
+              <img src={menuIcon} alt="Menu" width="24" height="24" />
+            </button>
+          )}
         </div>
       </header>
 
-      {isMenuOpen && (
+      {!aiagentFullyActivated && isMenuOpen && (
         <>
           <div
             style={{

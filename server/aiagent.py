@@ -78,8 +78,10 @@ class AIAgent(threading.Thread):
         self._paused.set()
         self._stop_event = threading.Event()
         self._thread_started = False
+        self._activation_lock = threading.RLock()
         self._engagement_state_lock = threading.RLock()
         self._motor_command_lock = threading.RLock()
+        self._aiagent_fully_activated = False
 
     ORGAN_NAMES = ("brain", "chest", "abdomen", "liver", "heart")
 
@@ -89,9 +91,73 @@ class AIAgent(threading.Thread):
             return
         self._running = True
         self._stop_event.clear()
-        self._paused.set()
+        if self.is_fully_activated():
+            self._paused.set()
+        else:
+            self._paused.clear()
         self._thread_started = True
         super().start()
+
+    @property
+    def aiagent_fully_activated(self) -> bool:
+        return self.is_fully_activated()
+
+    def is_fully_activated(self) -> bool:
+        with self._activation_lock:
+            return self._aiagent_fully_activated
+
+    def _set_activation_state(self, *, activated: bool) -> bool:
+        with self._activation_lock:
+            changed = self._aiagent_fully_activated != activated
+            self._aiagent_fully_activated = activated
+        return changed
+
+    def _is_stop_motor_command(self, *, speed: float) -> bool:
+        return abs(float(speed)) <= 1e-9
+
+    def _can_apply_ai_motor_speed(self, *, speed: float) -> bool:
+        return self.is_fully_activated() or self._is_stop_motor_command(speed=speed)
+
+    def _load_runtime_settings(self) -> dict:
+        try:
+            return get_settings_sync()
+        except Exception as e:
+            print(f"Error loading settings for AI activation sync: {e}")
+            return {}
+
+    def _get_ai_motor_configs(self, *, settings: dict | None = None) -> tuple[list[dict], list[dict]]:
+        resolved_settings = settings if isinstance(settings, dict) else self._load_runtime_settings()
+        ai_setup = resolved_settings.get("aiSetup", {})
+        mission_motors = ai_setup.get("missions", {}).get("randomWalk", {}).get("motors", [])
+        exit_strategy_motors = ai_setup.get("exitStrategy", {}).get("motors", [])
+        return mission_motors, exit_strategy_motors
+
+    def _get_current_status(self) -> EngagementStatus:
+        with self._engagement_state_lock:
+            return self._latest_status
+
+    def _sync_ai_motor_state(self, *, settings: dict | None = None) -> None:
+        mission_motors, exit_strategy_motors = self._get_ai_motor_configs(settings=settings)
+        current_status = self._get_current_status()
+
+        self._apply_motors(
+            motors_config=mission_motors,
+            use_speed=current_status == EngagementStatus.ENGAGING and self.is_fully_activated(),
+        )
+        self._apply_motors(
+            motors_config=exit_strategy_motors,
+            use_speed=current_status == EngagementStatus.EXIT_STRATEGY_UNDER_EXECUTION and self.is_fully_activated(),
+        )
+
+    def activate(self) -> None:
+        self._set_activation_state(activated=True)
+        self._sync_ai_motor_state()
+        self.resume()
+
+    def deactivate(self) -> None:
+        self._set_activation_state(activated=False)
+        self.pause()
+        self._sync_ai_motor_state()
 
     def reset_engagement_history(self) -> None:
         """Clear engagement history and return the runtime state to idle."""
@@ -110,9 +176,7 @@ class AIAgent(threading.Thread):
             self._disengaging_started_at = 0
 
             # Stop any AI-driven motors so the cleared state takes effect immediately.
-            ai_setup = settings.get("aiSetup", {})
-            mission_motors = ai_setup.get("missions", {}).get("randomWalk", {}).get("motors", [])
-            exit_strategy_motors = ai_setup.get("exitStrategy", {}).get("motors", [])
+            mission_motors, exit_strategy_motors = self._get_ai_motor_configs(settings=settings)
             self._apply_motors(motors_config=mission_motors, use_speed=False)
             self._apply_motors(motors_config=exit_strategy_motors, use_speed=False)
 
@@ -147,6 +211,9 @@ class AIAgent(threading.Thread):
         """Best-effort speed update for a motor resolved by role."""
         motor_index = self._get_motor_index_by_role(role=role)
         if motor_index is None:
+            return
+
+        if not self._can_apply_ai_motor_speed(speed=speed):
             return
 
         try:
@@ -522,6 +589,8 @@ class AIAgent(threading.Thread):
                 if motor.get("enabled", False):
                     motor_index = motor.get("index")
                     speed = motor.get("speed", 0) if use_speed else 0
+                    if not self._can_apply_ai_motor_speed(speed=speed):
+                        continue
                     try:
                         applied = self._master_controller.motors_controller.set_motor_speed_by_index(
                             motor_index=motor_index,

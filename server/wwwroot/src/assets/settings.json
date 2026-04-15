@@ -712,7 +712,7 @@
         "exitStrategy": {
             "fixedDateTime": "2199-12-31T22:59:59+00:00",
             "maxEngagements": 15,
-            "timeoutAfterFirstEngagement": 15,
+            "timeoutAfterFirstEngagement": 100000,
             "exitDuration": 1000,
             "motors": [
                 {
@@ -809,10 +809,10 @@
     "manualControl": {
         "camera": {
             "selectedCamera": "scope_camera",
-            "streamQuality": 50,
+            "streamQuality": 65,
             "scopeCameraMode": 3,
             "spotterCamera1Mode": 3,
-            "spotterCamera2Mode": 2,
+            "spotterCamera2Mode": 0,
             "spotterCamera3Mode": 1
         },
         "motors": [

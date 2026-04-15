@@ -83,6 +83,7 @@ class Camera(threading.Thread):
         self._settings_version = 0
         self._applied_settings_version = -1
         self._settings_modified = False
+        self._stream_id = 0
         # Supported resolutions
         self.supported_resolutions = self._get_supported_resolutions()
         # Settings
@@ -187,6 +188,43 @@ class Camera(threading.Thread):
                 self._applied_settings_version = settings_version
             self._settings_modified = self._applied_settings_version != self._settings_version
 
+    def _is_headless_ai_processing_required(self) -> bool:
+        if self._camera_code != "scope_camera":
+            return False
+
+        master_controller = self._master_controller
+        if master_controller is None:
+            return False
+
+        ai_agent = getattr(master_controller, "ai_agent", None)
+        if ai_agent is None:
+            return False
+
+        is_fully_activated = getattr(ai_agent, "is_fully_activated", None)
+        if not callable(is_fully_activated):
+            return False
+
+        try:
+            return is_fully_activated() is True
+        except Exception as err:
+            # log the error
+            print(f"Error checking if AI agent is fully activated: {err}")
+            return False
+
+    def create_stream_token(self) -> int:
+        with self._state_lock:
+            return self._stream_id
+
+    def _invalidate_stream_tokens(self) -> None:
+        with self._state_lock:
+            self._stream_id += 1
+
+    def _is_stream_token_current(self, *, stream_token: int | None) -> bool:
+        if stream_token is None:
+            return True
+        with self._state_lock:
+            return self._stream_id == stream_token
+
     @property
     def capabilities(self) -> dict:
         """
@@ -194,36 +232,44 @@ class Camera(threading.Thread):
         """
         return self._get_capabilities()
 
-    def _ensure_device_open(self):
+    def _ensure_device_open(self, *, stream_token: int | None = None) -> bool:
         """
         Ensure the camera device is open and thread is running.
         Updates the last access time to keep the thread alive.
         """
+        if not self._is_stream_token_current(stream_token=stream_token):
+            return False
         #self._open()
         with self._lock_frame:
             self._last_access_time_raw_frame = time.time()
         
         if not self.is_alive():
             try:
+                # start the thread if it is not already started
+                if not self._is_stream_token_current(stream_token=stream_token):
+                    return False
                 if not self.is_alive() and self._active is False:
                     threading.Thread.__init__(self)
                     self.daemon = True
                 self.start()
                 # Wait briefly for the device to open
                 for _ in range(int(2 / EPSILON_DELAY)):  # Wait up to 2 seconds
+                    if not self._is_stream_token_current(stream_token=stream_token):
+                        return False
                     if self._active and self._camera is not None:
                         break
                     time.sleep(EPSILON_DELAY)
-            except RuntimeError:
-                pass
+            except RuntimeError as err:
+                # log the error
+                print(f"Error starting camera thread: {err}")
+                return False
+        return self._is_stream_token_current(stream_token=stream_token)
 
-    @property
-    def frame(self) -> Frame:
-        """
-        Returns the current frame. Starts the capture thread if not running.
-        Updates the last access time to keep the thread alive.
-        """
-        self._ensure_device_open()
+    def _get_raw_frame(self, *, stream_token: int | None = None) -> Frame:
+        if not self._ensure_device_open(stream_token=stream_token):
+            return self._create_blank_frame()
+        if not self._is_stream_token_current(stream_token=stream_token):
+            return self._create_blank_frame()
         if self._active:
             with self._lock_frame:
                 self._last_access_time_raw_frame = time.time()
@@ -231,32 +277,28 @@ class Camera(threading.Thread):
                     return self._frame.copy()
         return self._create_blank_frame()
 
-    @property
-    def frame_masked(self) -> Frame:
-        """
-        Returns the current frame. Starts the capture thread if not running.
-        Updates the last access time to keep the thread alive.
-        """
-        self._ensure_device_open()
+    def _get_masked_frame(self, *, stream_token: int | None = None) -> Frame:
+        if not self._ensure_device_open(stream_token=stream_token):
+            return self._create_blank_frame()
+        if not self._is_stream_token_current(stream_token=stream_token):
+            return self._create_blank_frame()
         if self._active:
             now = time.time()
             # Frame is needed to produce correct masked_frame therefore there
             # is a change of last access time for raw frame
             with self._lock_frame:
-                self._last_access_time_raw_frame = now            
+                self._last_access_time_raw_frame = now
             with self._lock_frame_masked:
                 self._last_access_time_masked_frame = now
                 if self._frame_masked.valid:
                     return self._frame_masked.copy()
         return self._create_blank_frame()
 
-    @property
-    def frame_masked_ai(self) -> Frame:
-        """
-        Returns the current frame. Starts the capture thread if not running.
-        Updates the last access time to keep the thread alive.
-        """
-        self._ensure_device_open()
+    def _get_masked_ai_frame(self, *, stream_token: int | None = None) -> Frame:
+        if not self._ensure_device_open(stream_token=stream_token):
+            return self._create_blank_frame()
+        if not self._is_stream_token_current(stream_token=stream_token):
+            return self._create_blank_frame()
         if self._active:
             now = time.time()
             # Frame is needed to produce correct masked_frame
@@ -272,6 +314,45 @@ class Camera(threading.Thread):
                 if self._frame_masked_ai.valid:
                     return self._frame_masked_ai.copy()
         return self._create_blank_frame()
+
+    def get_stream_frame(self, *, mode: int, stream_token: int) -> Frame | None:
+        if not self._is_stream_token_current(stream_token=stream_token):
+            return None
+
+        if mode == 3:
+            frame = self._get_masked_ai_frame(stream_token=stream_token)
+        elif mode == 1:
+            frame = self._get_masked_frame(stream_token=stream_token)
+        else:
+            frame = self._get_raw_frame(stream_token=stream_token)
+
+        if not self._is_stream_token_current(stream_token=stream_token):
+            return None
+        return frame
+
+    @property
+    def frame(self) -> Frame:
+        """
+        Returns the current frame. Starts the capture thread if not running.
+        Updates the last access time to keep the thread alive.
+        """
+        return self._get_raw_frame()
+
+    @property
+    def frame_masked(self) -> Frame:
+        """
+        Returns the current frame. Starts the capture thread if not running.
+        Updates the last access time to keep the thread alive.
+        """
+        return self._get_masked_frame()
+
+    @property
+    def frame_masked_ai(self) -> Frame:
+        """
+        Returns the current frame. Starts the capture thread if not running.
+        Updates the last access time to keep the thread alive.
+        """
+        return self._get_masked_ai_frame()
 
     def _crop_and_resize(self, *, image: np.ndarray, settings: dict | None) -> np.ndarray:
         """
@@ -418,6 +499,7 @@ class Camera(threading.Thread):
         """Capture a frame from the camera and apply transformations."""
         camera_settings, camera_code = self._get_state_snapshot()
         now = time.time()
+        headless_ai_processing_required = self._is_headless_ai_processing_required()
         try:
             with self._lock:
                 if not self._active or self._camera is None:
@@ -462,7 +544,7 @@ class Camera(threading.Thread):
             elapsed_masked = now - self._last_access_time_masked_frame
             #elapsed_masked_ai = now - self._last_access_time_masked_ai_frame
             # if the masked frame has timed out, return
-            if elapsed_masked > self.TIMEOUT_SECONDS:
+            if elapsed_masked > self.TIMEOUT_SECONDS and not headless_ai_processing_required:
                 return
             image_masked = self._mask_image(image=image, settings=camera_settings)
             self._frame_masked = Frame(valid=True, image=image_masked, time=time.time())
@@ -470,7 +552,7 @@ class Camera(threading.Thread):
         with self._lock_frame_masked_ai:
             elapsed_masked_ai = now - self._last_access_time_masked_ai_frame
             # if the AI mask has timed out, return
-            if elapsed_masked_ai > self.TIMEOUT_SECONDS:
+            if elapsed_masked_ai > self.TIMEOUT_SECONDS and not headless_ai_processing_required:
                 return
             # get the settings
             settings = get_settings_sync()
@@ -488,6 +570,8 @@ class Camera(threading.Thread):
         with self._lock:
             if not self._active or self._camera is None:
                 return False
+        if self._is_headless_ai_processing_required():
+            return True
         with self._lock_frame:
             elapsed = time.time() - self._last_access_time_raw_frame
         return elapsed <= self.TIMEOUT_SECONDS
@@ -522,6 +606,7 @@ class Camera(threading.Thread):
 
     def stop(self):
         """Stop the capture thread."""
+        self._invalidate_stream_tokens()
         with self._lock:
             self._active = False
         if threading.current_thread() is self:

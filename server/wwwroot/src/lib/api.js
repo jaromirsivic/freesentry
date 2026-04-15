@@ -479,6 +479,34 @@ export const saveAISetupSettings = async (aiSetupSettings) => {
 };
 
 // ============================================
+// AI Agent Runtime Activation API
+// ============================================
+
+/**
+ * Get runtime AI Agent activation state.
+ * @returns {Promise<object>} Activation state response.
+ */
+export const getAIAgentActivation = async () => {
+    return get('/api/aiagent/activation');
+};
+
+/**
+ * Fully activate the AI Agent runtime motor control.
+ * @returns {Promise<object>} Activation state response.
+ */
+export const activateAIAgent = async () => {
+    return post('/api/aiagent/activate', {});
+};
+
+/**
+ * Stop runtime AI Agent motor control.
+ * @returns {Promise<object>} Activation state response.
+ */
+export const stopAIAgent = async () => {
+    return post('/api/aiagent/stop', {});
+};
+
+// ============================================
 // System Management API
 // ============================================
 
@@ -709,6 +737,9 @@ export default {
     saveAllSettings,
     getAISetupSettings,
     saveAISetupSettings,
+    getAIAgentActivation,
+    activateAIAgent,
+    stopAIAgent,
     getSystemInfo,
     getSystemPlatformInfo,
     setSystemDateTime,

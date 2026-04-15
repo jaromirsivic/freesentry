@@ -166,6 +166,10 @@ class AIAgentMotorTests(unittest.TestCase):
         settings = _make_settings()
         timestamps = [1000.0, 1000.1, 1000.4, 1000.65, 1000.9]
 
+        with mock.patch("server.aiagent.get_settings_sync", return_value=settings):
+            agent.activate()
+        motors_controller.commands.clear()
+
         with mock.patch("server.aiagent.time.time", side_effect=timestamps):
             results = [agent.engage(frame=_make_frame(), settings=settings) for _ in timestamps]
 
@@ -189,8 +193,90 @@ class AIAgentMotorTests(unittest.TestCase):
             ],
         )
 
+    def test_inactive_ai_reports_engaging_status_without_motor_commands(self):
+        agent, motors_controller = self._make_agent(available_indexes={0, 1})
+        settings = _make_settings()
+        timestamps = [1000.0, 1000.1, 1000.4]
+
+        with mock.patch("server.aiagent.time.time", side_effect=timestamps):
+            results = [agent.engage(frame=_make_frame(), settings=settings) for _ in timestamps]
+
+        self.assertFalse(agent.aiagent_fully_activated)
+        self.assertEqual(
+            [result.status for result in results],
+            [
+                aiagent.EngagementStatus.ARMING,
+                aiagent.EngagementStatus.ARMING,
+                aiagent.EngagementStatus.ENGAGING,
+            ],
+        )
+        self.assertEqual(motors_controller.commands, [])
+
+    def test_activate_applies_current_engaging_motor_state_after_inactive_tracking(self):
+        agent, motors_controller = self._make_agent(available_indexes={0, 1})
+        settings = _make_settings()
+        timestamps = [1000.0, 1000.1, 1000.4]
+
+        with mock.patch("server.aiagent.time.time", side_effect=timestamps):
+            results = [agent.engage(frame=_make_frame(), settings=settings) for _ in timestamps]
+
+        self.assertEqual(results[-1].status, aiagent.EngagementStatus.ENGAGING)
+        self.assertEqual(motors_controller.commands, [])
+
+        with mock.patch("server.aiagent.get_settings_sync", return_value=settings):
+            agent.activate()
+
+        self.assertTrue(agent.aiagent_fully_activated)
+        self.assertEqual(
+            motors_controller.commands,
+            [
+                (0, 0.6),
+                (1, -0.4),
+            ],
+        )
+
+    def test_deactivate_stops_ai_driven_motors_immediately(self):
+        agent, motors_controller = self._make_agent(available_indexes={0, 1})
+        settings = _make_settings()
+
+        with mock.patch("server.aiagent.get_settings_sync", return_value=settings):
+            agent.activate()
+
+        motors_controller.commands.clear()
+        motors_controller.attempts.clear()
+
+        timestamps = [1000.0, 1000.1, 1000.4]
+        with mock.patch("server.aiagent.time.time", side_effect=timestamps):
+            results = [agent.engage(frame=_make_frame(), settings=settings) for _ in timestamps]
+
+        self.assertEqual(results[-1].status, aiagent.EngagementStatus.ENGAGING)
+        self.assertEqual(
+            motors_controller.commands,
+            [
+                (0, 0.6),
+                (1, -0.4),
+            ],
+        )
+
+        with mock.patch("server.aiagent.get_settings_sync", return_value=settings):
+            agent.deactivate()
+
+        self.assertFalse(agent.aiagent_fully_activated)
+        self.assertEqual(
+            motors_controller.commands[-2:],
+            [
+                (0, 0.0),
+                (1, 0.0),
+            ],
+        )
+
     def test_apply_motors_logs_unavailable_index_without_raising(self):
         agent, motors_controller = self._make_agent(available_indexes={0})
+        settings = _make_settings()
+
+        with mock.patch("server.aiagent.get_settings_sync", return_value=settings):
+            agent.activate()
+        motors_controller.commands.clear()
 
         with mock.patch("builtins.print") as print_mock:
             agent._apply_motors(
@@ -234,6 +320,10 @@ class AIAgentMotorTests(unittest.TestCase):
             "motors": [{"enabled": True, "index": 0, "speed": 0.5}],
         }
 
+        with mock.patch("server.aiagent.get_settings_sync", return_value=settings):
+            agent.activate()
+        motors_controller.commands.clear()
+
         class FixedDatetime(datetime):
             @classmethod
             def now(cls, tz=None):
@@ -251,8 +341,13 @@ class AIAgentMotorTests(unittest.TestCase):
 
     def test_run_applies_random_arm_vector_and_stops_after_movement(self):
         agent, motors_controller = self._make_agent(available_indexes={0, 1})
+        settings = _make_settings()
         agent._running = True
         agent._stop_event.clear()
+
+        with mock.patch("server.aiagent.get_settings_sync", return_value=settings):
+            agent.activate()
+        motors_controller.commands.clear()
 
         with (
             mock.patch.object(agent, "_wait_until_resumed", side_effect=[True, False]),
@@ -276,8 +371,13 @@ class AIAgentMotorTests(unittest.TestCase):
 
     def test_run_stops_arms_when_stop_requested_during_movement_wait(self):
         agent, motors_controller = self._make_agent(available_indexes={0, 1})
+        settings = _make_settings()
         agent._running = True
         agent._stop_event.clear()
+
+        with mock.patch("server.aiagent.get_settings_sync", return_value=settings):
+            agent.activate()
+        motors_controller.commands.clear()
 
         def interrupt_wait(*, duration: float, on_resume=None) -> bool:
             agent._running = False

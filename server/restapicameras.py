@@ -393,6 +393,11 @@ async def generate_camera_frames(
     uid_of_last_frame_sent_to_client = -1
     # time of last frame sent to the client
     time_of_last_frame_sent_to_client = 0
+    cameras = master_controller.cameras_controller.cameras
+    if index < 0 or index >= len(cameras):
+        return
+    expected_camera = cameras[index]
+    stream_token = expected_camera.create_stream_token()
     while True:
         try:
             now = time.time()
@@ -400,13 +405,12 @@ async def generate_camera_frames(
             if index < 0 or index >= len(cameras):
                 break
             camera = cameras[index]
+            if camera is not expected_camera:
+                break
             # get the image based on the mode
-            if mode == 3:
-                frame = camera.frame_masked_ai
-            elif mode == 1:
-                frame = camera.frame_masked
-            else:
-                frame = camera.frame
+            frame = camera.get_stream_frame(mode=mode, stream_token=stream_token)
+            if frame is None:
+                break
             # send image to the client if it is new or it has been 0.5 seconds since the last frame was sent
             if frame.image is not None and \
                 (frame.uid != uid_of_last_frame_sent_to_client or now - time_of_last_frame_sent_to_client > 0.5):

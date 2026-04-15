@@ -15,6 +15,7 @@ import MultiSwitch from './components/MultiSwitch';
 import editIcon from './assets/icons/edit.svg';
 import reloadIcon from './assets/icons/reload.svg';
 import cameraOffIcon from './assets/icons/cameraOff.svg';
+import { queueDismissalCameraStop } from './lib/cameraStream';
 
 const boldTextStyle = { fontWeight: 'bold' };
 
@@ -193,6 +194,7 @@ const Cameras = () => {
     const [originalDisplayMode, setOriginalDisplayMode] = useState(0);
     const activeModalRef = useRef(null);
     const previewEnabledRef = useRef(false);
+    const dismissalStopQueuedRef = useRef(false);
 
     const setActiveModalState = useCallback((cameraCode) => {
         activeModalRef.current = cameraCode;
@@ -202,6 +204,16 @@ const Cameras = () => {
     const setPreviewEnabledState = useCallback((enabled) => {
         previewEnabledRef.current = enabled;
         setPreviewEnabled(enabled);
+    }, []);
+
+    const queueDismissalStop = useCallback((cameraCode) => {
+        const resolvedCameraCode = cameraCode ?? activeModalRef.current;
+        if (!resolvedCameraCode || dismissalStopQueuedRef.current) {
+            return;
+        }
+
+        dismissalStopQueuedRef.current = true;
+        queueDismissalCameraStop({ cameraCode: resolvedCameraCode });
     }, []);
 
     // ========================
@@ -381,10 +393,14 @@ const Cameras = () => {
         return stopCameraStream({ cameraCode, keepalive });
     }, [setPreviewEnabledState, stopCameraStream]);
 
+    useEffect(() => {
+        dismissalStopQueuedRef.current = false;
+    }, [activeModal]);
+
     // Route unmount must still release the backend preview stream.
     useEffect(() => {
         return () => {
-            if (!previewEnabledRef.current || !activeModalRef.current) {
+            if (!activeModalRef.current || dismissalStopQueuedRef.current) {
                 return;
             }
 
@@ -395,6 +411,26 @@ const Cameras = () => {
             });
         };
     }, [stopPreviewStream]);
+
+    useEffect(() => {
+        const handlePageHide = (event) => {
+            if (!event.persisted) {
+                queueDismissalStop();
+            }
+        };
+
+        const handleBeforeUnload = () => {
+            queueDismissalStop();
+        };
+
+        window.addEventListener('pagehide', handlePageHide);
+        window.addEventListener('beforeunload', handleBeforeUnload);
+
+        return () => {
+            window.removeEventListener('pagehide', handlePageHide);
+            window.removeEventListener('beforeunload', handleBeforeUnload);
+        };
+    }, [queueDismissalStop]);
 
     // ========================
     // Modal: Close request

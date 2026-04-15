@@ -3,12 +3,15 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import './assets/color_palette.css'
 import App from './App.jsx'
+import { AIAgentActivationProvider } from './contexts/AIAgentActivationContext.jsx'
 import { GeneralSettingsProvider } from './contexts/GeneralSettingsContext.jsx'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    <GeneralSettingsProvider>
-      <App />
-    </GeneralSettingsProvider>
+    <AIAgentActivationProvider>
+      <GeneralSettingsProvider>
+        <App />
+      </GeneralSettingsProvider>
+    </AIAgentActivationProvider>
   </StrictMode>,
 )

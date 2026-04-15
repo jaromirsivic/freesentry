@@ -66,6 +66,11 @@ def _import_manualcontrol_module(
     common.fit_vector_to_polygon = lambda *, vector, polygon: None
     common.rotate_vector = lambda *, vector, angle: vector
 
+    server_package = importlib.import_module("server")
+    server_package.settingscontroller = settingscontroller
+    server_package.context = context
+    server_package.common = common
+
     with mock.patch.dict(
         sys.modules,
         {

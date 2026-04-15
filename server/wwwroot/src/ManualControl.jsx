@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import Polygon from './components/Polygon';
+import CameraViewport from './components/CameraViewport';
 import ModalWindow from './components/ModalWindow';
 import Switch from './components/Switch';
 import ComboBox from './components/ComboBox';
@@ -9,10 +9,17 @@ import Joystick1D from './components/Joystick1D';
 import Timer from './components/Timer';
 import MultiSwitch from './components/MultiSwitch';
 import Slider from './components/Slider';
+import useDocumentFullscreen from './hooks/useDocumentFullscreen';
 import settingsIcon from './assets/icons/settings.svg';
-import fullscreenIcon from './assets/icons/fullscreen.svg';
-import fullscreenExitIcon from './assets/icons/fullscreenExit.svg';
-import cameraOffIcon from './assets/icons/cameraOff.svg';
+import {
+    DEFAULT_CAMERA_SETTINGS,
+    DEFAULT_RETICLE_SETTINGS,
+    buildCameraStreamUrl,
+    buildStopCameraUrl,
+    fetchReticleSettings,
+    queueDismissalCameraStop,
+    stopManagedCameraStream
+} from './lib/cameraStream';
 
 /**
  * ManualControl page - Full-screen camera view with joystick control.
@@ -28,17 +35,13 @@ import cameraOffIcon from './assets/icons/cameraOff.svg';
  */
 const ManualControl = () => {
     // Reticle settings from camera configuration
-    const [reticleSettings, setReticleSettings] = useState({
-        x: 0.5,
-        y: 0.5,
-        color: '#ff0000cc',
-        outline: '#000000cc',
-        size: 1.0
-    });
+    const [reticleSettings, setReticleSettings] = useState(() => ({
+        ...DEFAULT_RETICLE_SETTINGS
+    }));
     const [streamUrl, setStreamUrl] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
-    const [isFullscreen, setIsFullscreen] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const { isFullscreen, isFullscreenRef, toggleFullscreen } = useDocumentFullscreen();
     
     // Motor settings from backend (max 4 motors)
     const [motors, setMotors] = useState([]);
@@ -46,35 +49,22 @@ const ManualControl = () => {
     const [tempMotors, setTempMotors] = useState([]);
     
     // Camera settings for manual control (persisted)
-    const [cameraSettings, setCameraSettings] = useState({
-        selectedCamera: 'scope_camera',
-        streamQuality: 80,
-        scopeCameraMode: 0,
-        spotterCamera1Mode: 0,
-        spotterCamera2Mode: 0,
-        spotterCamera3Mode: 0
-    });
+    const [cameraSettings, setCameraSettings] = useState(() => ({
+        ...DEFAULT_CAMERA_SETTINGS
+    }));
     // Temporary camera settings for modal
-    const [tempCameraSettings, setTempCameraSettings] = useState({
-        selectedCamera: 'scope_camera',
-        streamQuality: 80,
-        scopeCameraMode: 0,
-        spotterCamera1Mode: 0,
-        spotterCamera2Mode: 0,
-        spotterCamera3Mode: 0
-    });
+    const [tempCameraSettings, setTempCameraSettings] = useState(() => ({
+        ...DEFAULT_CAMERA_SETTINGS
+    }));
     // Saving state
     const [isSaving, setIsSaving] = useState(false);
     const [isResetting, setIsResetting] = useState(false);
     
     // Ref to track if component is mounted (for cleanup)
     const isMountedRef = useRef(true);
-    // Ref to the Polygon component for stream termination
-    const polygonRef = useRef(null);
     // Ref to store current camera settings for cleanup (avoids stale closure)
     const cameraSettingsRef = useRef(cameraSettings);
     const motorsRef = useRef(motors);
-    const isFullscreenRef = useRef(isFullscreen);
     const initialLoadGenerationRef = useRef(0);
     const dismissalStopQueuedRef = useRef(false);
     
@@ -86,10 +76,6 @@ const ManualControl = () => {
     useEffect(() => {
         motorsRef.current = motors;
     }, [motors]);
-
-    useEffect(() => {
-        isFullscreenRef.current = isFullscreen;
-    }, [isFullscreen]);
     
     // Window dimensions for responsive joystick positioning
     const [windowWidth, setWindowWidth] = useState(window.innerWidth);
@@ -111,63 +97,20 @@ const ManualControl = () => {
      * Build stream URL from camera settings.
      */
     const buildStreamUrl = useCallback((settings) => {
-        const camera = settings.selectedCamera || 'scope_camera';
-        const quality = settings.streamQuality || 80;
-        let mode = 0;
-        switch (camera) {
-            case 'scope_camera':
-                mode = settings.scopeCameraMode || 0;
-                break;
-            case 'spotter_camera1':
-                mode = settings.spotterCamera1Mode || 0;
-                break;
-            case 'spotter_camera2':
-                mode = settings.spotterCamera2Mode || 0;
-                break;
-            case 'spotter_camera3':
-                mode = settings.spotterCamera3Mode || 0;
-                break;
-            default:
-                mode = 0;
-        }
-        return `/api/cameras/stream/${camera}?mode=${mode}&quality=${quality}`;
+        return buildCameraStreamUrl(settings);
     }, []);
 
-    const getActiveCameraCode = useCallback((cameraCode) => {
-        return cameraCode || cameraSettingsRef.current?.selectedCamera || 'scope_camera';
-    }, []);
-
-    const buildStopCameraUrl = useCallback((cameraCode) => {
-        const activeCameraCode = getActiveCameraCode(cameraCode);
-        return `/api/cameras/stop/${activeCameraCode}`;
-    }, [getActiveCameraCode]);
-
-    const queueDismissalCameraStop = useCallback((cameraCode) => {
+    const queueDismissalStop = useCallback((cameraCode) => {
         if (dismissalStopQueuedRef.current) {
             return;
         }
 
         dismissalStopQueuedRef.current = true;
-        const stopUrl = buildStopCameraUrl(cameraCode);
-
-        // Keep the dismissal request aligned with the normal POST contract when possible.
-        if (typeof fetch === 'function' && typeof Request !== 'undefined' && 'keepalive' in Request.prototype) {
-            try {
-                void fetch(stopUrl, { method: 'POST', keepalive: true }).catch(() => {});
-                return;
-            } catch {
-                // Fall through to sendBeacon for older browsers.
-            }
-        }
-
-        if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
-            try {
-                navigator.sendBeacon(stopUrl, new Blob());
-            } catch {
-                // Best-effort only during page dismissal.
-            }
-        }
-    }, [buildStopCameraUrl]);
+        queueDismissalCameraStop({
+            cameraCode,
+            cameraSettings: cameraSettingsRef.current
+        });
+    }, []);
 
     /**
      * Stop camera stream via API.
@@ -176,15 +119,11 @@ const ManualControl = () => {
      * @returns {Promise<boolean>} - True if successfully stopped.
      */
     const stopCameraStream = useCallback(async ({ cameraCode } = {}) => {
-        try {
-            const response = await fetch(buildStopCameraUrl(cameraCode), { method: 'POST' });
-            const data = await response.json();
-            return data.success === true;
-        } catch (err) {
-            console.error('Failed to stop camera stream:', err);
-            return false;
-        }
-    }, [buildStopCameraUrl]);
+        return stopManagedCameraStream({
+            cameraCode,
+            cameraSettings: cameraSettingsRef.current
+        });
+    }, []);
 
     // Fetch camera and motor settings on mount
     useEffect(() => {
@@ -201,12 +140,7 @@ const ManualControl = () => {
 
         const loadInitialState = async () => {
             const defaultCameraSettings = {
-                selectedCamera: 'scope_camera',
-                streamQuality: 80,
-                scopeCameraMode: 0,
-                spotterCamera1Mode: 0,
-                spotterCamera2Mode: 0,
-                spotterCamera3Mode: 0
+                ...DEFAULT_CAMERA_SETTINGS
             };
 
             let nextMotors = null;
@@ -228,24 +162,10 @@ const ManualControl = () => {
                 }
 
                 try {
-                    const cameraListResponse = await fetch('/api/cameras/list', {
+                    nextReticleSettings = await fetchReticleSettings({
+                        cameraCode: nextCameraSettings.selectedCamera,
                         signal: controller.signal
                     });
-                    const cameraListData = await cameraListResponse.json();
-
-                    if (cameraListData.success && cameraListData.cameras) {
-                        const cameraConfig = cameraListData.cameras[nextCameraSettings.selectedCamera];
-
-                        if (cameraConfig) {
-                            nextReticleSettings = {
-                                x: cameraConfig.static_reticle_x ?? 0.5,
-                                y: cameraConfig.static_reticle_y ?? 0.5,
-                                color: cameraConfig.static_reticle_color ?? '#88ff00cc',
-                                outline: cameraConfig.static_reticle_outline ?? '#000000cc',
-                                size: cameraConfig.static_reticle_size ?? 1.0
-                            };
-                        }
-                    }
                 } catch (cameraListError) {
                     if (cameraListError?.name === 'AbortError') {
                         throw cameraListError;
@@ -284,7 +204,7 @@ const ManualControl = () => {
                     return;
                 }
 
-                setStreamUrl('/api/cameras/stream/scope_camera?mode=0&quality=80');
+                setStreamUrl(buildStreamUrl(defaultCameraSettings));
                 setIsLoading(false);
                 setTimerEnabled(true);
             }
@@ -303,21 +223,23 @@ const ManualControl = () => {
             setStreamUrl(null);
             // SPA route changes use the normal stop endpoint; page dismissal has its own keepalive fallback.
             if (!dismissalStopQueuedRef.current) {
-                void fetch(buildStopCameraUrl(), { method: 'POST' }).catch(() => {});
+                void fetch(buildStopCameraUrl({ cameraSettings: cameraSettingsRef.current }), {
+                    method: 'POST'
+                }).catch(() => {});
             }
         };
-    }, [buildStopCameraUrl, buildStreamUrl]);
+    }, [buildStreamUrl]);
 
     // Handle browser dismissal without forcing an unload confirmation prompt.
     useEffect(() => {
         const handlePageHide = (event) => {
             if (!event.persisted) {
-                queueDismissalCameraStop();
+                queueDismissalStop();
             }
         };
 
         const handleBeforeUnload = () => {
-            queueDismissalCameraStop();
+            queueDismissalStop();
         };
 
         window.addEventListener('pagehide', handlePageHide);
@@ -327,7 +249,7 @@ const ManualControl = () => {
             window.removeEventListener('pagehide', handlePageHide);
             window.removeEventListener('beforeunload', handleBeforeUnload);
         };
-    }, [queueDismissalCameraStop]);
+    }, [queueDismissalStop]);
 
     // Handle main menu open/close - pause streaming when menu opens, resume when it closes
     useEffect(() => {
@@ -357,41 +279,6 @@ const ManualControl = () => {
         };
     }, [cameraSettings, stopCameraStream, buildStreamUrl]);
 
-    // Listen for fullscreen changes (handles Escape key and other exit methods)
-    useEffect(() => {
-        const handleFullscreenChange = () => {
-            const isNowFullscreen = !!(
-                document.fullscreenElement ||
-                document.webkitFullscreenElement ||
-                document.mozFullScreenElement ||
-                document.msFullscreenElement
-            );
-            isFullscreenRef.current = isNowFullscreen;
-            setIsFullscreen(isNowFullscreen);
-            
-            // Add/remove class on body for reliable CSS targeting
-            if (isNowFullscreen) {
-                document.body.classList.add('is-fullscreen');
-            } else {
-                document.body.classList.remove('is-fullscreen');
-            }
-        };
-
-        document.addEventListener('fullscreenchange', handleFullscreenChange);
-        document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
-        document.addEventListener('mozfullscreenchange', handleFullscreenChange);
-        document.addEventListener('MSFullscreenChange', handleFullscreenChange);
-
-        return () => {
-            document.removeEventListener('fullscreenchange', handleFullscreenChange);
-            document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
-            document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
-            document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
-            // Clean up class on unmount
-            document.body.classList.remove('is-fullscreen');
-        };
-    }, []);
-
     // Handle page visibility change to pause/resume stream
     useEffect(() => {
         const handleVisibilityChange = () => {
@@ -409,7 +296,7 @@ const ManualControl = () => {
         return () => {
             document.removeEventListener('visibilitychange', handleVisibilityChange);
         };
-    }, []);
+    }, [isFullscreenRef]);
 
     // Track window resize for responsive joystick positioning
     useEffect(() => {
@@ -422,41 +309,7 @@ const ManualControl = () => {
         return () => {
             window.removeEventListener('resize', handleResize);
         };
-    }, []);
-
-    /**
-     * Toggle fullscreen mode.
-     */
-    const toggleFullscreen = useCallback(async () => {
-        try {
-            if (!isFullscreen) {
-                // Enter fullscreen
-                const element = document.documentElement;
-                if (element.requestFullscreen) {
-                    await element.requestFullscreen();
-                } else if (element.webkitRequestFullscreen) {
-                    await element.webkitRequestFullscreen();
-                } else if (element.mozRequestFullScreen) {
-                    await element.mozRequestFullScreen();
-                } else if (element.msRequestFullscreen) {
-                    await element.msRequestFullscreen();
-                }
-            } else {
-                // Exit fullscreen
-                if (document.exitFullscreen) {
-                    await document.exitFullscreen();
-                } else if (document.webkitExitFullscreen) {
-                    await document.webkitExitFullscreen();
-                } else if (document.mozCancelFullScreen) {
-                    await document.mozCancelFullScreen();
-                } else if (document.msExitFullscreen) {
-                    await document.msExitFullscreen();
-                }
-            }
-        } catch (error) {
-            console.error('Fullscreen toggle failed:', error);
-        }
-    }, [isFullscreen]);
+    }, [isFullscreenRef]);
 
     /**
      * Handle Setup button click - open modal settings.
@@ -559,20 +412,9 @@ const ManualControl = () => {
                 
                 // 4. Update reticle settings from the newly selected camera
                 try {
-                    const camListResponse = await fetch('/api/cameras/list');
-                    const camListData = await camListResponse.json();
-                    if (camListData.success && camListData.cameras) {
-                        const cameraConfig = camListData.cameras[tempCameraSettings.selectedCamera];
-                        if (cameraConfig) {
-                            setReticleSettings({
-                                x: cameraConfig.static_reticle_x ?? 0.5,
-                                y: cameraConfig.static_reticle_y ?? 0.5,
-                                color: cameraConfig.static_reticle_color ?? '#88ff00cc',
-                                outline: cameraConfig.static_reticle_outline ?? '#000000cc',
-                                size: cameraConfig.static_reticle_size ?? 1.0
-                            });
-                        }
-                    }
+                    setReticleSettings(await fetchReticleSettings({
+                        cameraCode: tempCameraSettings.selectedCamera
+                    }));
                 } catch (camErr) {
                     console.error('Failed to update reticle settings:', camErr);
                 }
@@ -690,7 +532,7 @@ const ManualControl = () => {
             // Mark request as complete
             requestInFlightRef.current = false;
         }
-    }, []);
+    }, [isFullscreenRef]);
 
     // Handle Polygon joystick move events (controls motors 0 and 1)
     const handlePolygonJoystickMove = useCallback((coords) => {
@@ -845,153 +687,98 @@ const ManualControl = () => {
     ];
 
     if (isLoading) {
-        return (
-            <div style={{
-                width: '100%',
-                height: '100%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: '#000'
-            }}>
-                <span style={{ color: '#fff' }}>Loading...</span>
-            </div>
-        );
+        return <CameraViewport isLoading={true} />;
     }
 
     return (
-        <div style={{
-                width: '100%',
-                height: '100%',
-                margin: 0,
-                padding: 0,
-                overflow: 'hidden',
-                position: 'relative'
-            }}
-        >
-            <Polygon
-                ref={polygonRef}
-                src={streamUrl || cameraOffIcon}
-                stretchMode="fit"
-                background="#000000"
-                mode="joystick"
-                zoomPanEnabled={true}
-                showReticle={true}
-                reticleX={reticleSettings.x}
-                reticleY={reticleSettings.y}
-                reticleColor={reticleSettings.color}
-                reticleOutlineColor={reticleSettings.outline}
-                reticleSize={reticleSettings.size}
-                joystickLineMaxLength={0.33}
+        <>
+            <CameraViewport
+                streamUrl={streamUrl}
+                reticleSettings={reticleSettings}
+                polygonMode="joystick"
+                isFullscreen={isFullscreen}
+                onToggleFullscreen={toggleFullscreen}
+                fullscreenButtonRight="80px"
                 onJoystickMove={handlePolygonJoystickMove}
                 onJoystickStart={handlePolygonJoystickStart}
                 onJoystickEnd={handlePolygonJoystickEnd}
-                style={{
-                    width: '100%',
-                    height: '100%'
-                }}
-            />
-
-            {/* Render Joystick1D components for enabled motors */}
-            {motors.map((motor, idx) => {
-                if (!motor.enabled || idx >= 4) return null;
-                
-                const config = joystickConfigs[idx];
-                const isHorizontal = config.orientation === 'horizontal';
-                
-                // Use dynamic position for first joystick, static for others
-                const position = idx === 0 ? getFirstJoystickPosition() : config.position;
-                
-                // Use motor color from settings, or fallback to config colors
-                const motorColor = motor.color || config.colors.ruler;
-                
-                // Derive outline color (slightly darker)
-                const deriveOutlineColor = (color) => {
-                    // Simple darkening: reduce RGB values by 20%
-                    if (color.startsWith('#') && color.length === 7) {
-                        const r = Math.max(0, Math.floor(parseInt(color.slice(1, 3), 16) * 0.8));
-                        const g = Math.max(0, Math.floor(parseInt(color.slice(3, 5), 16) * 0.8));
-                        const b = Math.max(0, Math.floor(parseInt(color.slice(5, 7), 16) * 0.8));
-                        return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
-                    }
-                    return color;
-                };
-                
-                return (
-                    <div
-                        key={motor.index}
-                        style={{
-                            position: 'absolute',
-                            zIndex: 5,
-                            ...position
-                        }}
-                    >
-                        <Joystick1D
-                            orientation={config.orientation}
-                            mode={motor.mode || 'joystick'}
-                            width={isHorizontal ? 200 : 60}
-                            height={isHorizontal ? 60 : 200}
-                            rulerColor={motorColor}
-                            buttonColor={motorColor}
-                            buttonOutline={deriveOutlineColor(motorColor)}
-                            backgroundColor="rgba(0, 0, 0, 0.2)"
-                            rulerShowText={true}
-                            rulerLineDistance={0.2}
-                            valueOrigin={0}
-                            minValue={-1}
-                            maxValue={1}
-                            snapAnimationDuration={0.1}
-                            onChange={createMotorJoystickHandler(motor.index)}
-                            onEnd={createMotorJoystickEndHandler(motor.index)}
-                        />
-                    </div>
-                );
-            })}
-
-            {/* Fullscreen button - left of Setup button */}
-            <button
-                onClick={toggleFullscreen}
-                style={{
-                    ...buttonStyle,
-                    right: '80px' // 16px margin + 48px button width + 16px gap
-                }}
-                onMouseEnter={(e) => {
-                    e.currentTarget.style.opacity = '1';
-                    e.currentTarget.style.backgroundColor = '#885500';
-                }}
-                onMouseLeave={(e) => {
-                    e.currentTarget.style.opacity = '0.8';
-                    e.currentTarget.style.backgroundColor = '#887700';
-                }}
-                title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
             >
-                <img 
-                    src={isFullscreen ? fullscreenExitIcon : fullscreenIcon} 
-                    alt={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'} 
-                    width="24" 
-                    height="24" 
-                />
-            </button>
+                {/* Render Joystick1D components for enabled motors */}
+                {motors.map((motor, idx) => {
+                    if (!motor.enabled || idx >= 4) return null;
+                    
+                    const config = joystickConfigs[idx];
+                    const isHorizontal = config.orientation === 'horizontal';
+                    
+                    // Use dynamic position for first joystick, static for others
+                    const position = idx === 0 ? getFirstJoystickPosition() : config.position;
+                    
+                    // Use motor color from settings, or fallback to config colors
+                    const motorColor = motor.color || config.colors.ruler;
+                    
+                    // Derive outline color (slightly darker)
+                    const deriveOutlineColor = (color) => {
+                        // Simple darkening: reduce RGB values by 20%
+                        if (color.startsWith('#') && color.length === 7) {
+                            const r = Math.max(0, Math.floor(parseInt(color.slice(1, 3), 16) * 0.8));
+                            const g = Math.max(0, Math.floor(parseInt(color.slice(3, 5), 16) * 0.8));
+                            const b = Math.max(0, Math.floor(parseInt(color.slice(5, 7), 16) * 0.8));
+                            return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+                        }
+                        return color;
+                    };
+                    
+                    return (
+                        <div
+                            key={motor.index}
+                            style={{
+                                position: 'absolute',
+                                zIndex: 5,
+                                ...position
+                            }}
+                        >
+                            <Joystick1D
+                                orientation={config.orientation}
+                                mode={motor.mode || 'joystick'}
+                                width={isHorizontal ? 200 : 60}
+                                height={isHorizontal ? 60 : 200}
+                                rulerColor={motorColor}
+                                buttonColor={motorColor}
+                                buttonOutline={deriveOutlineColor(motorColor)}
+                                backgroundColor="rgba(0, 0, 0, 0.2)"
+                                rulerShowText={true}
+                                rulerLineDistance={0.2}
+                                valueOrigin={0}
+                                minValue={-1}
+                                maxValue={1}
+                                snapAnimationDuration={0.1}
+                                onChange={createMotorJoystickHandler(motor.index)}
+                                onEnd={createMotorJoystickEndHandler(motor.index)}
+                            />
+                        </div>
+                    );
+                })}
 
-            {/* Setup button - right bottom corner */}
-            <button
-                onClick={handleSetupClick}
-                style={{
-                    ...buttonStyle,
-                    right: '16px'
-                }}
-                onMouseEnter={(e) => {
-                    e.currentTarget.style.opacity = '1';
-                    e.currentTarget.style.backgroundColor = '#885500';
-                }}
-                onMouseLeave={(e) => {
-                    e.currentTarget.style.opacity = '0.8';
-                    e.currentTarget.style.backgroundColor = '#887700';
-                }}
-                title="Setup"
-            >
-                <img src={settingsIcon} alt="Setup" width="24" height="24" />
-            </button>
+                {/* Setup button - right bottom corner */}
+                <button
+                    onClick={handleSetupClick}
+                    style={{
+                        ...buttonStyle,
+                        right: '16px'
+                    }}
+                    onMouseEnter={(e) => {
+                        e.currentTarget.style.opacity = '1';
+                        e.currentTarget.style.backgroundColor = '#885500';
+                    }}
+                    onMouseLeave={(e) => {
+                        e.currentTarget.style.opacity = '0.8';
+                        e.currentTarget.style.backgroundColor = '#887700';
+                    }}
+                    title="Setup"
+                >
+                    <img src={settingsIcon} alt="Setup" width="24" height="24" />
+                </button>
+            </CameraViewport>
 
             <ModalWindow
                 isOpen={isModalOpen}
@@ -1156,7 +943,7 @@ const ManualControl = () => {
                 interval={0.02}
                 onInterval={sendManualControlAction}
             />
-        </div>
+        </>
     );
 };
 

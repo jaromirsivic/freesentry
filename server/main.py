@@ -35,6 +35,7 @@ from . import restapisettings
 from . import restapihotzone
 from . import restapimanualcontrol
 from . import restapiaisetup
+from . import restapiaiagent
 from . import restapiosmanagement
 from .settingserrors import SettingsError
 
@@ -243,6 +244,7 @@ app.include_router(restapihotzone.router)
 app.include_router(restapicameras.router)
 app.include_router(restapimanualcontrol.router)
 app.include_router(restapiaisetup.router)
+app.include_router(restapiaiagent.router)
 app.include_router(restapiosmanagement.router)
 
 
