@@ -268,8 +268,6 @@ class Camera(threading.Thread):
     def _get_raw_frame(self, *, stream_token: int | None = None) -> Frame:
         if not self._ensure_device_open(stream_token=stream_token):
             return self._create_blank_frame()
-        if not self._is_stream_token_current(stream_token=stream_token):
-            return self._create_blank_frame()
         if self._active:
             with self._lock_frame:
                 self._last_access_time_raw_frame = time.time()
@@ -279,8 +277,6 @@ class Camera(threading.Thread):
 
     def _get_masked_frame(self, *, stream_token: int | None = None) -> Frame:
         if not self._ensure_device_open(stream_token=stream_token):
-            return self._create_blank_frame()
-        if not self._is_stream_token_current(stream_token=stream_token):
             return self._create_blank_frame()
         if self._active:
             now = time.time()
@@ -296,8 +292,6 @@ class Camera(threading.Thread):
 
     def _get_masked_ai_frame(self, *, stream_token: int | None = None) -> Frame:
         if not self._ensure_device_open(stream_token=stream_token):
-            return self._create_blank_frame()
-        if not self._is_stream_token_current(stream_token=stream_token):
             return self._create_blank_frame()
         if self._active:
             now = time.time()
