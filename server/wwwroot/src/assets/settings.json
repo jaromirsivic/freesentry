@@ -738,7 +738,7 @@
             ],
             "exitStrategyDuration": 10
         },
-        "modelName": "Very Accurate and Very Slow",
+        "modelName": "Simple and Fast",
         "device": "cuda:0 (Nvidia GPU Only)",
         "minFpsToAllowEngagement": 1,
         "organMustBeVisibleSeconds": 0.5,

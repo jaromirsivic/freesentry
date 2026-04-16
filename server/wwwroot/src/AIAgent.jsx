@@ -37,7 +37,7 @@ const AIAgent = () => {
     const wasActivatedRef = useRef(false);
 
     const buildStreamUrl = useCallback(() => {
-        return buildCameraStreamUrl(AI_AGENT_CAMERA_SETTINGS);
+        return `${buildCameraStreamUrl(AI_AGENT_CAMERA_SETTINGS)}&_t=${Date.now()}`;
     }, []);
 
     const stopVisibleStream = useCallback(async () => {

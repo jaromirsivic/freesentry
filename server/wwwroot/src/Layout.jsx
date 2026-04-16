@@ -90,15 +90,14 @@ const Layout = () => {
   }, [activationLoaded, aiagentFullyActivated, location.pathname, navigate]);
 
   const handleStopAIClick = useCallback(async () => {
-    handleMenuToggle(false);
+    handleMenuToggle(false, true);
 
     try {
       await deactivateAIAgent();
-      navigate('/ai-agent');
     } catch (error) {
       console.error('Failed to stop AI agent:', error);
     }
-  }, [deactivateAIAgent, handleMenuToggle, navigate]);
+  }, [deactivateAIAgent, handleMenuToggle]);
 
   const getPageInfo = () => {
     const path = location.pathname;
