@@ -1,10 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import Button from './components/Button';
+import { useNavigate } from 'react-router-dom';
 import CameraViewport from './components/CameraViewport';
-import ColumnLayout from './components/ColumnLayout';
-import HorizontalSeparator from './components/HorizontalSeparator';
-import Panel from './components/Panel';
-import StaticText from './components/StaticText';
+import ModalWindow from './components/ModalWindow';
 import { useAIAgentActivation } from './contexts/AIAgentActivationContext.jsx';
 import useDocumentFullscreen from './hooks/useDocumentFullscreen';
 import {
@@ -29,11 +26,13 @@ const AIAgent = () => {
         activateAIAgent
     } = useAIAgentActivation();
     const { isFullscreen, toggleFullscreen } = useDocumentFullscreen();
+    const navigate = useNavigate();
     const [streamUrl, setStreamUrl] = useState(null);
     const [reticleSettings, setReticleSettings] = useState(() => ({
         ...DEFAULT_RETICLE_SETTINGS
     }));
     const [isViewerLoading, setIsViewerLoading] = useState(false);
+    const [isActivationModalOpen, setIsActivationModalOpen] = useState(true);
     const wasActivatedRef = useRef(false);
 
     const buildStreamUrl = useCallback(() => {
@@ -111,6 +110,7 @@ const AIAgent = () => {
         if (wasActivatedRef.current && !aiagentFullyActivated) {
             setStreamUrl(null);
             void stopVisibleStream();
+            setIsActivationModalOpen(true);
         }
 
         wasActivatedRef.current = aiagentFullyActivated;
@@ -139,11 +139,18 @@ const AIAgent = () => {
         };
     }, [aiagentFullyActivated, buildStreamUrl, stopVisibleStream]);
 
+    const handleCancelActivation = useCallback(() => {
+        setIsActivationModalOpen(false);
+        navigate('/');
+    }, [navigate]);
+
     const handleStartAIAgent = useCallback(async () => {
+        setIsActivationModalOpen(false);
         try {
             await activateAIAgent();
         } catch (error) {
             console.error('Failed to activate AI agent:', error);
+            setIsActivationModalOpen(true);
         }
     }, [activateAIAgent]);
 
@@ -153,26 +160,24 @@ const AIAgent = () => {
 
     if (!aiagentFullyActivated) {
         return (
-            <div className="page-container">
-                <Panel title="AI Agent">
-                    <ColumnLayout gap="1rem">
-                        <StaticText
-                            text="Pressing the button below activates the AI Agent that will control all motors. This is not a simulation like on the Manual Control page. It starts the real AI Agent, which immediately begins executing the mission according to the configured AI setup."
-                        />
-                        <HorizontalSeparator label="Runtime Activation" fullWidth={true} bleed="1.5rem" />
-                        <div className="responsive-input-container" style={{ width: '100%' }}>
-                            <span style={{ whiteSpace: 'nowrap' }}>Activate AI Agent:</span>
-                            <Button
-                                label={isActivationBusy ? 'Starting...' : 'Start AI Agent'}
-                                onClick={handleStartAIAgent}
-                                disabled={isActivationBusy}
-                                color="#dc2626"
-                                style={{ width: 'auto' }}
-                            />
-                        </div>
-                    </ColumnLayout>
-                </Panel>
-            </div>
+            <>
+                <CameraViewport isLoading={isActivationBusy} />
+                <ModalWindow
+                    isOpen={isActivationModalOpen}
+                    title="AI Agent"
+                    okLabel={isActivationBusy ? 'Starting...' : 'Start AI'}
+                    cancelLabel="Cancel"
+                    onOk={handleStartAIAgent}
+                    onCancel={handleCancelActivation}
+                    okButtonColor="var(--red_primary)"
+                    okDisabled={isActivationBusy}
+                    cancelDisabled={isActivationBusy}
+                >
+                    <p style={{ margin: 0 }}>
+                        Pressing the button below activates the AI Agent that will control all motors. This is not a simulation like on the Manual Control page. It starts the real AI Agent, which immediately begins executing the mission according to the configured AI setup.
+                    </p>
+                </ModalWindow>
+            </>
         );
     }
 

@@ -140,7 +140,7 @@ const Layout = () => {
   const { title, icon } = getPageInfo();
 
   // Pages that should use full-bleed layout (no padding, no scrollbars)
-  const isAIAgentFullBleed = location.pathname === '/ai-agent' && (!activationLoaded || aiagentFullyActivated);
+  const isAIAgentFullBleed = location.pathname === '/ai-agent';
   const isFullBleedPage = FULL_BLEED_PATHS.has(location.pathname) || isAIAgentFullBleed;
   const handleMenuNavigate = (to) => handleMenuToggle(false, to !== location.pathname);
 
