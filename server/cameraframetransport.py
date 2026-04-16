@@ -138,7 +138,7 @@ class SharedFrameSlot:
             w, h, c, ts, v, seq, dsz = struct.unpack(HEADER_FORMAT, raw_header)
             if dsz == 0 or not v:
                 return None, ts, bool(v), seq
-            pixel_bytes = bytes(
+            pixel_bytes = bytearray(
                 self._shm.buf[HEADER_SIZE : HEADER_SIZE + dsz]
             )
         shape = (h, w, c) if c > 1 else (h, w)
