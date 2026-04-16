@@ -83,6 +83,14 @@ class Camera(threading.Thread):
         self._last_access_time_masked_frame: float = 0
         self._last_access_time_masked_ai_frame: float = 0
 
+        # Staging slot for AI images waiting to be overlaid (scope_camera only).
+        # The raw AI image from shared memory is parked here; _process_pose
+        # always overlays engagement/pose drawings before publishing to
+        # _frame_masked_ai, so MJPEG consumers never observe an un-drawn frame.
+        self._staged_ai_image: np.ndarray | None = None
+        self._staged_ai_time: float = 0.0
+        self._staged_ai_valid: bool = False
+
         self._stream_id = 0
 
         # --- Probe hardware for capabilities / resolutions ---
@@ -526,8 +534,18 @@ class Camera(threading.Thread):
             if seq_a != self._last_seq_ai:
                 img, ts, valid, seq = t.slot_ai.read_frame()
                 if img is not None and valid:
-                    with self._lock_frame_masked_ai:
-                        self._frame_masked_ai = Frame(valid=True, image=img, time=ts)
+                    if self._camera_code == "scope_camera":
+                        # Stage the raw AI image. _process_pose will overlay
+                        # engagement/pose drawings before publishing to
+                        # _frame_masked_ai, so MJPEG consumers never observe
+                        # an un-drawn frame.
+                        with self._lock_frame_masked_ai:
+                            self._staged_ai_image = img
+                            self._staged_ai_time = ts
+                            self._staged_ai_valid = True
+                    else:
+                        with self._lock_frame_masked_ai:
+                            self._frame_masked_ai = Frame(valid=True, image=img, time=ts)
                     self._last_seq_ai = seq
         except Exception:
             pass
@@ -560,34 +578,47 @@ class Camera(threading.Thread):
             except Exception:
                 break
 
-        if latest_raw_pose is not None:
-            try:
-                from .cameraai import translate_raw_pose_to_pose_dict
+        # Claim the staged AI image (if any). We only overlay and publish
+        # when a new AI frame has been staged since the last publication;
+        # otherwise we leave the previously published _frame_masked_ai
+        # intact so the HTTP stream keeps its last good overlaid frame.
+        with self._lock_frame_masked_ai:
+            if not self._staged_ai_valid or self._staged_ai_image is None:
+                return
+            staged_image = self._staged_ai_image
+            staged_time = self._staged_ai_time
+            self._staged_ai_valid = False
+            self._staged_ai_image = None
 
-                settings = get_settings_sync()
-                ai_setup = settings.get("aiSetup", {}) if isinstance(settings, dict) else {}
-                pose = translate_raw_pose_to_pose_dict(
-                    raw_pose=latest_raw_pose, ai_setup=ai_setup,
-                )
+        try:
+            settings = get_settings_sync()
+            ai_setup = settings.get("aiSetup", {}) if isinstance(settings, dict) else {}
 
-                with self._lock_frame_masked_ai:
-                    frame_ai = self._frame_masked_ai
-                if frame_ai.valid:
-                    frame_with_pose = Frame(
-                        valid=True, image=frame_ai.image, time=frame_ai.time,
-                        pose=pose,
+            pose = None
+            if latest_raw_pose is not None:
+                try:
+                    from .cameraai import translate_raw_pose_to_pose_dict
+                    pose = translate_raw_pose_to_pose_dict(
+                        raw_pose=latest_raw_pose, ai_setup=ai_setup,
                     )
-                    engagement_result = ai_agent.engage(
-                        frame=frame_with_pose, settings=settings,
-                    )
-                    ai_agent.draw_engagement_result(
-                        frame=frame_with_pose,
-                        engagement_result=engagement_result,
-                    )
-                    with self._lock_frame_masked_ai:
-                        self._frame_masked_ai = frame_with_pose
-            except Exception as e:
-                print(f"Error processing pose for {self._camera_name}: {e}")
+                except Exception as e:
+                    print(f"Error translating pose for {self._camera_name}: {e}")
+                    pose = None
+
+            frame_with_pose = Frame(
+                valid=True, image=staged_image, time=staged_time, pose=pose,
+            )
+            engagement_result = ai_agent.engage(
+                frame=frame_with_pose, settings=settings,
+            )
+            ai_agent.draw_engagement_result(
+                frame=frame_with_pose,
+                engagement_result=engagement_result,
+            )
+            with self._lock_frame_masked_ai:
+                self._frame_masked_ai = frame_with_pose
+        except Exception as e:
+            print(f"Error processing pose for {self._camera_name}: {e}")
 
     def _drain_pose_pipe(self) -> None:
         if self._transport is None:

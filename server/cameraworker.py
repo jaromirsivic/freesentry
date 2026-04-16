@@ -335,11 +335,8 @@ def _run_ai_inference(
             kpts_data = getattr(result.keypoints, "data", result.keypoints)
             keypoints = kpts_data.cpu().numpy() if hasattr(kpts_data, "cpu") else kpts_data
             raw_pose = get_pose_dict(keypoints=keypoints, ai_setup=ai_setup)
-            # Return raw_pose (plain dicts/tuples/floats) so it can be pickled
-            # through the pose pipe. The pose overlay is drawn in the main
-            # process by AIAgent.draw_engagement_result.
-            return image.copy(), raw_pose
+            return image, raw_pose
     except Exception as e:
         print(f"[Worker] AI inference error: {e}")
 
-    return image.copy(), None
+    return image, None
