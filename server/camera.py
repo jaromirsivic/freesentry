@@ -1,17 +1,28 @@
-from .common import Frame
+"""
+Camera proxy — lightweight main-process thread that owns a worker process.
+
+The heavy work (capture, flip, crop, mask, YOLO inference, draw_pose) runs
+in a separate OS process (``CameraWorkerProcess``) with its own GIL.
+This thread reads finished frames from shared memory, runs the AI engagement
+state machine, and exposes the same public API as the old Camera class.
+"""
+
+from __future__ import annotations
+
 import time
-import cv2
 import threading
-import numpy as np
-from .ai_setup_constants import DEFAULT_DEVICE
-from .yolomodels import YOLOModels
-# from .camerapostprocessing import NodeImage, NodeImageCroppedResized, NodeImageAI
 from copy import deepcopy
-from .cameraai import draw_pose, get_pose_dict, translate_raw_pose_to_pose_dict
-from .common import EPSILON_DELAY
 from enum import Enum
+
+import cv2
+import numpy as np
+
+from .common import Frame, EPSILON_DELAY
 from .settingscontroller import get_settings_sync
-from .aiagent import AIAgent
+from .cameradevice import create_camera_device
+from .cameraframetransport import FrameTransport
+from .cameraworker import CameraWorkerProcess
+
 
 class CameraType(Enum):
     CV2 = "cv2"
@@ -20,139 +31,137 @@ class CameraType(Enum):
     UNKNOWN = "unknown"
 
 
-FLIP_HORIZONTAL = 1
-FLIP_VERTICAL = 0
-FLIP_BOTH = -1
+_WORKER_STOP_TIMEOUT = 4.0
+_MAX_RESTART_ATTEMPTS = 5
+_RESTART_BACKOFF_BASE = 1.0
+_RESTART_BACKOFF_MAX = 30.0
+_HEARTBEAT_INTERVAL = 5.0
 
 
 class Camera(threading.Thread):
+    """Proxy that owns a worker process and exposes frames to the rest of
+    the application.  Public API is identical to the previous Camera class.
     """
-    Camera class that captures frames in a background thread.
-    
-    The device is closed by default. When frame property is accessed,
-    the thread starts and captures frames. If frame is not accessed
-    for more than 5 seconds, the thread stops and closes the device.
-    """
-    
+
     TIMEOUT_SECONDS = 5
     STOP_TIMEOUT_SECONDS = 4.0
-    
-    def __init__(self, *, index: int,
-                 camera_index: int,
-                 camera_code: str = None,
-                 camera_name: str = None,
-                 settings: dict = None,
-                 image_cropped_resized_settings: dict = None,
-                 image_ai_settings: dict = None,
-                 master_controller: "MasterController" = None):  # pyright: ignore[reportUndefinedVariable]
+
+    def __init__(
+        self,
+        *,
+        index: int,
+        camera_index: int,
+        camera_code: str | None = None,
+        camera_name: str | None = None,
+        camera_type: str = "dummy",
+        settings: dict | None = None,
+        master_controller: "MasterController" = None,  # pyright: ignore[reportUndefinedVariable]
+    ) -> None:
         super().__init__()
         self.daemon = True
+
         self._master_controller = master_controller
         self._index = index
         self._camera_index = camera_index
         self._camera_code = camera_code
-        self._camera_type = CameraType.UNKNOWN
-        self._camera_name = camera_name if camera_name is not None else f'{index}: Loadeing, please wait a minute...'
-        self._camera: cv2.VideoCapture = None
-        self._lock = threading.Lock()
+        self._camera_type_str = camera_type
+        self._camera_type = CameraType(camera_type) if camera_type in [e.value for e in CameraType] else CameraType.UNKNOWN
+        self._camera_name = camera_name or f"{index}: Loading, please wait a minute..."
+
         self._state_lock = threading.RLock()
-        self._latest_ai_time = 0
-        self._latest_ai_code = ""
-        # Frame properties
+        self._active = False
+
+        # Frame storage (read by MJPEG consumers)
         self._frame: Frame = self._create_blank_frame()
         self._frame_masked: Frame = self._create_blank_frame()
         self._frame_masked_ai: Frame = self._create_blank_frame()
-        self._last_access_time_raw_frame: float = 0
-        self._last_access_time_masked_frame: float = 0
-        self._last_access_time_masked_ai_frame: float = 0
         self._lock_frame = threading.Lock()
         self._lock_frame_masked = threading.Lock()
         self._lock_frame_masked_ai = threading.Lock()
-        #self._lock_property_manipulation = threading.Lock()
-        self._active = False
-        # Flip and rotate settings (software post-processing)
-        self._flip_horizontal = False
-        self._flip_vertical = False
-        self._rotate = 0
-        # Create post processing filters
-        self._image: Frame = None
-        self._image_cropped_resized: Frame = None
-        self._image_ai: Frame = None
-        # Initialize settings
-        self._settings: dict = None
-        self._settings_version = 0
-        self._applied_settings_version = -1
-        self._settings_modified = False
+
+        self._last_access_time_raw_frame: float = 0
+        self._last_access_time_masked_frame: float = 0
+        self._last_access_time_masked_ai_frame: float = 0
+
         self._stream_id = 0
-        # Supported resolutions
-        self.supported_resolutions = self._get_supported_resolutions()
-        # Settings
-        self._default_settings = self._get_camera_properties()
+
+        # --- Probe hardware for capabilities / resolutions ---
+        probe_device = create_camera_device(
+            camera_type=camera_type,
+            camera_index=camera_index,
+            camera_name=self._camera_name,
+            settings=settings or {},
+        )
+        self.supported_resolutions = probe_device.get_supported_resolutions()
+        self._capabilities = probe_device.get_capabilities()
+
+        self._default_settings = probe_device.get_properties()
         self._default_settings["auto_focus"] = True
         self._default_settings["auto_white_balance_temperature"] = True
         self._default_settings["auto_exposure"] = True
+        self._default_settings["index"] = index
+        self._default_settings["camera_index"] = camera_index
+        self._default_settings["camera_type"] = camera_type
+        self._default_settings["name"] = self._camera_name
+        self._default_settings["supported_resolutions"] = self.supported_resolutions
+        probe_device.close()
+
+        # Settings
+        self._settings: dict | None = None
+        self._settings_version = 0
+        self._applied_settings_version = -1
+        self._settings_modified = False
+
         camera_settings = deepcopy(self._default_settings)
         if settings is not None:
             camera_settings.update(settings)
         self.settings = camera_settings
 
-    def _open(self) -> bool:
-        raise NotImplementedError("Subclasses must implement this method")
+        # Worker / transport state
+        self._transport: FrameTransport | None = None
+        self._worker: CameraWorkerProcess | None = None
+        self._worker_started = False
+        self._restart_count = 0
+        self._last_restart_time = 0.0
 
-    def _close(self):
-        raise NotImplementedError("Subclasses must implement this method")
+        # Global settings change tracking
+        self._last_sent_global_settings: object = None
 
-    def _get_supported_resolutions(self):
-        raise NotImplementedError("Subclasses must implement this method")
+        # Shared memory sequence tracking
+        self._last_seq_raw = 0
+        self._last_seq_masked = 0
+        self._last_seq_ai = 0
 
-    def _get_capabilities(self) -> dict:
-       raise NotImplementedError("Subclasses must implement this method")
+        self._last_heartbeat_send = 0.0
 
-    def _get_camera_properties(self) -> dict:
-        raise NotImplementedError("Subclasses must implement this method")
-
-    def _set_camera_properties(self, value: dict | None):
-        raise NotImplementedError("Subclasses must implement this method")
-
-    def _get_image_ndarray(self) -> tuple[bool, cv2.typing.MatLike]:
-        raise NotImplementedError("Subclasses must implement this method")
-
-    def _create_blank_frame(self) -> Frame:
-        """Create a black frame of size 640x480."""
+    # ------------------------------------------------------------------
+    # Blank frame helper
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _create_blank_frame() -> Frame:
         image = np.zeros((480, 640, 3), dtype=np.uint8)
-        # write the text "Loading, please wait a minute..." in the center of the frame
         text = "Loading, please wait a minute..."
-        text_size = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 1, 2)[0]
-        text_x = (640 - text_size[0]) // 2
-        text_y = (480 + text_size[1]) // 2
-        cv2.putText(image, text, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+        ts = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 1, 2)[0]
+        cv2.putText(image, text, ((640 - ts[0]) // 2, (480 + ts[1]) // 2),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
         return Frame(valid=False, image=image, time=0)
 
-    # @property
-    # def index(self) -> int:
-    #     return self._index
-
+    # ------------------------------------------------------------------
+    # Public properties (unchanged API)
+    # ------------------------------------------------------------------
     @property
     def camera_name(self) -> str:
         return self._camera_name
 
     @property
     def settings(self) -> dict:
-        """
-        Returns the settings of the camera.
-        If settings are not set, gets the default settings.
-        """
         with self._state_lock:
             if self._settings is not None:
                 return deepcopy(self._settings)
-        return deepcopy(self._get_camera_properties())
+        return deepcopy(self._default_settings)
 
     @settings.setter
     def settings(self, value: dict | None):
-        """
-        Set the settings of the camera.
-        If value is None, sets the default settings.
-        """
         with self._state_lock:
             self._settings = deepcopy(value) if value is not None else None
             self._settings_version += 1
@@ -168,19 +177,32 @@ class Camera(threading.Thread):
         with self._state_lock:
             self._camera_code = value
 
-    def _get_state_snapshot(self) -> tuple[dict | None, str | None]:
-        with self._state_lock:
-            settings_snapshot = deepcopy(self._settings) if self._settings is not None else None
-            camera_code = self._camera_code
-        return settings_snapshot, camera_code
+    @property
+    def capabilities(self) -> dict:
+        return self._capabilities
 
+    @property
+    def frame(self) -> Frame:
+        return self._get_raw_frame()
+
+    @property
+    def frame_masked(self) -> Frame:
+        return self._get_masked_frame()
+
+    @property
+    def frame_masked_ai(self) -> Frame:
+        return self._get_masked_ai_frame()
+
+    # ------------------------------------------------------------------
+    # Settings helpers
+    # ------------------------------------------------------------------
     def _get_pending_settings_update(self) -> tuple[dict | None, int] | None:
         with self._state_lock:
             if self._applied_settings_version == self._settings_version:
                 self._settings_modified = False
                 return None
-            settings_snapshot = deepcopy(self._settings) if self._settings is not None else None
-            return settings_snapshot, self._settings_version
+            snapshot = deepcopy(self._settings) if self._settings is not None else None
+            return snapshot, self._settings_version
 
     def _mark_settings_applied(self, *, settings_version: int) -> None:
         with self._state_lock:
@@ -188,29 +210,12 @@ class Camera(threading.Thread):
                 self._applied_settings_version = settings_version
             self._settings_modified = self._applied_settings_version != self._settings_version
 
-    def _is_headless_ai_processing_required(self) -> bool:
-        if self._camera_code != "scope_camera":
-            return False
+    def reset_settings(self):
+        self.settings = deepcopy(self._default_settings)
 
-        master_controller = self._master_controller
-        if master_controller is None:
-            return False
-
-        ai_agent = getattr(master_controller, "ai_agent", None)
-        if ai_agent is None:
-            return False
-
-        is_fully_activated = getattr(ai_agent, "is_fully_activated", None)
-        if not callable(is_fully_activated):
-            return False
-
-        try:
-            return is_fully_activated() is True
-        except Exception as err:
-            # log the error
-            print(f"Error checking if AI agent is fully activated: {err}")
-            return False
-
+    # ------------------------------------------------------------------
+    # Stream token management
+    # ------------------------------------------------------------------
     def create_stream_token(self) -> int:
         with self._state_lock:
             return self._stream_id
@@ -225,43 +230,50 @@ class Camera(threading.Thread):
         with self._state_lock:
             return self._stream_id == stream_token
 
-    @property
-    def capabilities(self) -> dict:
-        """
-        Returns the capabilities of the camera.
-        """
-        return self._get_capabilities()
+    # ------------------------------------------------------------------
+    # Headless AI check
+    # ------------------------------------------------------------------
+    def _is_headless_ai_processing_required(self) -> bool:
+        if self._camera_code != "scope_camera":
+            return False
+        mc = self._master_controller
+        if mc is None:
+            return False
+        ai_agent = getattr(mc, "ai_agent", None)
+        if ai_agent is None:
+            return False
+        fn = getattr(ai_agent, "is_fully_activated", None)
+        if not callable(fn):
+            return False
+        try:
+            return fn() is True
+        except Exception:
+            return False
 
+    # ------------------------------------------------------------------
+    # Frame access (public API)
+    # ------------------------------------------------------------------
     def _ensure_device_open(self, *, stream_token: int | None = None) -> bool:
-        """
-        Ensure the camera device is open and thread is running.
-        Updates the last access time to keep the thread alive.
-        """
         if not self._is_stream_token_current(stream_token=stream_token):
             return False
-        #self._open()
         with self._lock_frame:
             self._last_access_time_raw_frame = time.time()
-        
         if not self.is_alive():
             try:
-                # start the thread if it is not already started
                 if not self._is_stream_token_current(stream_token=stream_token):
                     return False
-                if not self.is_alive() and self._active is False:
+                if not self.is_alive() and not self._active:
                     threading.Thread.__init__(self)
                     self.daemon = True
                 self.start()
-                # Wait briefly for the device to open
-                for _ in range(int(2 / EPSILON_DELAY)):  # Wait up to 2 seconds
+                for _ in range(int(2 / EPSILON_DELAY)):
                     if not self._is_stream_token_current(stream_token=stream_token):
                         return False
-                    if self._active and self._camera is not None:
+                    if self._active:
                         break
                     time.sleep(EPSILON_DELAY)
             except RuntimeError as err:
-                # log the error
-                print(f"Error starting camera thread: {err}")
+                print(f"Error starting camera proxy thread: {err}")
                 return False
         return self._is_stream_token_current(stream_token=stream_token)
 
@@ -280,8 +292,6 @@ class Camera(threading.Thread):
             return self._create_blank_frame()
         if self._active:
             now = time.time()
-            # Frame is needed to produce correct masked_frame therefore there
-            # is a change of last access time for raw frame
             with self._lock_frame:
                 self._last_access_time_raw_frame = now
             with self._lock_frame_masked:
@@ -295,12 +305,8 @@ class Camera(threading.Thread):
             return self._create_blank_frame()
         if self._active:
             now = time.time()
-            # Frame is needed to produce correct masked_frame
-            # therefore there is a change of last access time for raw frame
             with self._lock_frame:
                 self._last_access_time_raw_frame = now
-            # Masked frame is needed to produce correct masked_frame_ai therefore there
-            # is a change of last access time for masked frame
             with self._lock_frame_masked:
                 self._last_access_time_masked_frame = now
             with self._lock_frame_masked_ai:
@@ -312,311 +318,336 @@ class Camera(threading.Thread):
     def get_stream_frame(self, *, mode: int, stream_token: int) -> Frame | None:
         if not self._is_stream_token_current(stream_token=stream_token):
             return None
-
         if mode == 3:
             frame = self._get_masked_ai_frame(stream_token=stream_token)
         elif mode == 1:
             frame = self._get_masked_frame(stream_token=stream_token)
         else:
             frame = self._get_raw_frame(stream_token=stream_token)
-
         if not self._is_stream_token_current(stream_token=stream_token):
             return None
         return frame
 
-    @property
-    def frame(self) -> Frame:
-        """
-        Returns the current frame. Starts the capture thread if not running.
-        Updates the last access time to keep the thread alive.
-        """
-        return self._get_raw_frame()
+    # ------------------------------------------------------------------
+    # Worker lifecycle
+    # ------------------------------------------------------------------
+    def _start_worker(self) -> bool:
+        if self._transport is not None:
+            self._cleanup_transport()
 
-    @property
-    def frame_masked(self) -> Frame:
-        """
-        Returns the current frame. Starts the capture thread if not running.
-        Updates the last access time to keep the thread alive.
-        """
-        return self._get_masked_frame()
+        camera_settings_snapshot = self.settings
+        global_settings_snapshot = dict(deepcopy(get_settings_sync()))
 
-    @property
-    def frame_masked_ai(self) -> Frame:
-        """
-        Returns the current frame. Starts the capture thread if not running.
-        Updates the last access time to keep the thread alive.
-        """
-        return self._get_masked_ai_frame()
+        self._transport = FrameTransport(
+            camera_index=self._index,
+            max_width=camera_settings_snapshot.get("width", 1920),
+            max_height=camera_settings_snapshot.get("height", 1080),
+        )
+        worker_args = self._transport.get_worker_init_args()
 
-    def _crop_and_resize(self, *, image: np.ndarray, settings: dict | None) -> np.ndarray:
-        """
-        Crop and resize a frame.
-        Parameters:
-        src_frame : numpy.ndarray : The source frame.
-        Returns:
-        bool : True if the frame was cropped and resized successfully, False otherwise.
-        np.ndarray : The cropped and resized frame.
-        """
-        settings = settings or {}
-        # convert crop coordinates to pixels
-        # crop coordinates are between 0 and 1
-        crop_top = settings["crop_top"] if "crop_top" in settings else 0.0
-        crop_left = settings["crop_left"] if "crop_left" in settings else 0.0
-        crop_bottom = settings["crop_bottom"] if "crop_bottom" in settings else 0.0
-        crop_right = settings["crop_right"] if "crop_right" in settings else 0.0
-        crop_top_px = int(round(crop_top * image.shape[0]))
-        crop_left_px = int(round(crop_left * image.shape[1]))
-        crop_bottom_px = int(round(crop_bottom * image.shape[0]))
-        crop_right_px = int(round(crop_right * image.shape[1]))
-        # calculate source frame coordinates in pixels
-        src_x = crop_left_px
-        src_y = crop_top_px
-        src_width = image.shape[1] - crop_right_px - crop_left_px
-        src_height = image.shape[0] - crop_bottom_px - crop_top_px
-        # get stretch properties
-        stretch_enabled = settings["stretch_enabled"] if "stretch_enabled" in settings else False
-        stretch_width = settings["stretch_width"] if "stretch_width" in settings else 0
-        stretch_height = settings["stretch_height"] if "stretch_height" in settings else 0
-        if stretch_enabled:
-            target_width = stretch_width
-            target_height = stretch_height
-        else:
-            target_width = src_width
-            target_height = src_height
-        # check if source frame coordinates are valid
-        is_valid = True
-        if src_x < 0 or src_x > image.shape[1]:
-            is_valid = False
-        if src_y < 0 or src_y > image.shape[0]:
-            is_valid = False
-        if src_width <= 0:
-            is_valid = False
-        if src_height <= 0:
-            is_valid = False
-        if src_x + src_width > image.shape[1]:
-            is_valid = False
-        if src_y + src_height > image.shape[0]:
-            is_valid = False
-        # if source frame coordinates are not valid, return copy of the source frame
-        if not is_valid:
-            return image
-        # if source frame coordinates are valid, return cropped and resized frame
-        return cv2.resize(image[src_y:src_y + src_height, src_x:src_x + src_width], (target_width, target_height))
-
-    def _mask_image(self, *, image: np.ndarray, settings: dict | None) -> np.ndarray:
-        """
-        Takes an image and a list of normalized polygon coordinates.
-        Returns the image with everything outside the polygons blackened out.
-        """
-        settings = settings or {}
-        # 1. Base case: If no polygons, return original image
-        mask_polygons = settings["mask_polygons"] if "mask_polygons" in settings else []
-        if not mask_polygons:
-            return image
-        # 2. Get image dimensions
-        height, width = image.shape[:2]
-        image_aspect_ratio = width / height
-        width_of_image_where_polygons_were_drawn = 640
-        height_of_image_where_polygons_were_drawn = 480
-        polygons_aspect_ratio = width_of_image_where_polygons_were_drawn / height_of_image_where_polygons_were_drawn        
-        # 3. Create a black single-channel mask (same height/width, unsigned 8-bit integer)
-        mask = np.zeros((height, width), dtype=np.uint8)
-        # 4. Process each polygon
-        for polygon in mask_polygons:
-            points = []
-            for point in polygon:
-                # Convert normalized coordinates (0 -> 1) to pixel coordinates
-                if image_aspect_ratio > polygons_aspect_ratio:
-                    x_pixel = int(point["x"] * width)
-                    y_pixel = point["y"] - 0.5
-                    y_pixel = y_pixel / polygons_aspect_ratio * image_aspect_ratio
-                    y_pixel += 0.5
-                    y_pixel = int(y_pixel * height)
-                else:
-                    x_pixel = point["x"] - 0.5
-                    x_pixel = x_pixel * polygons_aspect_ratio / image_aspect_ratio
-                    x_pixel += 0.5
-                    x_pixel = int(x_pixel * width)
-                    y_pixel = int(point["y"] * height)
-                points.append([x_pixel, y_pixel])            
-            # Convert points to a numpy array of shape (N, 1, 2) required by cv2.fillPoly
-            pts_array = np.array(points, dtype=np.int32)
-            pts_array = pts_array.reshape((-1, 1, 2))            
-            # Fill the polygon on the mask with White (255)
-            cv2.fillPoly(mask, [pts_array], 255)
-        # 5. Apply the mask to the image
-        # cv2.bitwise_and keeps pixels where mask is non-zero (255) and blackens the rest
-        masked_image = cv2.bitwise_and(image, image, mask=mask)
-        return masked_image
-
-    def _mask_ai_image(self, *, image: np.ndarray, settings: dict) -> np.ndarray:
-        """Process a frame through the AI pipeline."""
-        # get the model name from the settings
-        ai_setup = settings.get("aiSetup", {})
-        model_name = ai_setup.get("modelName", YOLOModels().default_model_name)
-        device = ai_setup.get("device", DEFAULT_DEVICE)
-
-        # Run YOLO inference
+        self._worker = CameraWorkerProcess(
+            camera_type=self._camera_type_str,
+            camera_index=self._camera_index,
+            index=self._index,
+            camera_code=self._camera_code,
+            camera_name=self._camera_name,
+            initial_camera_settings=camera_settings_snapshot,
+            initial_global_settings=global_settings_snapshot,
+            **worker_args,
+        )
         try:
-            results = YOLOModels().predict(
-                model_name=model_name,
-                preferred_device=device,
-                image=image,
-                verbose=False
-            )
-            result = results[0]
-
-            # Check for keypoints
-            if hasattr(result, 'keypoints') and result.keypoints is not None:
-                # Get keypoints with confidence if possible (N, 17, 3)
-                if hasattr(result.keypoints, 'data'):
-                    kpts = result.keypoints.data
-                else:
-                    kpts = result.keypoints
-                # Get pose dictionary
-                keypoints = kpts.cpu().numpy() if hasattr(kpts, 'cpu') else kpts
-                # get the AI setup from the settings
-                ai_setup = settings.get("aiSetup", {})
-                raw_pose = get_pose_dict(keypoints=keypoints, ai_setup=ai_setup)
-                pose = translate_raw_pose_to_pose_dict(raw_pose=raw_pose, ai_setup=ai_setup)
-                image = draw_pose(image=image, pose=pose, ai_setup=ai_setup)
-                # Return frame with pose
-                return Frame(valid=True, image=image, time=time.time(), pose=pose)
-
+            self._worker.start()
+            self._worker_started = True
+            self._last_sent_global_settings = get_settings_sync()
+            self._last_seq_raw = 0
+            self._last_seq_masked = 0
+            self._last_seq_ai = 0
+            self._last_heartbeat_send = time.monotonic()
+            return True
         except Exception as e:
-            print(f"Error during AI processing: {e}")
+            print(f"Failed to start worker for {self._camera_name}: {e}")
+            self._cleanup_transport()
+            return False
 
-        # If no keypoints detected or error, return masked frame
-        return Frame(valid=True, image=image, time=time.time(), pose=None)
+    def _stop_worker(self) -> None:
+        if self._transport is not None:
+            self._transport.send_command({"cmd": "stop"})
 
-    def _get_frame(self):
-        """Capture a frame from the camera and apply transformations."""
-        camera_settings, camera_code = self._get_state_snapshot()
-        now = time.time()
-        headless_ai_processing_required = self._is_headless_ai_processing_required()
-        try:
-            with self._lock:
-                if not self._active or self._camera is None:
-                    return
-                valid, image = self._get_image_ndarray()
-        except Exception as e:
-            print(f"Warning: Camera index={self._index}, camera_index={self._camera_index} "
-                  f"and camera_type={self._camera_type.value}, error getting frame: {e}")
-            valid = False
-            image = None
-        if not valid:
-            with self._lock:
-                if self._camera is not None:
-                    self._close()
-            with self._lock_frame:
-                self._frame = self._create_blank_frame()
+        if self._worker is not None and self._worker.is_alive():
+            self._worker.join(timeout=_WORKER_STOP_TIMEOUT)
+            if self._worker.is_alive():
+                print(f"Worker {self._camera_name} did not stop, terminating")
+                self._worker.terminate()
+                self._worker.join(timeout=2.0)
+                if self._worker.is_alive():
+                    self._worker.kill()
+                    self._worker.join(timeout=1.0)
+
+        self._worker = None
+        self._worker_started = False
+        self._cleanup_transport()
+
+    def _cleanup_transport(self) -> None:
+        if self._transport is not None:
+            self._transport.cleanup()
+            self._transport = None
+
+    def _try_restart_worker(self) -> bool:
+        if self._restart_count >= _MAX_RESTART_ATTEMPTS:
+            return False
+        backoff = min(
+            _RESTART_BACKOFF_BASE * (2 ** self._restart_count),
+            _RESTART_BACKOFF_MAX,
+        )
+        now = time.monotonic()
+        if now - self._last_restart_time < backoff:
+            return False
+        self._restart_count += 1
+        self._last_restart_time = now
+        print(f"Restarting worker for {self._camera_name} "
+              f"(attempt {self._restart_count}/{_MAX_RESTART_ATTEMPTS})")
+        self._stop_worker()
+        return self._start_worker()
+
+    # ------------------------------------------------------------------
+    # Main proxy loop
+    # ------------------------------------------------------------------
+    def run(self) -> None:
+        self._active = True
+        if not self._start_worker():
+            self._active = False
             return
-        # Apply flip transformations
-        camera_settings = camera_settings or {}
-        flip_horizontal = camera_settings["flip_horizontal"] if "flip_horizontal" in camera_settings else False
-        flip_vertical = camera_settings["flip_vertical"] if "flip_vertical" in camera_settings else False
-        rotate = camera_settings["rotate"] if "rotate" in camera_settings else 0
-        if flip_horizontal and flip_vertical:
-            image = cv2.flip(image, FLIP_BOTH)
-        elif flip_horizontal:
-            image = cv2.flip(image, FLIP_HORIZONTAL)
-        elif flip_vertical:
-            image = cv2.flip(image, FLIP_VERTICAL)
-        # Apply rotation
-        if rotate == 90:
-            image = cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE)
-        elif rotate == 180:
-            image = cv2.rotate(image, cv2.ROTATE_180)
-        elif rotate == 270:
-            image = cv2.rotate(image, cv2.ROTATE_90_CLOCKWISE)
-        # crop and resize the image
-        image = self._crop_and_resize(image=image, settings=camera_settings)
+
+        try:
+            with self._lock_frame:
+                self._last_access_time_raw_frame = time.time()
+
+            while self._active:
+                # --- 1. Check worker health ---
+                if self._worker is None or not self._worker.is_alive():
+                    if not self._try_restart_worker():
+                        time.sleep(EPSILON_DELAY)
+                        if self._restart_count >= _MAX_RESTART_ATTEMPTS:
+                            break
+                        continue
+
+                # --- 2. Propagate settings changes to worker ---
+                self._propagate_settings()
+
+                # --- 3. Send heartbeat ---
+                now_mono = time.monotonic()
+                if now_mono - self._last_heartbeat_send >= _HEARTBEAT_INTERVAL:
+                    if self._transport:
+                        self._transport.send_command({"cmd": "heartbeat"})
+                    self._last_heartbeat_send = now_mono
+
+                # --- 4. Read frames from shared memory ---
+                self._read_frames_from_transport()
+
+                # --- 5. Process pose / engagement for scope_camera ---
+                self._process_pose()
+
+                # --- 6. Update demand flags ---
+                self._update_demand_flags()
+
+                # --- 7. Check if any consumer is still active ---
+                if not self._should_stay_alive():
+                    break
+
+                time.sleep(EPSILON_DELAY)
+
+        except Exception as e:
+            print(f"Error in camera proxy thread: {e}")
+        finally:
+            self._stop_worker()
+            self._active = False
+
+    # ------------------------------------------------------------------
+    # Settings propagation
+    # ------------------------------------------------------------------
+    def _propagate_settings(self) -> None:
+        if self._transport is None:
+            return
+
+        # Camera-specific settings
+        pending = self._get_pending_settings_update()
+        if pending is not None:
+            settings_snapshot, version = pending
+            self._transport.send_command({
+                "cmd": "update_camera_settings",
+                "settings": settings_snapshot,
+            })
+            self._mark_settings_applied(settings_version=version)
+
+        # Global settings (identity check — O(1))
+        current_global = get_settings_sync()
+        if current_global is not self._last_sent_global_settings:
+            self._transport.send_command({
+                "cmd": "update_global_settings",
+                "settings": dict(deepcopy(current_global)),
+            })
+            self._last_sent_global_settings = current_global
+
+    # ------------------------------------------------------------------
+    # Frame reading
+    # ------------------------------------------------------------------
+    def _read_frames_from_transport(self) -> None:
+        if self._transport is None:
+            return
+        t = self._transport
+
+        # Raw
+        try:
+            _, _, _, _, _, seq_raw, _ = t.slot_raw.read_header()
+            if seq_raw != self._last_seq_raw:
+                img, ts, valid, seq = t.slot_raw.read_frame()
+                if img is not None and valid:
+                    with self._lock_frame:
+                        self._frame = Frame(valid=True, image=img, time=ts)
+                    self._last_seq_raw = seq
+        except Exception:
+            pass
+
+        # Masked
+        try:
+            _, _, _, _, _, seq_m, _ = t.slot_masked.read_header()
+            if seq_m != self._last_seq_masked:
+                img, ts, valid, seq = t.slot_masked.read_frame()
+                if img is not None and valid:
+                    with self._lock_frame_masked:
+                        self._frame_masked = Frame(valid=True, image=img, time=ts)
+                    self._last_seq_masked = seq
+        except Exception:
+            pass
+
+        # AI
+        try:
+            _, _, _, _, _, seq_a, _ = t.slot_ai.read_header()
+            if seq_a != self._last_seq_ai:
+                img, ts, valid, seq = t.slot_ai.read_frame()
+                if img is not None and valid:
+                    with self._lock_frame_masked_ai:
+                        self._frame_masked_ai = Frame(valid=True, image=img, time=ts)
+                    self._last_seq_ai = seq
+        except Exception:
+            pass
+
+    # ------------------------------------------------------------------
+    # Pose / AI engagement
+    # ------------------------------------------------------------------
+    def _process_pose(self) -> None:
+        if self._transport is None:
+            return
+        if self._camera_code != "scope_camera":
+            self._drain_pose_pipe()
+            return
+
+        mc = self._master_controller
+        if mc is None:
+            self._drain_pose_pipe()
+            return
+        ai_agent = getattr(mc, "ai_agent", None)
+        if ai_agent is None:
+            self._drain_pose_pipe()
+            return
+
+        latest_raw_pose = None
+        while self._transport.poll_pose():
+            try:
+                msg = self._transport.recv_pose()
+                if isinstance(msg, dict) and msg.get("type") == "pose":
+                    latest_raw_pose = msg.get("pose")
+            except Exception:
+                break
+
+        if latest_raw_pose is not None:
+            try:
+                from .cameraai import translate_raw_pose_to_pose_dict
+
+                settings = get_settings_sync()
+                ai_setup = settings.get("aiSetup", {}) if isinstance(settings, dict) else {}
+                pose = translate_raw_pose_to_pose_dict(
+                    raw_pose=latest_raw_pose, ai_setup=ai_setup,
+                )
+
+                with self._lock_frame_masked_ai:
+                    frame_ai = self._frame_masked_ai
+                if frame_ai.valid:
+                    frame_with_pose = Frame(
+                        valid=True, image=frame_ai.image, time=frame_ai.time,
+                        pose=pose,
+                    )
+                    engagement_result = ai_agent.engage(
+                        frame=frame_with_pose, settings=settings,
+                    )
+                    ai_agent.draw_engagement_result(
+                        frame=frame_with_pose,
+                        engagement_result=engagement_result,
+                    )
+                    with self._lock_frame_masked_ai:
+                        self._frame_masked_ai = frame_with_pose
+            except Exception as e:
+                print(f"Error processing pose for {self._camera_name}: {e}")
+
+    def _drain_pose_pipe(self) -> None:
+        if self._transport is None:
+            return
+        while self._transport.poll_pose():
+            try:
+                self._transport.recv_pose()
+            except Exception:
+                break
+
+    # ------------------------------------------------------------------
+    # Demand flags
+    # ------------------------------------------------------------------
+    def _update_demand_flags(self) -> None:
+        if self._transport is None:
+            return
+        now = time.time()
+        headless = self._is_headless_ai_processing_required()
+
         with self._lock_frame:
-            self._frame = Frame(valid=True, image=image, time=time.time())
-        # mask the image
+            elapsed_raw = now - self._last_access_time_raw_frame
         with self._lock_frame_masked:
             elapsed_masked = now - self._last_access_time_masked_frame
-            #elapsed_masked_ai = now - self._last_access_time_masked_ai_frame
-            # if the masked frame has timed out, return
-            if elapsed_masked > self.TIMEOUT_SECONDS and not headless_ai_processing_required:
-                return
-            image_masked = self._mask_image(image=image, settings=camera_settings)
-            self._frame_masked = Frame(valid=True, image=image_masked, time=time.time())
-        # apply the AI model to the image
         with self._lock_frame_masked_ai:
-            elapsed_masked_ai = now - self._last_access_time_masked_ai_frame
-            # if the AI mask has timed out, return
-            if elapsed_masked_ai > self.TIMEOUT_SECONDS and not headless_ai_processing_required:
-                return
-            # get the settings
-            settings = get_settings_sync()
-            # apply the AI model to the image
-            frame_masked_ai = self._mask_ai_image(image=image_masked, settings=settings)
-            self._frame_masked_ai = Frame(valid=True, image=frame_masked_ai.image, time=time.time(), pose=frame_masked_ai.pose)
-            # check if the AI agent can engage
-            # this is only for the scope camera
-            if camera_code is not None and camera_code == "scope_camera":
-                ai_agent: AIAgent = self._master_controller.ai_agent
-                engagement_result = ai_agent.engage(frame=self._frame_masked_ai, settings=settings)
-                ai_agent.draw_engagement_result(frame=self._frame_masked_ai, engagement_result=engagement_result)
+            elapsed_ai = now - self._last_access_time_masked_ai_frame
 
-    def _should_capture_next_frame(self) -> bool:
-        with self._lock:
-            if not self._active or self._camera is None:
-                return False
+        demand_raw = elapsed_raw <= self.TIMEOUT_SECONDS or headless
+        demand_ai = elapsed_ai <= self.TIMEOUT_SECONDS or headless
+        demand_masked = elapsed_masked <= self.TIMEOUT_SECONDS or demand_ai
+
+        self._transport.send_command({
+            "cmd": "update_demand",
+            "raw": demand_raw,
+            "masked": demand_masked,
+            "ai": demand_ai,
+        })
+
+    def _should_stay_alive(self) -> bool:
         if self._is_headless_ai_processing_required():
             return True
         with self._lock_frame:
             elapsed = time.time() - self._last_access_time_raw_frame
         return elapsed <= self.TIMEOUT_SECONDS
 
-    def run(self):
-        """Thread main loop: captures frames until timeout."""
-        if not self._open():
-            return
-        try:
-            # set the last access time
-            with self._lock_frame:
-                self._last_access_time_raw_frame = time.time()
-            # main loop
-            while self._active:
-                # if settings were modified, set the properties
-                pending_settings = self._get_pending_settings_update()
-                if pending_settings is not None:
-                    settings_snapshot, settings_version = pending_settings
-                    self._set_camera_properties(settings_snapshot)
-                    self._mark_settings_applied(settings_version=settings_version)
-                if not self._should_capture_next_frame():
-                    break
-                # Device access stays serialized inside _get_frame, but slow
-                # post-processing runs outside the main lifecycle lock.
-                self._get_frame()
-                time.sleep(EPSILON_DELAY)  # Small delay to prevent CPU overload
-        except Exception as e:
-            print(f"Error in camera thread: {e}")
-        finally:
-            # close the camera
-            self._close()
-
-    def stop(self):
-        """Stop the capture thread."""
+    # ------------------------------------------------------------------
+    # Stop
+    # ------------------------------------------------------------------
+    def stop(self) -> None:
         self._invalidate_stream_tokens()
-        with self._lock:
-            self._active = False
+        self._active = False
         if threading.current_thread() is self:
             return
         if not self.is_alive():
+            self._stop_worker()
             return
-
-        self.join(timeout=self.STOP_TIMEOUT_SECONDS)
+        self.join(timeout=self.STOP_TIMEOUT_SECONDS + _WORKER_STOP_TIMEOUT)
         if self.is_alive():
-            message = (
-                f"Camera worker still alive after {self.STOP_TIMEOUT_SECONDS:.1f}s stop timeout "
+            msg = (
+                f"Camera proxy still alive after stop timeout "
                 f"(index={self._index}, camera_index={self._camera_index}, "
                 f"camera_code={self._camera_code}, camera_name={self._camera_name})"
             )
-            print(message)
-            raise RuntimeError(message)
-
-    def reset_settings(self):
-        self.settings = deepcopy(self._default_settings)
+            print(msg)

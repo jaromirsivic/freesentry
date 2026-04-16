@@ -1,10 +1,8 @@
-from cv2 import calibrateCamera
 from .camera import Camera
-from .cameracv2 import CameraCV2
-from .cameradummy import CameraDummy
 from .settingscontroller import get_settings_sync
 import threading
 import time
+
 
 class CamerasController:
     _singleton = None
@@ -15,7 +13,6 @@ class CamerasController:
         return cls._singleton
 
     def __init__(self, *, master_controller: "MasterController"):  # pyright: ignore[reportUndefinedVariable]
-        # List of cameras
         self._master_controller = master_controller
         self._cameras: list[Camera] = []
         self._lifecycle_lock = threading.RLock()
@@ -62,9 +59,8 @@ class CamerasController:
             self._stop_cameras_locked()
             time.sleep(1.0)
             settings = get_settings_sync()
-            # clear the list of cameras
             self._cameras = []
-            # Initialize all cameras from settings
+
             for i in range(max_index + 6):
                 print(f"Creating camera with index \"{i}\"")
                 found_camera_settings = None
@@ -75,57 +71,42 @@ class CamerasController:
                             found_camera_settings = camera_settings
                             found_camera_code = camera_code
                             break
-                # if reset_to_default is True, the camera settings are reset to default settings
                 if reset_to_default:
                     found_camera_settings = None
-                # create cameras
+
+                # Determine camera_type and camera_index based on index range
+                if i < 4:
+                    camera_index = i
+                    camera_type = "dummy"
+                    camera_name = f'{i}: dummy_camera_{camera_index}'
+                elif i < 6:
+                    camera_index = i - 4
+                    camera_type = "rpi"
+                    camera_name = f'{i}: rpi_camera_{camera_index}'
+                else:
+                    camera_index = i - 6
+                    camera_type = "cv2"
+                    camera_name = f'{i}: cv2_camera_{camera_index}'
+
                 try:
-                    if i < 4:
-                        camera_index = i
-                        camera_name = f'{i}: dummy_camera_{camera_index}'
-                        self._cameras.append(CameraDummy(index=i, 
-                                                         camera_index=camera_index,
-                                                         camera_code=found_camera_code,
-                                                         camera_name=camera_name,
-                                                         settings=found_camera_settings,
-                                                         master_controller=self._master_controller))
-                    elif i < 6:
-                        try:
-                            from .camerarpi import CameraRPI
-                        except Exception as e:
-                            print(f"CameraRPI is not available. Creating dummy camera instead. Error: {e}")
-                            camera_index = -1
-                            camera_name = f'{i}: rpidummy_camera_{camera_index}'
-                            self._cameras.append(CameraDummy(index=i, 
-                                                             camera_index=camera_index,
-                                                             camera_code=found_camera_code,
-                                                             camera_name=camera_name,
-                                                             settings=found_camera_settings,
-                                                             master_controller=self._master_controller))
-                            continue
-                        camera_index = i-4
-                        camera_name = f'{i}: rpi_camera_{camera_index}'
-                        self._cameras.append(CameraRPI(index=i, 
-                                                       camera_index=camera_index,
-                                                       camera_code=found_camera_code,
-                                                       camera_name=camera_name,
-                                                       settings=found_camera_settings,
-                                                       master_controller=self._master_controller))
-                    else:
-                        camera_index = i-6
-                        camera_name = f'{i}: cv2_camera_{camera_index}'
-                        self._cameras.append(CameraCV2(index=i, 
-                                                       camera_index=camera_index,
-                                                       camera_code=found_camera_code,
-                                                       camera_name=camera_name,
-                                                       settings=found_camera_settings,
-                                                       master_controller=self._master_controller))
+                    self._cameras.append(Camera(
+                        index=i,
+                        camera_index=camera_index,
+                        camera_code=found_camera_code,
+                        camera_name=camera_name,
+                        camera_type=camera_type,
+                        settings=found_camera_settings,
+                        master_controller=self._master_controller,
+                    ))
                 except Exception as e:
-                    print(f"Error creating camera with index=\"{i}\", camera_index=\"{camera_index}\", camera_name=\"{camera_name}\". "
-                          f"error: {e}. Creating dummy camera instead.")
-                    self._cameras.append(CameraDummy(index=i, 
-                                                     camera_index=-1,
-                                                     camera_code=found_camera_code,
-                                                     camera_name=camera_name,
-                                                     settings=found_camera_settings,
-                                                     master_controller=self._master_controller))
+                    print(f"Error creating camera with index=\"{i}\", camera_index=\"{camera_index}\", "
+                          f"camera_name=\"{camera_name}\". error: {e}. Creating dummy camera instead.")
+                    self._cameras.append(Camera(
+                        index=i,
+                        camera_index=-1,
+                        camera_code=found_camera_code,
+                        camera_name=camera_name,
+                        camera_type="dummy",
+                        settings=found_camera_settings,
+                        master_controller=self._master_controller,
+                    ))

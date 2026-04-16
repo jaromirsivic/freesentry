@@ -135,6 +135,119 @@ def _import_aisetup_module(
         return importlib.import_module("server.restapiaisetup")
 
 
+def _make_fake_cameradevice_module():
+    """Create a fake cameradevice module for testing."""
+    cameradevice = types.ModuleType("server.cameradevice")
+
+    class FakeCameraDevice:
+        def __init__(self, **kwargs):
+            self._settings = kwargs.get("settings", {})
+        def open(self):
+            return True
+        def close(self):
+            pass
+        def get_image(self):
+            return True, np.zeros((4, 4, 3), dtype=np.uint8)
+        def get_properties(self):
+            return {
+                "flip_horizontal": False, "flip_vertical": False,
+                "rotate": 0, "crop_top": 0.0, "crop_left": 0.0,
+                "crop_bottom": 0.0, "crop_right": 0.0,
+                "stretch_enabled": False, "stretch_width": 0,
+                "stretch_height": 0, "mask_polygons": [],
+                "width": 640, "height": 480, "fps": 30,
+                "bitrate": 4000, "buffer_size": 1,
+                "brightness": 128, "contrast": 32, "hue": 0,
+                "saturation": 64, "sharpness": 0, "gamma": 100,
+                "white_balance_temperature": 4500, "backlight": 0,
+                "gain": 0, "focus": 0, "exposure": -6,
+                "auto_white_balance_temperature": True,
+                "auto_focus": True, "auto_exposure": True,
+                "static_reticle_x": 0.5, "static_reticle_y": 0.5,
+                "static_reticle_color": "#88ff00cc",
+                "static_reticle_size": 1.0,
+            }
+        def set_properties(self, settings):
+            self._settings = settings
+        def get_supported_resolutions(self):
+            return [{"width": 640, "height": 480, "label": "640 x 480"}]
+        def get_capabilities(self):
+            return {"exposure": True}
+
+    cameradevice.CameraDevice = FakeCameraDevice
+    cameradevice.CameraCV2Device = FakeCameraDevice
+    cameradevice.CameraRPIDevice = FakeCameraDevice
+    cameradevice.CameraDummyDevice = FakeCameraDevice
+    cameradevice.create_camera_device = lambda **kwargs: FakeCameraDevice(**kwargs)
+    return cameradevice
+
+
+def _make_fake_transport_module():
+    """Create a fake cameraframetransport module for testing."""
+    transport_module = types.ModuleType("server.cameraframetransport")
+
+    class FakeFrameTransport:
+        def __init__(self, **kwargs):
+            pass
+        def get_worker_init_args(self):
+            return {
+                "shm_names": ("fake_r", "fake_m", "fake_a"),
+                "shm_max_data_size": 1920 * 1080 * 3,
+                "slot_locks": (mock.Mock(), mock.Mock(), mock.Mock()),
+                "pose_pipe_conn": mock.Mock(),
+                "command_pipe_conn": mock.Mock(),
+            }
+        def send_command(self, msg):
+            pass
+        def poll_pose(self, timeout=0):
+            return False
+        def recv_pose(self):
+            return None
+        def cleanup(self):
+            pass
+        @property
+        def slot_raw(self):
+            return FakeSlot()
+        @property
+        def slot_masked(self):
+            return FakeSlot()
+        @property
+        def slot_ai(self):
+            return FakeSlot()
+
+    class FakeSlot:
+        def read_header(self):
+            return (0, 0, 0, 0.0, False, 0, 0)
+        def read_frame(self):
+            return (None, 0.0, False, 0)
+
+    transport_module.FrameTransport = FakeFrameTransport
+    transport_module.SharedFrameSlot = FakeSlot
+    return transport_module
+
+
+def _make_fake_worker_module():
+    """Create a fake cameraworker module for testing."""
+    worker_module = types.ModuleType("server.cameraworker")
+
+    class FakeWorkerProcess:
+        def __init__(self, **kwargs):
+            self._alive = False
+        def start(self):
+            self._alive = True
+        def is_alive(self):
+            return self._alive
+        def join(self, timeout=None):
+            self._alive = False
+        def terminate(self):
+            self._alive = False
+        def kill(self):
+            self._alive = False
+
+    worker_module.CameraWorkerProcess = FakeWorkerProcess
+    return worker_module
+
+
 def _import_camera_stack():
     _reset_modules(
         "server.restapicameras",
@@ -146,6 +259,9 @@ def _import_camera_stack():
         "server.settingscontroller",
         "server.aiagent",
         "server.context",
+        "server.cameradevice",
+        "server.cameraframetransport",
+        "server.cameraworker",
         "cv2",
     )
 
@@ -245,6 +361,10 @@ def _import_camera_stack():
     context = types.ModuleType("server.context")
     context.get_master_controller = lambda: None
 
+    cameradevice = _make_fake_cameradevice_module()
+    transport = _make_fake_transport_module()
+    worker = _make_fake_worker_module()
+
     stub_modules = {
         "cv2": fake_cv2,
         "server.common": common,
@@ -254,6 +374,9 @@ def _import_camera_stack():
         "server.settingscontroller": settingscontroller,
         "server.aiagent": aiagent,
         "server.context": context,
+        "server.cameradevice": cameradevice,
+        "server.cameraframetransport": transport,
+        "server.cameraworker": worker,
     }
 
     with mock.patch.dict(sys.modules, stub_modules):
@@ -267,20 +390,24 @@ def _import_camerascontroller_module():
     _reset_modules(
         "server.camerascontroller",
         "server.camera",
-        "server.cameracv2",
-        "server.cameradummy",
-        "server.camerarpi",
         "server.settingscontroller",
+        "server.cameradevice",
+        "server.cameraframetransport",
+        "server.cameraworker",
         "cv2",
     )
 
     fake_cv2 = types.ModuleType("cv2")
-    fake_cv2.calibrateCamera = lambda *args, **kwargs: None
 
     camera_module = types.ModuleType("server.camera")
 
     class Camera:
-        pass
+        def __init__(self, **kwargs):
+            self.camera_name = kwargs.get("camera_name", "test")
+            self.kwargs = kwargs
+
+        def stop(self):
+            pass
 
     camera_module.Camera = Camera
 
@@ -288,19 +415,11 @@ def _import_camerascontroller_module():
     settingscontroller = types.ModuleType("server.settingscontroller")
     settingscontroller.get_settings_sync = lambda: deepcopy(settings_payload)
 
-    cameracv2 = types.ModuleType("server.cameracv2")
-    cameracv2.CameraCV2 = object
-
-    cameradummy = types.ModuleType("server.cameradummy")
-    cameradummy.CameraDummy = object
-
     with mock.patch.dict(
         sys.modules,
         {
             "cv2": fake_cv2,
             "server.camera": camera_module,
-            "server.cameracv2": cameracv2,
-            "server.cameradummy": cameradummy,
             "server.settingscontroller": settingscontroller,
         },
     ):
@@ -310,54 +429,19 @@ def _import_camerascontroller_module():
     return module, settings_payload
 
 
-def _make_fake_camera_class(camera_module):
-    class FakeCamera(camera_module.Camera):
-        def __init__(self, *args, **kwargs):
-            self.applied_settings = []
-            super().__init__(*args, **kwargs)
-            self._active = True
-            self._camera = object()
-
-        def _open(self) -> bool:
-            self._active = True
-            self._camera = object()
-            return True
-
-        def _close(self):
-            self._active = False
-            self._camera = None
-
-        def _get_supported_resolutions(self):
-            return [{"width": 640, "height": 480}]
-
-        def _get_capabilities(self) -> dict:
-            return {"exposure": True}
-
-        def _get_camera_properties(self) -> dict:
-            return {
-                "index": self._index,
-                "name": self._camera_name,
-                "brightness": 0.0,
-                "flip_horizontal": False,
-                "flip_vertical": False,
-                "rotate": 0,
-                "crop_top": 0.0,
-                "crop_left": 0.0,
-                "crop_bottom": 0.0,
-                "crop_right": 0.0,
-                "stretch_enabled": False,
-                "stretch_width": 0,
-                "stretch_height": 0,
-                "mask_polygons": [],
-            }
-
-        def _set_camera_properties(self, value: dict | None):
-            self.applied_settings.append(deepcopy(value))
-
-        def _get_image_ndarray(self):
-            return True, np.zeros((4, 4, 3), dtype=np.uint8)
-
-    return FakeCamera
+def _make_camera(camera_module, **kwargs):
+    """Create a Camera instance using the new constructor."""
+    defaults = {
+        "index": 0,
+        "camera_index": 0,
+        "camera_code": None,
+        "camera_name": "test_camera",
+        "camera_type": "dummy",
+        "settings": {},
+        "master_controller": SimpleNamespace(ai_agent=mock.Mock()),
+    }
+    defaults.update(kwargs)
+    return camera_module.Camera(**defaults)
 
 
 class YOLOModelsTests(unittest.TestCase):
@@ -723,7 +807,6 @@ class AISetupDeviceTests(unittest.TestCase):
 class CameraConcurrencyTests(unittest.TestCase):
     def setUp(self) -> None:
         self.camera_module, self.restapicameras = _import_camera_stack()
-        self.FakeCamera = _make_fake_camera_class(self.camera_module)
 
     def _make_master_controller(self, cameras):
         class FakeCamerasController:
@@ -746,103 +829,11 @@ class CameraConcurrencyTests(unittest.TestCase):
         master_controller.cameras_controller = FakeCamerasController(cameras)
         return master_controller
 
-    def test_crop_and_resize_skips_resize_when_dimensions_are_unchanged(self):
-        camera = self.FakeCamera(
-            index=0,
-            camera_index=0,
-            camera_code="scope_camera",
-            settings={"crop_top": 0.0, "crop_left": 0.0, "crop_bottom": 0.0, "crop_right": 0.0},
-            master_controller=SimpleNamespace(ai_agent=mock.Mock()),
-        )
-        image = np.zeros((8, 8, 3), dtype=np.uint8)
-
-        with mock.patch.object(self.camera_module.cv2, "resize", wraps=self.camera_module.cv2.resize) as resize_mock:
-            result = camera._crop_and_resize(image=image, settings=camera.settings)
-
-        resize_mock.assert_not_called()
-        self.assertIs(result, image)
-
-    def test_mask_image_reuses_cached_mask_for_same_polygons(self):
-        camera = self.FakeCamera(
-            index=0,
-            camera_index=0,
-            camera_code="scope_camera",
-            settings={"mask_polygons": [[{"x": 0.1, "y": 0.1}, {"x": 0.9, "y": 0.1}, {"x": 0.5, "y": 0.9}]]},
-            master_controller=SimpleNamespace(ai_agent=mock.Mock()),
-        )
-        image = np.zeros((8, 8, 3), dtype=np.uint8)
-
-        with mock.patch.object(self.camera_module.cv2, "fillPoly", wraps=self.camera_module.cv2.fillPoly) as fill_poly_mock:
-            camera._mask_image(image=image, settings=camera.settings)
-            camera._mask_image(image=image, settings=camera.settings)
-
-        fill_poly_mock.assert_called_once()
-
-    def test_get_ai_inference_options_use_fixed_imgsz_for_arm_cpu(self):
-        camera = self.FakeCamera(
-            index=0,
-            camera_index=0,
-            camera_code="scope_camera",
-            settings={},
-            master_controller=SimpleNamespace(ai_agent=mock.Mock()),
-        )
-
-        options = camera._get_ai_inference_options(
-            ai_setup={"inferenceImageSize": 320},
-            device="arm_cpu (optimized for ARM)",
-        )
-
-        self.assertEqual(options["verbose"], False)
-        self.assertEqual(options["imgsz"], 320)
-
-    def test_get_frame_does_not_wait_for_ai_worker(self):
-        camera = self.FakeCamera(
-            index=0,
-            camera_index=0,
-            camera_code="scope_camera",
-            settings={},
-            master_controller=SimpleNamespace(ai_agent=mock.Mock()),
-        )
-        camera._last_access_time_masked_frame = time.time()
-        camera._last_access_time_masked_ai_frame = time.time()
-
-        inference_started = threading.Event()
-        release_inference = threading.Event()
-
-        def blocking_ai(*, image, settings):
-            inference_started.set()
-            release_inference.wait(timeout=1.0)
-            return self.camera_module.Frame(valid=True, image=image, time=time.time(), pose=None), {
-                "predict_ms": 0.0,
-                "keypoint_extract_ms": 0.0,
-                "raw_pose_ms": 0.0,
-                "translate_ms": 0.0,
-                "draw_ms": 0.0,
-                "total_ms": 0.0,
-            }
-
-        camera._start_ai_worker()
-        try:
-            with mock.patch.object(camera, "_mask_ai_image_with_metrics", side_effect=blocking_ai):
-                camera._get_frame()
-                self.assertTrue(inference_started.wait(timeout=0.2))
-
-                started_at = time.monotonic()
-                camera._get_frame()
-                elapsed = time.monotonic() - started_at
-
-            self.assertLess(elapsed, 0.05)
-        finally:
-            release_inference.set()
-            camera._stop_ai_worker()
-
     def test_camera_settings_are_copy_on_write_and_keep_newer_updates_pending(self):
-        camera = self.FakeCamera(
-            index=0,
-            camera_index=0,
+        camera = _make_camera(
+            self.camera_module,
             camera_code="scope_camera",
             settings={"brightness": 0.2},
-            master_controller=SimpleNamespace(ai_agent=mock.Mock()),
         )
 
         external_settings = camera.settings
@@ -863,12 +854,10 @@ class CameraConcurrencyTests(unittest.TestCase):
         self.assertEqual(second_settings["brightness"], 0.7)
 
     def test_get_input_devices_does_not_leak_internal_settings(self):
-        camera = self.FakeCamera(
-            index=0,
-            camera_index=0,
+        camera = _make_camera(
+            self.camera_module,
             camera_code="scope_camera",
             settings={"brightness": 0.2},
-            master_controller=SimpleNamespace(ai_agent=mock.Mock()),
         )
         master_controller = self._make_master_controller([camera])
 
@@ -881,12 +870,12 @@ class CameraConcurrencyTests(unittest.TestCase):
         self.assertNotIn("capabilities", camera.settings)
 
     def test_get_input_devices_restores_identity_fields_for_partial_settings(self):
-        camera = self.FakeCamera(
+        camera = _make_camera(
+            self.camera_module,
             index=5,
             camera_index=1,
             camera_code="spotter_camera1",
             settings={"brightness": 0.2},
-            master_controller=SimpleNamespace(ai_agent=mock.Mock()),
         )
         camera.settings = {
             "brightness": 0.2,
@@ -908,19 +897,19 @@ class CameraConcurrencyTests(unittest.TestCase):
         self.assertIn("capabilities", device)
 
     def test_update_camera_reassigns_codes_and_applies_settings_copy(self):
-        old_camera = self.FakeCamera(
+        old_camera = _make_camera(
+            self.camera_module,
             index=0,
             camera_index=0,
             camera_code="scope_camera",
             settings={"index": 0, "name": "Old camera"},
-            master_controller=SimpleNamespace(ai_agent=mock.Mock()),
         )
-        new_camera = self.FakeCamera(
+        new_camera = _make_camera(
+            self.camera_module,
             index=1,
             camera_index=1,
             camera_code=None,
             settings={"index": 1, "name": "New camera"},
-            master_controller=SimpleNamespace(ai_agent=mock.Mock()),
         )
         master_controller = self._make_master_controller([old_camera, new_camera])
         persisted_settings = {}
@@ -968,12 +957,10 @@ class CameraConcurrencyTests(unittest.TestCase):
         )
 
     def test_update_camera_rejects_negative_device_index_with_404(self):
-        camera = self.FakeCamera(
-            index=0,
-            camera_index=0,
+        camera = _make_camera(
+            self.camera_module,
             camera_code="scope_camera",
             settings={"index": 0, "name": "Scope"},
-            master_controller=SimpleNamespace(ai_agent=mock.Mock()),
         )
         master_controller = self._make_master_controller([camera])
         request = self.restapicameras.CameraUpdateRequest(index=-1, name="Invalid")
@@ -996,12 +983,10 @@ class CameraConcurrencyTests(unittest.TestCase):
         update_settings_mock.assert_not_awaited()
 
     def test_reset_camera_rejects_invalid_configured_indexes_without_side_effects(self):
-        camera = self.FakeCamera(
-            index=0,
-            camera_index=0,
+        camera = _make_camera(
+            self.camera_module,
             camera_code="scope_camera",
             settings={"index": 0, "name": "Scope"},
-            master_controller=SimpleNamespace(ai_agent=mock.Mock()),
         )
         camera.reset_settings = mock.Mock(wraps=camera.reset_settings)
         master_controller = self._make_master_controller([camera])
@@ -1039,19 +1024,17 @@ class CameraConcurrencyTests(unittest.TestCase):
                 update_settings_mock.assert_not_awaited()
 
     def test_stop_camera_rejects_disabled_camera_code_without_stopping_live_camera(self):
-        scope_camera = self.FakeCamera(
-            index=0,
-            camera_index=0,
+        scope_camera = _make_camera(
+            self.camera_module,
             camera_code="scope_camera",
             settings={"index": 0, "name": "Scope"},
-            master_controller=SimpleNamespace(ai_agent=mock.Mock()),
         )
-        backup_camera = self.FakeCamera(
+        backup_camera = _make_camera(
+            self.camera_module,
             index=1,
             camera_index=1,
             camera_code="spotter_camera1",
             settings={"index": 1, "name": "Backup"},
-            master_controller=SimpleNamespace(ai_agent=mock.Mock()),
         )
         scope_camera.stop = mock.Mock()
         backup_camera.stop = mock.Mock()
@@ -1077,12 +1060,10 @@ class CameraConcurrencyTests(unittest.TestCase):
         backup_camera.stop.assert_not_called()
 
     def test_stream_camera_rejects_unbound_camera_code_before_generating_frames(self):
-        camera = self.FakeCamera(
-            index=0,
-            camera_index=0,
+        camera = _make_camera(
+            self.camera_module,
             camera_code="scope_camera",
             settings={"index": 0, "name": "Scope"},
-            master_controller=SimpleNamespace(ai_agent=mock.Mock()),
         )
         master_controller = self._make_master_controller([camera])
 
@@ -1110,12 +1091,10 @@ class CameraConcurrencyTests(unittest.TestCase):
         generate_camera_frames_mock.assert_not_called()
 
     def test_stop_camera_offloads_blocking_stop_from_event_loop(self):
-        camera = self.FakeCamera(
-            index=0,
-            camera_index=0,
+        camera = _make_camera(
+            self.camera_module,
             camera_code="scope_camera",
             settings={"index": 0, "name": "Scope"},
-            master_controller=SimpleNamespace(ai_agent=mock.Mock()),
         )
         stop_release = threading.Event()
         camera.stop = mock.Mock(side_effect=lambda: stop_release.wait(timeout=0.5))
@@ -1155,12 +1134,12 @@ class CameraConcurrencyTests(unittest.TestCase):
 
     def test_reset_all_cameras_offloads_blocking_reset_from_event_loop(self):
         cameras = [
-            self.FakeCamera(
+            _make_camera(
+                self.camera_module,
                 index=i,
                 camera_index=i,
                 camera_code="scope_camera" if i == 0 else None,
                 settings={"index": i, "name": f"Camera {i}"},
-                master_controller=SimpleNamespace(ai_agent=mock.Mock()),
             )
             for i in range(4)
         ]
@@ -1209,26 +1188,6 @@ class CameraConcurrencyTests(unittest.TestCase):
         self.assertEqual(reset_camera_mock.await_count, len(self.restapicameras.CAMERA_NAMES))
         master_controller.cameras_controller.reset.assert_called_once_with(reset_to_default=True)
 
-    def test_camera_stop_raises_when_worker_survives_timeout(self):
-        camera = self.FakeCamera(
-            index=0,
-            camera_index=0,
-            camera_code="scope_camera",
-            settings={"index": 0, "name": "Scope"},
-            master_controller=SimpleNamespace(ai_agent=mock.Mock()),
-        )
-        camera.is_alive = mock.Mock(side_effect=[True, True])
-        camera.join = mock.Mock()
-
-        with mock.patch("builtins.print") as print_mock:
-            with self.assertRaises(RuntimeError) as exc_info:
-                camera.stop()
-
-        camera.join.assert_called_once_with(timeout=camera.STOP_TIMEOUT_SECONDS)
-        self.assertIn("still alive after", str(exc_info.exception))
-        printed_messages = " ".join(str(call.args[0]) for call in print_mock.call_args_list)
-        self.assertIn("still alive after", printed_messages)
-
 
 class CamerasControllerLifecycleTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -1271,11 +1230,12 @@ class CamerasControllerLifecycleTests(unittest.TestCase):
 
         old_cameras = [TrackedCamera("scope"), TrackedCamera("spotter")]
         controller = self._make_controller(cameras=old_cameras)
+
         created_cameras = []
 
         class CreatedCamera:
             def __init__(self, **kwargs):
-                self.camera_name = kwargs["camera_name"]
+                self.camera_name = kwargs.get("camera_name", "test")
                 self.kwargs = kwargs
                 self.stop_calls = 0
                 created_cameras.append(self)
@@ -1283,8 +1243,7 @@ class CamerasControllerLifecycleTests(unittest.TestCase):
             def stop(self):
                 self.stop_calls += 1
 
-        self.camerascontroller_module.CameraDummy = CreatedCamera
-        self.camerascontroller_module.CameraCV2 = CreatedCamera
+        self.camerascontroller_module.Camera = CreatedCamera
         stop_helper = mock.Mock(wraps=controller._stop_cameras_locked)
         controller._stop_cameras_locked = stop_helper
 

@@ -24,6 +24,7 @@ Untitled *
 *.FCBak
 *.FCStd
 submoamoa/
+/server/temp
 
 # Virtual environments
 .venv

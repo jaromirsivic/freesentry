@@ -739,7 +739,7 @@
             "exitStrategyDuration": 10
         },
         "modelName": "Simple and Fast",
-        "device": "cuda:0 (Nvidia GPU Only)",
+        "device": "arm_cpu (optimized for ARM)",
         "minFpsToAllowEngagement": 1,
         "organMustBeVisibleSeconds": 0.5,
         "detectionRadiusFromReticle": 70,
@@ -809,11 +809,11 @@
     "manualControl": {
         "camera": {
             "selectedCamera": "scope_camera",
-            "streamQuality": 65,
+            "streamQuality": 50,
             "scopeCameraMode": 3,
             "spotterCamera1Mode": 3,
             "spotterCamera2Mode": 0,
-            "spotterCamera3Mode": 1
+            "spotterCamera3Mode": 0
         },
         "motors": [
             {
