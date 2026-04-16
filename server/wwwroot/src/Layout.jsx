@@ -38,7 +38,7 @@ const MenuLink = ({ to, icon, label, onNavigate }) => (
     to={to}
     className="btn"
     style={{ justifyContent: 'flex-start', width: '100%', gap: '0.75rem' }}
-    onClick={onNavigate}
+    onClick={() => onNavigate(to)}
   >
     {icon && <img src={icon} alt="" width="24" height="24" />}
     {label}
@@ -142,7 +142,7 @@ const Layout = () => {
   // Pages that should use full-bleed layout (no padding, no scrollbars)
   const isAIAgentFullBleed = location.pathname === '/ai-agent' && (!activationLoaded || aiagentFullyActivated);
   const isFullBleedPage = FULL_BLEED_PATHS.has(location.pathname) || isAIAgentFullBleed;
-  const handleMenuNavigate = () => handleMenuToggle(false, true);
+  const handleMenuNavigate = (to) => handleMenuToggle(false, to !== location.pathname);
 
   return (
     <div className="app-container">

@@ -97,7 +97,7 @@ const ManualControl = () => {
      * Build stream URL from camera settings.
      */
     const buildStreamUrl = useCallback((settings) => {
-        return buildCameraStreamUrl(settings);
+        return `${buildCameraStreamUrl(settings)}&_t=${Date.now()}`;
     }, []);
 
     const queueDismissalStop = useCallback((cameraCode) => {
