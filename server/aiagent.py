@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from enum import Enum
 import cv2
 import threading
+from .cameraai import draw_pose
 
 # class EngagementHistory:
 #     def __init__(self):
@@ -642,10 +643,24 @@ class AIAgent(threading.Thread):
         """
         return Vector2D(x=cv2_coord.x * resolution[1], y=cv2_coord.y * resolution[0])
 
-    def draw_engagement_result(self, *, frame: Frame, engagement_result: EngagementResult):
+    def draw_engagement_result(self, *, frame: Frame, engagement_result: EngagementResult) -> None:
         """
-        Draw the engagement result on the frame.
+        Draw the pose overlay and engagement result on the frame.
+
+        This is the single place where AI-related overlays are drawn on the
+        AI slot frame. It first renders the pose organs (draw_pose) and then
+        draws the engagement status rectangle and text on top.
         """
+        settings = get_settings_sync()
+        ai_setup = settings.get("aiSetup", {})
+        # get the parameter drawAiStats from the ai setup
+        draw_ai_stats = ai_setup.get("drawAiStats", True)
+        if not draw_ai_stats:
+            return
+        # draw the pose overlay
+        if frame.pose:
+            draw_pose(image=frame.image, pose=frame.pose, ai_setup=ai_setup, copy_image=False)
+
         text_color = (0, 0, 0)
         color = (240, 255, 240)
         text_background = (255, 255, 255)

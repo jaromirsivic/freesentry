@@ -305,15 +305,18 @@ def _run_ai_inference(
     image: np.ndarray,
     global_settings: dict,
 ) -> tuple[np.ndarray, list[dict] | None]:
-    """Run YOLO inference and draw pose on a copy of the image.
+    """Run YOLO inference and return the (un-drawn) AI frame plus raw pose.
 
-    Returns ``(drawn_image, raw_pose_or_None)`` where *raw_pose* contains
-    only plain Python types (dicts, tuples, floats) so it can be safely
-    pickled through a multiprocessing Pipe.
+    Returns ``(ai_image, raw_pose_or_None)`` where *raw_pose* contains only
+    plain Python types (dicts, tuples, floats) so it can be safely pickled
+    through a multiprocessing Pipe. Pose overlay (draw_pose) is intentionally
+    not performed here — it is done in the main process inside
+    ``AIAgent.draw_engagement_result`` so that all overlay drawing lives in
+    one place.
     """
     from .yolomodels import YOLOModels
     from .ai_setup_constants import DEFAULT_DEVICE
-    from .cameraai import draw_pose, get_pose_dict, translate_raw_pose_to_pose_dict
+    from .cameraai import get_pose_dict
 
     ai_setup = global_settings.get("aiSetup", {})
     model_name = ai_setup.get("modelName", YOLOModels().default_model_name)
@@ -332,12 +335,10 @@ def _run_ai_inference(
             kpts_data = getattr(result.keypoints, "data", result.keypoints)
             keypoints = kpts_data.cpu().numpy() if hasattr(kpts_data, "cpu") else kpts_data
             raw_pose = get_pose_dict(keypoints=keypoints, ai_setup=ai_setup)
-            pose = translate_raw_pose_to_pose_dict(raw_pose=raw_pose, ai_setup=ai_setup)
-            draw_stats = ai_setup.get("drawAiStats", True)
-            drawn = draw_pose(image=image, pose=pose, ai_setup=ai_setup) if draw_stats else image.copy()
-            # Return raw_pose (plain dicts/tuples/floats) — NOT pose
-            # (which contains AICircle Pydantic objects that may fail to pickle).
-            return drawn, raw_pose
+            # Return raw_pose (plain dicts/tuples/floats) so it can be pickled
+            # through the pose pipe. The pose overlay is drawn in the main
+            # process by AIAgent.draw_engagement_result.
+            return image.copy(), raw_pose
     except Exception as e:
         print(f"[Worker] AI inference error: {e}")
 

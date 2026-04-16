@@ -743,7 +743,7 @@
         "minFpsToAllowEngagement": 1,
         "organMustBeVisibleSeconds": 0.5,
         "detectionRadiusFromReticle": 70,
-        "drawAiStats": false,
+        "drawAiStats": true,
         "organs": {
             "brain": {
                 "enabled": true,
