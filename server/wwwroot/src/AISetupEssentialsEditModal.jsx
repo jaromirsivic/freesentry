@@ -199,8 +199,8 @@ const AISetupEssentialsEditModal = ({ isOpen, onClose, onSave, initialSettings }
                     onChange={(val) => updateSetting('device', val)}
                     labelWidth="150px"
                 />
-                <NumericInput
-                    label="Minimum FPS to Allow Engagement"
+                <Slider
+                    label="Minimum Allowed FPS"
                     labelPosition="left"
                     value={tempSettings.minFpsToAllowEngagement}
                     onChange={(val) => updateSetting('minFpsToAllowEngagement', val)}
@@ -208,10 +208,11 @@ const AISetupEssentialsEditModal = ({ isOpen, onClose, onSave, initialSettings }
                     max={50}
                     step={1}
                     decimalPlaces={0}
+                    allowManualInput={true}
                     labelWidth="250px"
                 />
-                <NumericInput
-                    label="Organ must be detected for at least (sec.)"
+                <Slider
+                    label="Arming Duration (sec.)"
                     labelPosition="left"
                     value={tempSettings.organMustExistForSeconds}
                     onChange={(val) => updateSetting('organMustExistForSeconds', val)}
@@ -219,10 +220,11 @@ const AISetupEssentialsEditModal = ({ isOpen, onClose, onSave, initialSettings }
                     max={2}
                     step={0.05}
                     decimalPlaces={2}
+                    allowManualInput={true}
                     labelWidth="250px"
                 />
-                <NumericInput
-                    label="Detection Radius - From Reticle (px)"
+                <Slider
+                    label="Reticle Detection Radius (px)"
                     labelPosition="left"
                     value={tempSettings.detectionRadiusFromReticle}
                     onChange={(val) => updateSetting('detectionRadiusFromReticle', val)}
@@ -230,10 +232,12 @@ const AISetupEssentialsEditModal = ({ isOpen, onClose, onSave, initialSettings }
                     max={10000}
                     step={10}
                     decimalPlaces={0}
+                    allowManualInput={true}
                     labelWidth="250px"
                 />
                 <Switch
-                    label="Draw AI Stats to Live Cam Feed"
+                    label="Draw AI Stats to Video Feed"
+                    labelPosition="left"
                     value={tempSettings.drawAiStats}
                     onChange={(val) => updateSetting('drawAiStats', val)}
                     labelWidth="250px"
