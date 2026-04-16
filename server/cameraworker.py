@@ -333,7 +333,8 @@ def _run_ai_inference(
             keypoints = kpts_data.cpu().numpy() if hasattr(kpts_data, "cpu") else kpts_data
             raw_pose = get_pose_dict(keypoints=keypoints, ai_setup=ai_setup)
             pose = translate_raw_pose_to_pose_dict(raw_pose=raw_pose, ai_setup=ai_setup)
-            drawn = draw_pose(image=image, pose=pose, ai_setup=ai_setup)
+            draw_stats = ai_setup.get("drawAiStats", True)
+            drawn = draw_pose(image=image, pose=pose, ai_setup=ai_setup) if draw_stats else image.copy()
             # Return raw_pose (plain dicts/tuples/floats) — NOT pose
             # (which contains AICircle Pydantic objects that may fail to pickle).
             return drawn, raw_pose

@@ -510,8 +510,8 @@
             "crop_bottom": 0.0,
             "crop_right": 0.0,
             "stretch_enabled": false,
-            "stretch_width": 320,
-            "stretch_height": 240,
+            "stretch_width": 640,
+            "stretch_height": 480,
             "static_reticle_x": 0.5,
             "static_reticle_y": 0.5,
             "static_reticle_color": "#88ff00cc",
@@ -527,7 +527,7 @@
             "hue": 0.0,
             "saturation": 64.0,
             "sharpness": 3.0,
-            "gamma": 120.0,
+            "gamma": 130.0,
             "white_balance_temperature": -1.0,
             "backlight": 1.0,
             "gain": -1.0,
@@ -538,7 +538,7 @@
             "auto_exposure": true,
             "static_reticle_outline": "#000000cc",
             "camera_index": 0,
-            "camera_type": "unknown"
+            "camera_type": "cv2"
         },
         "spotter_camera1": {
             "index": 1,
@@ -708,11 +708,11 @@
         }
     },
     "aiSetup": {
-        "activationDateTime": "2026-02-14T09:18:16+00:00",
+        "activationDateTime": "2026-04-10T15:32:49+00:00",
         "exitStrategy": {
             "fixedDateTime": "2199-12-31T22:59:59+00:00",
-            "maxEngagements": 1000000,
-            "timeoutAfterFirstEngagement": 1000000,
+            "maxEngagements": 15,
+            "timeoutAfterFirstEngagement": 100000,
             "exitDuration": 1000,
             "motors": [
                 {
@@ -736,13 +736,14 @@
                     "speed": 0
                 }
             ],
-            "exitStrategyDuration": 1000
+            "exitStrategyDuration": 10
         },
         "modelName": "Simple and Fast",
-        "device": "cuda:0 (Nvidia GPU)",
+        "device": "arm_cpu (optimized for ARM)",
         "minFpsToAllowEngagement": 1,
         "organMustBeVisibleSeconds": 0.5,
         "detectionRadiusFromReticle": 70,
+        "drawAiStats": true,
         "organs": {
             "brain": {
                 "enabled": true,
@@ -809,11 +810,11 @@
     "manualControl": {
         "camera": {
             "selectedCamera": "scope_camera",
-            "streamQuality": 65,
+            "streamQuality": 50,
             "scopeCameraMode": 3,
             "spotterCamera1Mode": 3,
-            "spotterCamera2Mode": 2,
-            "spotterCamera3Mode": 1
+            "spotterCamera2Mode": 0,
+            "spotterCamera3Mode": 0
         },
         "motors": [
             {
@@ -839,6 +840,7 @@
         ]
     },
     "general": {
+        "mode": "production",
         "controllerSetup": {
             "controller": "localhost",
             "remoteHost": "freesentry",

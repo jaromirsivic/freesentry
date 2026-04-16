@@ -141,6 +141,7 @@ const AISetup = () => {
             minFpsToAllowEngagement: newSettings.minFpsToAllowEngagement,
             organMustBeVisibleSeconds: newSettings.organMustExistForSeconds,
             detectionRadiusFromReticle: newSettings.detectionRadiusFromReticle,
+            drawAiStats: newSettings.drawAiStats,
             organs: newSettings.organs
         };
         setSettings(updatedSettings);
@@ -369,6 +370,7 @@ const AISetup = () => {
                     minFpsToAllowEngagement: settings.minFpsToAllowEngagement,
                     organMustExistForSeconds: settings.organMustBeVisibleSeconds,
                     detectionRadiusFromReticle: settings.detectionRadiusFromReticle,
+                    drawAiStats: settings.drawAiStats,
                     organs: settings.organs
                 }}
             />

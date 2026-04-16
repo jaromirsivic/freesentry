@@ -83,6 +83,7 @@ const AISetupEssentialsEditModal = ({ isOpen, onClose, onSave, initialSettings }
         minFpsToAllowEngagement: 0,
         organMustExistForSeconds: 0,
         detectionRadiusFromReticle: 50,
+        drawAiStats: true,
         organs: {
             brain: { enabled: true, sizeMultiplier: 1.0, confidenceThreshold: 0.5, minimumRadius: 1 },
             chest: { enabled: true, sizeMultiplier: 1.0, confidenceThreshold: 0.5, minimumRadius: 1 },
@@ -106,6 +107,7 @@ const AISetupEssentialsEditModal = ({ isOpen, onClose, onSave, initialSettings }
                 minFpsToAllowEngagement: initialSettings.minFpsToAllowEngagement ?? 0,
                 organMustExistForSeconds: initialSettings.organMustExistForSeconds ?? 0,
                 detectionRadiusFromReticle: initialSettings.detectionRadiusFromReticle ?? 50,
+                drawAiStats: initialSettings.drawAiStats ?? true,
                 organs: {
                     brain: { ...initialSettings.organs?.brain },
                     chest: { ...initialSettings.organs?.chest },
@@ -228,6 +230,12 @@ const AISetupEssentialsEditModal = ({ isOpen, onClose, onSave, initialSettings }
                     max={10000}
                     step={10}
                     decimalPlaces={0}
+                    labelWidth="250px"
+                />
+                <Switch
+                    label="Draw AI Stats to Live Cam Feed"
+                    value={tempSettings.drawAiStats}
+                    onChange={(val) => updateSetting('drawAiStats', val)}
                     labelWidth="250px"
                 />
 
