@@ -651,15 +651,18 @@ class AIAgent(threading.Thread):
         AI slot frame. It first renders the pose organs (draw_pose) and then
         draws the engagement status rectangle and text on top.
         """
-        settings = get_settings_sync()
-        ai_setup = settings.get("aiSetup", {})
-        # get the parameter drawAiStats from the ai setup
-        draw_ai_stats = ai_setup.get("drawAiStats", True)
-        if not draw_ai_stats:
-            return
-        # draw the pose overlay
-        if frame.pose:
-            draw_pose(image=frame.image, pose=frame.pose, ai_setup=ai_setup, copy_image=False)
+        try:
+            settings = get_settings_sync()
+            ai_setup = settings.get("aiSetup", {})
+            # get the parameter drawAiStats from the ai setup
+            draw_ai_stats = ai_setup.get("drawAiStats", True)
+            if not draw_ai_stats:
+                return
+            # draw the pose overlay directly to frame.image
+            if frame.pose:
+                draw_pose(image=frame.image, pose=frame.pose, ai_setup=ai_setup, copy_image=False)
+        except Exception as e:
+            print(f"Error drawing pose overlay: {e}")
 
         text_color = (0, 0, 0)
         color = (240, 255, 240)
@@ -685,7 +688,6 @@ class AIAgent(threading.Thread):
                 color = (255, 0, 128)
         # draw rectangle around the frame.image
         scale = max(frame.image.shape[1], 1) / 1280
-        text_pos_x = int(20 * scale)
         cv2.rectangle(frame.image, (0, 0), (int(450 * scale), int(140 * scale)), text_background, -1)
         cv2.rectangle(frame.image, (0, 0), (frame.image.shape[1], frame.image.shape[0]), color, int(20 * scale))
         # draw text on the frame.image
