@@ -93,6 +93,11 @@ const ManualControl = () => {
     const requestInFlightRef = useRef(false);
     const lastActionResultRef = useRef({ success: true, motors: [] });
 
+    // Throttling: only post when joystick state changes, or heartbeat after idle period
+    const lastSentSnapshotRef = useRef(null);
+    const lastResponseAtRef = useRef(0);
+    const HEARTBEAT_MS = 500;
+
     /**
      * Build stream URL from camera settings.
      */
@@ -192,6 +197,8 @@ const ManualControl = () => {
 
                 setStreamUrl(buildStreamUrl(nextCameraSettings));
                 setIsLoading(false);
+                lastSentSnapshotRef.current = null;
+                lastResponseAtRef.current = 0;
                 setTimerEnabled(true);
             } catch (error) {
                 if (error?.name === 'AbortError') {
@@ -206,6 +213,8 @@ const ManualControl = () => {
 
                 setStreamUrl(buildStreamUrl(defaultCameraSettings));
                 setIsLoading(false);
+                lastSentSnapshotRef.current = null;
+                lastResponseAtRef.current = 0;
                 setTimerEnabled(true);
             }
         };
@@ -268,6 +277,8 @@ const ManualControl = () => {
                 // Menu closed AND user is NOT navigating away - restart streaming
                 // (If user is navigating away, the component will unmount and cleanup will handle stopping the stream)
                 setStreamUrl(buildStreamUrl(cameraSettings));
+                lastSentSnapshotRef.current = null;
+                lastResponseAtRef.current = 0;
                 setTimerEnabled(true);
             }
         };
@@ -469,23 +480,62 @@ const ManualControl = () => {
         if (requestInFlightRef.current) {
             return lastActionResultRef.current;
         }
-        
+
+        // Build current snapshot from refs
+        const motorsPayload = motorsRef.current.slice(0, 4).map(motor => ({
+            index: motor.index,
+            value: motorJoystickValuesRef.current[motor.index] ?? 0.0
+        }));
+
+        const snapshot = {
+            joystick: {
+                x: polygonJoystickRef.current.x,
+                y: polygonJoystickRef.current.y
+            },
+            motors: motorsPayload.reduce((acc, m) => {
+                acc[m.index] = m.value;
+                return acc;
+            }, {})
+        };
+
+        // Decide whether to send: any change OR heartbeat window elapsed
+        const previous = lastSentSnapshotRef.current;
+        let changed = false;
+        if (!previous) {
+            changed = true;
+        } else if (
+            previous.joystick.x !== snapshot.joystick.x ||
+            previous.joystick.y !== snapshot.joystick.y
+        ) {
+            changed = true;
+        } else {
+            const prevKeys = Object.keys(previous.motors);
+            const currKeys = Object.keys(snapshot.motors);
+            if (prevKeys.length !== currKeys.length) {
+                changed = true;
+            } else {
+                for (const key of currKeys) {
+                    if (previous.motors[key] !== snapshot.motors[key]) {
+                        changed = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        const heartbeatDue = performance.now() - lastResponseAtRef.current >= HEARTBEAT_MS;
+
+        if (!changed && !heartbeatDue) {
+            return lastActionResultRef.current;
+        }
+
         try {
             // Mark request as in flight
             requestInFlightRef.current = true;
-            
-            // Build motors array from all motors displayed in modal
-            const motorsPayload = motorsRef.current.slice(0, 4).map(motor => ({
-                index: motor.index,
-                value: motorJoystickValuesRef.current[motor.index] ?? 0.0
-            }));
-            
+
             const payload = {
                 fullscreen: isFullscreenRef.current,
-                joystick: {
-                    x: polygonJoystickRef.current.x,
-                    y: polygonJoystickRef.current.y
-                },
+                joystick: snapshot.joystick,
                 motors: motorsPayload
             };
             
@@ -529,6 +579,9 @@ const ManualControl = () => {
             console.error('Error sending manual control action:', error);
             return lastActionResultRef.current;
         } finally {
+            // Record that a response settled (or attempt finished) and the snapshot we sent
+            lastResponseAtRef.current = performance.now();
+            lastSentSnapshotRef.current = snapshot;
             // Mark request as complete
             requestInFlightRef.current = false;
         }
