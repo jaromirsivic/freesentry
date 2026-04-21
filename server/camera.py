@@ -469,6 +469,19 @@ class Camera(threading.Thread):
         finally:
             self._stop_worker()
             self._active = False
+            # Discard the last captured frames so the next run starts with the
+            # "Loading, please wait a minute..." placeholder instead of showing
+            # a frozen frame from the previous stream until the worker delivers
+            # a fresh one.
+            with self._lock_frame:
+                self._frame = self._create_blank_frame()
+            with self._lock_frame_masked:
+                self._frame_masked = self._create_blank_frame()
+            with self._lock_frame_masked_ai:
+                self._frame_masked_ai = self._create_blank_frame()
+                self._staged_ai_image = None
+                self._staged_ai_time = 0.0
+                self._staged_ai_valid = False
 
     # ------------------------------------------------------------------
     # Settings propagation
