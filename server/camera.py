@@ -326,41 +326,71 @@ class Camera(threading.Thread):
     # Keep short so failed waits (worker idle) don't stall the relay.
     _WAIT_FOR_NEW_TIMEOUT = 0.030
 
+    # Fallback chains per requested mode.  For modes 0 and 1 we walk
+    # down to simpler rings when the primary is still at seq=0 so the
+    # user sees *something* live instead of the loading placeholder.
+    #
+    # Mode 3 (AI) deliberately has NO fallback: the client must never
+    # see a masked/raw stand-in when it asked for AI overlays, because
+    # alternating between "no circles" and "circles" frames during the
+    # YOLO warm-up window looks like flicker.  While the AI ring is
+    # cold (seq_ai == 0, e.g. the ~10s YOLO first-inference window),
+    # get_stream_frame returns a loading frame and the HTTP relay
+    # emits the "Loading, please wait a minute..." JPEG (rate-limited
+    # to 0.5s).  The stream switches to real AI frames as soon as the
+    # worker publishes the first post-YOLO frame.
+    _MODE_FALLBACK_CHAIN: dict[int, tuple[tuple[int, str], ...]] = {
+        3: ((3, "ai"),),
+        1: ((1, "masked"), (0, "raw")),
+        0: ((0, "raw"),),
+    }
+
     def get_stream_frame(
         self,
         *,
         mode: int,
         stream_token: int,
         quality: int | None = None,
-        since_sequence: int = 0,
+        since_by_mode: dict[str, int] | None = None,
     ) -> JpegFrame | None:
         """Return the latest JPEG frame for *mode* captured by the shared
         worker.
 
-        *since_sequence* is the last sequence already handed to THIS HTTP
-        connection (kept in a local variable by the generator).  This
-        eliminates cross-connection state leaks: a freshly-mounted
-        browser ``<img>`` always passes ``since_sequence=0`` and will
-        receive the newest ring frame (or a Loading placeholder from
-        the HTTP generator) on its very first call, never a stale
-        "no-change" sentinel from an earlier connection.
+        *since_by_mode* maps ``"raw" / "masked" / "ai"`` to the last
+        sequence the caller already consumed for THAT ring.  The
+        generator keeps this dict as a per-HTTP-connection local
+        variable, which
 
-        Three possible return shapes:
+          * eliminates cross-connection state leaks: a freshly-mounted
+            browser ``<img>`` passes ``0`` for every key and always
+            receives the newest ring frame (or a Loading placeholder)
+            on its very first call; and
+          * lets us fall back to a lower-mode ring independently — the
+            caller tracks per-ring "last sent" cursors so e.g. we can
+            stream masked frames while the AI ring warms up and then
+            switch to AI without re-emitting frames the browser has
+            already seen.
+
+        The returned ``JpegFrame.mode`` tells the caller which ring
+        actually served the frame so it can update the right bucket
+        in its ``since_by_mode`` tracker.
+
+        Return shapes:
 
         * ``None`` — stream token is stale (camera switched or stopped);
           HTTP relay should break out of its yield loop.
         * ``JpegFrame(valid=True, data=<bytes>, ...)`` — a brand-new JPEG
-          whose ``sequence`` is strictly greater than *since_sequence*.
-          The relay updates its local ``last_seq`` from ``frame.sequence``
-          and yields the bytes.
+          from ring ``JpegFrame.mode``.  The relay updates
+          ``since_by_mode[<key>]`` from ``frame.sequence`` and yields
+          the bytes.
         * ``JpegFrame(valid=False, data=<loading_bytes>, ...)`` — real
-          "Loading..." placeholder: the worker hasn't produced any frame
-          yet for this mode, or is producing for another camera because
-          a switch is in progress.
+          "Loading..." placeholder: every ring in the fallback chain
+          for this *mode* is still at ``seq=0`` (or producing for
+          another camera).
         * ``JpegFrame(valid=False, data=b"", ...)`` — "no-change"
-          sentinel: a frame exists and matches this camera, but its
-          sequence is not newer than what the caller already has.  The
-          HTTP relay should skip yielding and just retry.
+          sentinel: at least one ring has frames but none of them has
+          anything newer than what the caller already holds.  The HTTP
+          relay should skip yielding and just retry.
         """
         if not self._is_stream_token_current(stream_token=stream_token):
             return None
@@ -378,55 +408,63 @@ class Camera(threading.Thread):
         if controller is None:
             return self._loading_frame(mode=mode)
 
-        if mode == 3:
-            mode_key = "ai"
-        elif mode == 1:
-            mode_key = "masked"
-        else:
-            mode_key = "raw"
+        since_map = since_by_mode or {}
+        chain = self._MODE_FALLBACK_CHAIN.get(int(mode), self._MODE_FALLBACK_CHAIN[0])
 
-        since = int(since_sequence) if since_sequence else 0
+        # Track whether we saw at least one ring with real frames (seq>0)
+        # but no fresher bytes — so we can return the "no-change"
+        # sentinel instead of the "Loading" placeholder.
+        any_ring_has_frames = False
 
-        data, ts, frame_mode, frame_camera_index, seq = controller.read_jpeg_for(
-            camera=self, mode_key=mode_key, since_sequence=since,
-        )
+        for ring_mode, ring_key in chain:
+            since = int(since_map.get(ring_key, 0) or 0)
+            data, ts, frame_mode, frame_camera_index, seq = controller.read_jpeg_for(
+                camera=self, mode_key=ring_key, since_sequence=since,
+            )
 
-        # If nothing new yet but a frame does exist for this camera, block
-        # briefly on the worker's "new frame published" event so we don't
-        # spin-poll.  One retry is enough — if the worker is idle the
-        # event won't fire and we fall through to the no-change sentinel.
-        if (
-            data is None
-            and seq > 0
-            and frame_camera_index == self._index
-        ):
-            if controller.wait_for_new_jpeg_for(
-                camera=self, mode_key=mode_key, timeout=self._WAIT_FOR_NEW_TIMEOUT,
+            # Only the PRIMARY ring is worth briefly waiting on — for
+            # fallback rings we prefer to poll and move on so the chain
+            # stays snappy.  This is what keeps the AI ring from
+            # adding latency once masked frames are already showing.
+            if (
+                ring_key == chain[0][1]
+                and data is None
+                and seq > 0
+                and frame_camera_index == self._index
             ):
-                data, ts, frame_mode, frame_camera_index, seq = controller.read_jpeg_for(
-                    camera=self, mode_key=mode_key, since_sequence=since,
+                if controller.wait_for_new_jpeg_for(
+                    camera=self, mode_key=ring_key, timeout=self._WAIT_FOR_NEW_TIMEOUT,
+                ):
+                    data, ts, frame_mode, frame_camera_index, seq = controller.read_jpeg_for(
+                        camera=self, mode_key=ring_key, since_sequence=since,
+                    )
+
+            if not self._is_stream_token_current(stream_token=stream_token):
+                return None
+
+            if seq > 0 and frame_camera_index == self._index:
+                any_ring_has_frames = True
+
+            if data is not None and seq > 0 and frame_camera_index == self._index:
+                # Fresh frame on this ring — return immediately; lower
+                # rings stay intentionally un-read so we don't burn
+                # work or steal latency from the primary.
+                return JpegFrame(
+                    valid=True, data=data, time=ts, mode=frame_mode,
+                    sequence=seq, camera_index=frame_camera_index,
                 )
 
-        if not self._is_stream_token_current(stream_token=stream_token):
-            return None
+            # Ring empty or no-change — try the next one in the chain.
+            _ = ring_mode  # silence "unused" — kept for debug clarity
 
-        # Case A: no frame has ever been published for this mode, or the
-        # worker is still producing for another camera -> real Loading.
-        if seq == 0 or frame_camera_index != self._index:
-            return self._loading_frame(mode=mode)
-
-        # Case B: frame exists and matches us, but nothing new since the
-        # caller's last read.  Return the empty-bytes "no-change" sentinel
-        # so the relay can skip yielding without emitting Loading.
-        if data is None:
+        # Nothing fresh anywhere.  Pick the signal that matches reality:
+        # if at least one ring exists but has no new bytes, the caller
+        # should skip (no-change); if every ring is still at seq=0, the
+        # worker genuinely hasn't produced anything yet, so show
+        # Loading.
+        if any_ring_has_frames:
             return self._no_change_frame(mode=mode)
-
-        # Case C: fresh frame.  The caller tracks its own ``last_seq``
-        # per-connection using the returned ``frame.sequence``.
-        return JpegFrame(
-            valid=True, data=data, time=ts, mode=frame_mode,
-            sequence=seq, camera_index=frame_camera_index,
-        )
+        return self._loading_frame(mode=mode)
 
     def _loading_frame(self, *, mode: int) -> JpegFrame:
         return JpegFrame(

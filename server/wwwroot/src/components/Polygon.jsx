@@ -1316,6 +1316,19 @@ const Polygon = ({
             >
                 {src && (
                     <img
+                        // Key on `src` forces React to unmount the old
+                        // <img> and mount a new one whenever the URL
+                        // changes.  This is critical for MJPEG streams:
+                        // Chrome (and some other browsers) keep the
+                        // previous multipart/x-mixed-replace connection
+                        // alive when the `src` attribute is simply
+                        // reassigned, which causes ~10s stalls when the
+                        // new stream URL is requested (e.g. Manual
+                        // Control Save after a mode switch).  Forcing a
+                        // full DOM remount releases the old connection
+                        // immediately and the browser opens a fresh one
+                        // for the new URL.
+                        key={src}
                         ref={imageRef}
                         src={src}
                         alt=""

@@ -430,19 +430,19 @@ const ManualControl = () => {
                     console.error('Failed to update reticle settings:', camErr);
                 }
                 
-                // 5. Restart video stream with new settings.  Clear the
-                // URL first so React unmounts the existing <img> and then
-                // mounts a fresh one with the new URL — this forces a
-                // brand-new HTTP MJPEG connection (rather than letting
-                // the browser keep the previous decoded frame while the
-                // new stream warms up) and gives the server a chance to
-                // emit its "Loading, please wait a minute..." placeholder.
-                setStreamUrl(null);
-                setTimeout(() => {
-                    if (isMountedRef.current) {
-                        setStreamUrl(buildStreamUrl(tempCameraSettings));
-                    }
-                }, 0);
+                // 5. Restart video stream with new settings.  The
+                // <img> inside Polygon is keyed on its src, and
+                // buildStreamUrl appends a fresh `_t=<timestamp>`, so a
+                // single setStreamUrl call is enough to guarantee a
+                // full <img> unmount+remount (and therefore a brand-new
+                // HTTP MJPEG connection with the backend's "Loading,
+                // please wait a minute..." flush).  We intentionally
+                // do NOT briefly set streamUrl=null first, because that
+                // would cause a visible flash of the camera-off icon
+                // between the old and new streams.
+                if (isMountedRef.current) {
+                    setStreamUrl(buildStreamUrl(tempCameraSettings));
+                }
             } else {
                 console.error('Failed to save motor settings');
             }

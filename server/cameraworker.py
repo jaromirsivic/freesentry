@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import atexit
 import multiprocessing
+import threading
 import time
 from typing import Any
 
@@ -152,8 +153,39 @@ class CameraWorkerProcess(_mp_ctx.Process):
 
         # --- heartbeat timers --------------------------------------------
         last_heartbeat_recv = time.monotonic()
-        last_heartbeat_send = 0.0
         idle_logged = False
+
+        # Protects ``self._pose_conn.send`` because it is now written to
+        # from both the main loop (pose samples) and the dedicated
+        # heartbeat thread below.  ``multiprocessing.Connection.send`` is
+        # not thread-safe.
+        pose_send_lock = threading.Lock()
+
+        # Dedicated heartbeat thread: keeps sending liveness pings to
+        # main every ``HEARTBEAT_SEND_INTERVAL`` seconds even while the
+        # main loop is blocked in a slow operation (e.g. the first YOLO
+        # inference on CPU can take 15+ s).  Without this, main's
+        # watchdog would flag the worker as hung and terminate it.
+        heartbeat_stop = threading.Event()
+
+        def _heartbeat_thread_main() -> None:
+            while not heartbeat_stop.is_set():
+                try:
+                    with pose_send_lock:
+                        self._pose_conn.send({"type": "heartbeat", "time": time.time()})
+                except (BrokenPipeError, OSError, EOFError):
+                    return
+                except Exception as exc:
+                    print(f"[Worker] heartbeat send error: {exc}")
+                if heartbeat_stop.wait(timeout=HEARTBEAT_SEND_INTERVAL):
+                    return
+
+        heartbeat_thread = threading.Thread(
+            target=_heartbeat_thread_main,
+            name="camera-worker-heartbeat",
+            daemon=True,
+        )
+        heartbeat_thread.start()
 
         def _close_device() -> None:
             nonlocal device, active_camera_index, active_camera_code
@@ -290,13 +322,10 @@ class CameraWorkerProcess(_mp_ctx.Process):
                     time.sleep(0.05)
                     continue
 
-                # --- 4. send heartbeat back to main ---
-                if now_mono - last_heartbeat_send >= HEARTBEAT_SEND_INTERVAL:
-                    try:
-                        self._pose_conn.send({"type": "heartbeat", "time": time.time()})
-                        last_heartbeat_send = now_mono
-                    except (BrokenPipeError, OSError):
-                        return
+                # --- 4. heartbeats are now sent by ``heartbeat_thread`` so
+                #        the liveness ping keeps flowing even while the main
+                #        loop is blocked on a slow operation (YOLO warm-up,
+                #        camera capture stall, JPEG encoding).
 
                 # --- 5. if no camera selected, idle sleep ---
                 if device is None or active_camera_index < 0:
@@ -412,16 +441,17 @@ class CameraWorkerProcess(_mp_ctx.Process):
                     ai_image_seq += 1
                     ai_h, ai_w = ai_frame.shape[:2]
                     try:
-                        self._pose_conn.send({
-                            "type": "pose",
-                            "pose": raw_pose,
-                            "seq": ai_image_seq,
-                            "camera_index": active_index,
-                            "camera_code": active_camera_code,
-                            "time": now_ts,
-                            "image_width": int(ai_w),
-                            "image_height": int(ai_h),
-                        })
+                        with pose_send_lock:
+                            self._pose_conn.send({
+                                "type": "pose",
+                                "pose": raw_pose,
+                                "seq": ai_image_seq,
+                                "camera_index": active_index,
+                                "camera_code": active_camera_code,
+                                "time": now_ts,
+                                "image_width": int(ai_w),
+                                "image_height": int(ai_h),
+                            })
                     except (BrokenPipeError, OSError):
                         return
 
@@ -494,6 +524,11 @@ class CameraWorkerProcess(_mp_ctx.Process):
         except Exception as exc:
             print(f"[Worker] Fatal error: {exc}")
         finally:
+            heartbeat_stop.set()
+            try:
+                heartbeat_thread.join(timeout=0.5)
+            except Exception:
+                pass
             _cleanup()
 
 

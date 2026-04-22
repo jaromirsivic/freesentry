@@ -395,16 +395,25 @@ async def generate_camera_frames(
         return
     expected_camera = cameras[index]
     stream_token = expected_camera.create_stream_token()
-    # Per-connection "last sequence handed to this browser".  Starts at 0
-    # on every new HTTP request, so a freshly-mounted <img> (mode switch
-    # + Apply, first page load, ...) never inherits a stale counter from
-    # a previous session.
-    last_seq_sent = 0
-    # Always emit the real "Loading, please wait a minute..." JPEG as the
-    # very first multipart part.  This guarantees that after a mode
-    # switch + Apply the browser immediately shows the Loading placeholder
-    # instead of sitting on the last decoded frame from the previous
-    # session until the worker publishes a new frame for the new mode.
+    # Per-connection "last sequence handed to this browser", one cursor
+    # per ring.  Starts at 0 on every new HTTP request, so a
+    # freshly-mounted <img> (mode switch + Apply, first page load, ...)
+    # never inherits a stale counter from a previous session.  Separate
+    # cursors per ring are what let Camera.get_stream_frame fall back
+    # to a lower-mode ring (e.g. "masked" while "ai" is still
+    # loading the YOLO model) without re-emitting frames the browser
+    # has already seen and without dropping live frames on the ring
+    # it eventually switches back to.
+    last_seq_by_mode: dict[str, int] = {"raw": 0, "masked": 0, "ai": 0}
+    # Map MODE_RAW / MODE_MASKED / MODE_AI codes to ring keys so we can
+    # update the right cursor from the frame the generator actually
+    # served (which may differ from the mode the browser requested
+    # during the AI-warmup fallback window).
+    _MODE_NUM_TO_KEY: dict[int, str] = {0: "raw", 1: "masked", 3: "ai"}
+    # Emit the real "Loading, please wait a minute..." JPEG as the very
+    # first multipart part so the browser immediately renders something
+    # instead of a blank <img>.  The main loop below will replace it
+    # with live frames as soon as the worker publishes them.
     try:
         loading_bytes = _make_loading_jpeg()
         if loading_bytes:
@@ -434,14 +443,19 @@ async def generate_camera_frames(
             #                             rate-limit to avoid flicker
             frame = camera.get_stream_frame(
                 mode=mode, stream_token=stream_token, quality=quality,
-                since_sequence=last_seq_sent,
+                since_by_mode=last_seq_by_mode,
             )
             if frame is None:
                 break
 
             if frame.valid and frame.data:
                 last_sent_was_loading = False
-                last_seq_sent = int(frame.sequence)
+                # Update the cursor for the ring that actually served
+                # this frame (mode=3 may be getting masked/raw frames
+                # while YOLO warms up).  Ignore unknown modes defensively.
+                served_key = _MODE_NUM_TO_KEY.get(int(frame.mode))
+                if served_key is not None:
+                    last_seq_by_mode[served_key] = int(frame.sequence)
                 yield (
                     b'--frame\r\n'
                     b'Content-Type: image/jpeg\r\n\r\n' + frame.data + b'\r\n'
