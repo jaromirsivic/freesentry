@@ -98,6 +98,56 @@ class Frame():
         return Frame(valid=self.valid, image=self.image.copy(), time=self.time,
                      pose=deepcopy(self.pose) if self.pose is not None else None)
 
+
+class JpegFrame():
+    """Frame already JPEG-encoded by the camera worker.
+
+    Used by the MJPEG relay path: camera worker encodes, main process only
+    copies bytes out of shared memory and forwards them to the HTTP client.
+    """
+
+    def __init__(
+        self,
+        *,
+        valid: bool,
+        data: bytes,
+        time: float,
+        mode: int = 0,
+        sequence: int = 0,
+        camera_index: int = -1,
+    ):
+        self.valid = valid
+        self.data: bytes = data
+        self.time = time
+        self.mode = mode
+        self.sequence = sequence
+        self.camera_index = camera_index
+        self.uid = get_uid()
+
+
+_loading_jpeg_cache: bytes | None = None
+
+
+def _make_loading_jpeg() -> bytes:
+    """Return a cached JPEG with the 'Loading, please wait a minute...'
+    placeholder.  Encoded once on first access.
+    """
+    global _loading_jpeg_cache
+    if _loading_jpeg_cache is not None:
+        return _loading_jpeg_cache
+    import cv2
+    image = np.zeros((480, 640, 3), dtype=np.uint8)
+    text = "Loading, please wait a minute..."
+    ts = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 1, 2)[0]
+    cv2.putText(image, text, ((640 - ts[0]) // 2, (480 + ts[1]) // 2),
+                cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+    ok, buf = cv2.imencode(".jpg", image, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
+    if not ok:
+        _loading_jpeg_cache = b""
+    else:
+        _loading_jpeg_cache = bytes(buf)
+    return _loading_jpeg_cache
+
 _uid_lock = Lock()
 _last_used_uid = -1
 def get_uid() -> int:

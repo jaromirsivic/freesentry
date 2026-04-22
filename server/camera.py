@@ -1,10 +1,27 @@
 """
-Camera proxy — lightweight main-process thread that owns a worker process.
+Thin ``Camera`` proxy.
 
-The heavy work (capture, flip, crop, mask, YOLO inference, draw_pose) runs
-in a separate OS process (``CameraWorkerProcess``) with its own GIL.
-This thread reads finished frames from shared memory, runs the AI engagement
-state machine, and exposes the same public API as the old Camera class.
+Each ``Camera`` represents one potential input device that the user can
+select as ``scope_camera`` / ``spotter_cameraN``.  It owns **no** worker
+process of its own — there is exactly one shared ``CameraWorkerProcess``
+managed by :class:`~server.camerascontroller.CamerasController`.
+
+Responsibilities of this proxy:
+
+* Probe the hardware once (on ``__init__``) for capabilities / supported
+  resolutions — everything else comes from settings.
+* Keep the user-facing settings snapshot.
+* Activate the singleton worker on the first stream access and deactivate
+  it on :meth:`stop`.
+* Forward pose samples received from the worker into
+  :meth:`AIAgent.engage` and ship the resulting engagement snapshot back
+  to the worker so it can draw the AI overlay (scope_camera only).
+* Expose JPEG frames (:class:`~server.common.JpegFrame`) via
+  :meth:`get_stream_frame`.
+
+The proxy itself runs a lightweight background thread only for the
+scope_camera pose-engagement round-trip.  For non-AI modes the HTTP
+relay reads bytes directly from the controller.
 """
 
 from __future__ import annotations
@@ -14,14 +31,8 @@ import threading
 from copy import deepcopy
 from enum import Enum
 
-import cv2
-import numpy as np
-
-from .common import Frame, EPSILON_DELAY
-from .settingscontroller import get_settings_sync
+from .common import JpegFrame, EPSILON_DELAY, _make_loading_jpeg
 from .cameradevice import create_camera_device
-from .cameraframetransport import FrameTransport
-from .cameraworker import CameraWorkerProcess
 
 
 class CameraType(Enum):
@@ -31,17 +42,8 @@ class CameraType(Enum):
     UNKNOWN = "unknown"
 
 
-_WORKER_STOP_TIMEOUT = 4.0
-_MAX_RESTART_ATTEMPTS = 5
-_RESTART_BACKOFF_BASE = 1.0
-_RESTART_BACKOFF_MAX = 30.0
-_HEARTBEAT_INTERVAL = 5.0
-
-
 class Camera(threading.Thread):
-    """Proxy that owns a worker process and exposes frames to the rest of
-    the application.  Public API is identical to the previous Camera class.
-    """
+    """Thin proxy whose public API matches the previous Camera class."""
 
     TIMEOUT_SECONDS = 5
     STOP_TIMEOUT_SECONDS = 4.0
@@ -65,31 +67,25 @@ class Camera(threading.Thread):
         self._camera_index = camera_index
         self._camera_code = camera_code
         self._camera_type_str = camera_type
-        self._camera_type = CameraType(camera_type) if camera_type in [e.value for e in CameraType] else CameraType.UNKNOWN
+        self._camera_type = (
+            CameraType(camera_type) if camera_type in [e.value for e in CameraType]
+            else CameraType.UNKNOWN
+        )
         self._camera_name = camera_name or f"{index}: Loading, please wait a minute..."
 
         self._state_lock = threading.RLock()
         self._active = False
 
-        # Frame storage (read by MJPEG consumers)
-        self._frame: Frame = self._create_blank_frame()
-        self._frame_masked: Frame = self._create_blank_frame()
-        self._frame_masked_ai: Frame = self._create_blank_frame()
-        self._lock_frame = threading.Lock()
-        self._lock_frame_masked = threading.Lock()
-        self._lock_frame_masked_ai = threading.Lock()
+        # Last-access timestamps drive the demand flags sent to the worker.
+        self._last_access_time_raw: float = 0.0
+        self._last_access_time_masked: float = 0.0
+        self._last_access_time_ai: float = 0.0
+        self._last_access_lock = threading.Lock()
 
-        self._last_access_time_raw_frame: float = 0
-        self._last_access_time_masked_frame: float = 0
-        self._last_access_time_masked_ai_frame: float = 0
-
-        # Staging slot for AI images waiting to be overlaid (scope_camera only).
-        # The raw AI image from shared memory is parked here; _process_pose
-        # always overlays engagement/pose drawings before publishing to
-        # _frame_masked_ai, so MJPEG consumers never observe an un-drawn frame.
-        self._staged_ai_image: np.ndarray | None = None
-        self._staged_ai_time: float = 0.0
-        self._staged_ai_valid: bool = False
+        # Sequence we've most recently handed to consumers (per mode).
+        self._last_seq_raw = 0
+        self._last_seq_masked = 0
+        self._last_seq_ai = 0
 
         self._stream_id = 0
 
@@ -125,37 +121,13 @@ class Camera(threading.Thread):
             camera_settings.update(settings)
         self.settings = camera_settings
 
-        # Worker / transport state
-        self._transport: FrameTransport | None = None
-        self._worker: CameraWorkerProcess | None = None
-        self._worker_started = False
-        self._restart_count = 0
-        self._last_restart_time = 0.0
-
-        # Global settings change tracking
-        self._last_sent_global_settings: object = None
-
-        # Shared memory sequence tracking
-        self._last_seq_raw = 0
-        self._last_seq_masked = 0
-        self._last_seq_ai = 0
-
-        self._last_heartbeat_send = 0.0
+        # JPEG quality requested by the most recent streaming consumer per mode.
+        self._quality_raw = 80
+        self._quality_masked = 80
+        self._quality_ai = 80
 
     # ------------------------------------------------------------------
-    # Blank frame helper
-    # ------------------------------------------------------------------
-    @staticmethod
-    def _create_blank_frame() -> Frame:
-        image = np.zeros((480, 640, 3), dtype=np.uint8)
-        text = "Loading, please wait a minute..."
-        ts = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 1, 2)[0]
-        cv2.putText(image, text, ((640 - ts[0]) // 2, (480 + ts[1]) // 2),
-                    cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-        return Frame(valid=False, image=image, time=0)
-
-    # ------------------------------------------------------------------
-    # Public properties (unchanged API)
+    # Public properties
     # ------------------------------------------------------------------
     @property
     def camera_name(self) -> str:
@@ -190,19 +162,19 @@ class Camera(threading.Thread):
         return self._capabilities
 
     @property
-    def frame(self) -> Frame:
-        return self._get_raw_frame()
+    def camera_type_str(self) -> str:
+        return self._camera_type_str
 
     @property
-    def frame_masked(self) -> Frame:
-        return self._get_masked_frame()
+    def index(self) -> int:
+        return self._index
 
     @property
-    def frame_masked_ai(self) -> Frame:
-        return self._get_masked_ai_frame()
+    def physical_camera_index(self) -> int:
+        return self._camera_index
 
     # ------------------------------------------------------------------
-    # Settings helpers
+    # Settings helpers (used by controller when propagating to worker)
     # ------------------------------------------------------------------
     def _get_pending_settings_update(self) -> tuple[dict | None, int] | None:
         with self._state_lock:
@@ -259,13 +231,57 @@ class Camera(threading.Thread):
             return False
 
     # ------------------------------------------------------------------
-    # Frame access (public API)
+    # Streaming
     # ------------------------------------------------------------------
-    def _ensure_device_open(self, *, stream_token: int | None = None) -> bool:
+    def _touch_access(self, *, mode: int) -> None:
+        now = time.time()
+        with self._last_access_lock:
+            if mode == 3:
+                self._last_access_time_ai = now
+                self._last_access_time_masked = now
+                self._last_access_time_raw = now
+            elif mode == 1:
+                self._last_access_time_masked = now
+                self._last_access_time_raw = now
+            else:
+                self._last_access_time_raw = now
+
+    def get_last_access_times(self) -> tuple[float, float, float]:
+        with self._last_access_lock:
+            return (
+                self._last_access_time_raw,
+                self._last_access_time_masked,
+                self._last_access_time_ai,
+            )
+
+    def get_requested_qualities(self) -> tuple[int, int, int]:
+        return self._quality_raw, self._quality_masked, self._quality_ai
+
+    def set_requested_quality(self, *, mode: int, quality: int) -> None:
+        q = max(1, min(int(quality), 100))
+        if mode == 3:
+            self._quality_ai = q
+        elif mode == 1:
+            self._quality_masked = q
+        else:
+            self._quality_raw = q
+
+    def _ensure_active(self, *, stream_token: int | None = None) -> bool:
         if not self._is_stream_token_current(stream_token=stream_token):
             return False
-        with self._lock_frame:
-            self._last_access_time_raw_frame = time.time()
+
+        mc = self._master_controller
+        if mc is None:
+            return False
+        controller = getattr(mc, "cameras_controller", None)
+        if controller is None:
+            return False
+
+        # Ask the controller to put the singleton worker on this camera.
+        activated = controller.activate_camera(self)
+        if not activated:
+            return False
+
         if not self.is_alive():
             try:
                 if not self._is_stream_token_current(stream_token=stream_token):
@@ -281,400 +297,255 @@ class Camera(threading.Thread):
                         break
                     time.sleep(EPSILON_DELAY)
             except RuntimeError as err:
-                print(f"Error starting camera proxy thread: {err}")
+                print(f"Error starting camera proxy thread for {self._camera_name}: {err}")
                 return False
         return self._is_stream_token_current(stream_token=stream_token)
 
-    def _get_raw_frame(self, *, stream_token: int | None = None) -> Frame:
-        if not self._ensure_device_open(stream_token=stream_token):
-            return self._create_blank_frame()
-        if self._active:
-            with self._lock_frame:
-                self._last_access_time_raw_frame = time.time()
-                if self._frame.valid:
-                    return self._frame.copy()
-        return self._create_blank_frame()
+    # How long the consumer briefly blocks waiting for the worker to
+    # publish the next frame before returning a "no-change" sentinel.
+    # Keep short so failed waits (worker idle) don't stall the relay.
+    _WAIT_FOR_NEW_TIMEOUT = 0.030
 
-    def _get_masked_frame(self, *, stream_token: int | None = None) -> Frame:
-        if not self._ensure_device_open(stream_token=stream_token):
-            return self._create_blank_frame()
-        if self._active:
-            now = time.time()
-            with self._lock_frame:
-                self._last_access_time_raw_frame = now
-            with self._lock_frame_masked:
-                self._last_access_time_masked_frame = now
-                if self._frame_masked.valid:
-                    return self._frame_masked.copy()
-        return self._create_blank_frame()
+    def get_stream_frame(self, *, mode: int, stream_token: int, quality: int | None = None) -> JpegFrame | None:
+        """Return the latest JPEG frame for *mode* captured by the shared
+        worker.
 
-    def _get_masked_ai_frame(self, *, stream_token: int | None = None) -> Frame:
-        if not self._ensure_device_open(stream_token=stream_token):
-            return self._create_blank_frame()
-        if self._active:
-            now = time.time()
-            with self._lock_frame:
-                self._last_access_time_raw_frame = now
-            with self._lock_frame_masked:
-                self._last_access_time_masked_frame = now
-            with self._lock_frame_masked_ai:
-                self._last_access_time_masked_ai_frame = now
-                if self._frame_masked_ai.valid:
-                    return self._frame_masked_ai.copy()
-        return self._create_blank_frame()
+        Three possible return shapes:
 
-    def get_stream_frame(self, *, mode: int, stream_token: int) -> Frame | None:
+        * ``None`` — stream token is stale (camera switched or stopped);
+          HTTP relay should break out of its yield loop.
+        * ``JpegFrame(valid=True, data=<bytes>, ...)`` — a brand-new JPEG
+          whose sequence is strictly greater than the one we handed out
+          last.  The sequence may jump by more than 1 under back-pressure
+          — the ring is lossy newest-wins and intentionally drops stale
+          frames, which is what we want for a live stream.
+        * ``JpegFrame(valid=False, data=<loading_bytes>, ...)`` — real
+          "Loading..." placeholder: the worker hasn't produced any frame
+          yet for this mode, or is producing for another camera because
+          a switch is in progress.
+        * ``JpegFrame(valid=False, data=b"", ...)`` — "no-change"
+          sentinel: a frame exists and matches this camera, but its
+          sequence is not newer than what the caller already has.  The
+          HTTP relay should skip yielding and just retry.
+        """
         if not self._is_stream_token_current(stream_token=stream_token):
             return None
+
+        if quality is not None:
+            self.set_requested_quality(mode=mode, quality=int(quality))
+
+        if not self._ensure_active(stream_token=stream_token):
+            return self._loading_frame(mode=mode)
+
+        self._touch_access(mode=mode)
+
+        mc = self._master_controller
+        controller = getattr(mc, "cameras_controller", None) if mc is not None else None
+        if controller is None:
+            return self._loading_frame(mode=mode)
+
         if mode == 3:
-            frame = self._get_masked_ai_frame(stream_token=stream_token)
+            mode_key = "ai"
+            since = self._last_seq_ai
         elif mode == 1:
-            frame = self._get_masked_frame(stream_token=stream_token)
+            mode_key = "masked"
+            since = self._last_seq_masked
         else:
-            frame = self._get_raw_frame(stream_token=stream_token)
+            mode_key = "raw"
+            since = self._last_seq_raw
+
+        data, ts, frame_mode, frame_camera_index, seq = controller.read_jpeg_for(
+            camera=self, mode_key=mode_key, since_sequence=since,
+        )
+
+        # If nothing new yet but a frame does exist for this camera, block
+        # briefly on the worker's "new frame published" event so we don't
+        # spin-poll.  One retry is enough — if the worker is idle the
+        # event won't fire and we fall through to the no-change sentinel.
+        if (
+            data is None
+            and seq > 0
+            and frame_camera_index == self._index
+        ):
+            if controller.wait_for_new_jpeg_for(
+                camera=self, mode_key=mode_key, timeout=self._WAIT_FOR_NEW_TIMEOUT,
+            ):
+                data, ts, frame_mode, frame_camera_index, seq = controller.read_jpeg_for(
+                    camera=self, mode_key=mode_key, since_sequence=since,
+                )
+
         if not self._is_stream_token_current(stream_token=stream_token):
             return None
-        return frame
+
+        # Case A: no frame has ever been published for this mode, or the
+        # worker is still producing for another camera -> real Loading.
+        if seq == 0 or frame_camera_index != self._index:
+            return self._loading_frame(mode=mode)
+
+        # Case B: frame exists and matches us, but nothing new since the
+        # caller's last read.  Return the empty-bytes "no-change" sentinel
+        # so the relay can skip yielding without emitting Loading.
+        if data is None:
+            return self._no_change_frame(mode=mode)
+
+        # Case C: fresh frame.  Remember the sequence we handed out.  It
+        # may jump by more than 1 vs. the previous value — that's the
+        # lossy newest-wins behaviour of the ring doing its job under
+        # back-pressure, not a bug.
+        if mode == 3:
+            self._last_seq_ai = seq
+        elif mode == 1:
+            self._last_seq_masked = seq
+        else:
+            self._last_seq_raw = seq
+
+        return JpegFrame(
+            valid=True, data=data, time=ts, mode=frame_mode,
+            sequence=seq, camera_index=frame_camera_index,
+        )
+
+    def _loading_frame(self, *, mode: int) -> JpegFrame:
+        return JpegFrame(
+            valid=False, data=_make_loading_jpeg(), time=time.time(),
+            mode=mode, sequence=0, camera_index=self._index,
+        )
+
+    def _no_change_frame(self, *, mode: int) -> JpegFrame:
+        return JpegFrame(
+            valid=False, data=b"", time=time.time(),
+            mode=mode, sequence=0, camera_index=self._index,
+        )
 
     # ------------------------------------------------------------------
-    # Worker lifecycle
-    # ------------------------------------------------------------------
-    def _start_worker(self) -> bool:
-        if self._transport is not None:
-            self._cleanup_transport()
-
-        camera_settings_snapshot = self.settings
-        global_settings_snapshot = dict(deepcopy(get_settings_sync()))
-
-        self._transport = FrameTransport(
-            camera_index=self._index,
-            max_width=camera_settings_snapshot.get("width", 1920),
-            max_height=camera_settings_snapshot.get("height", 1080),
-        )
-        worker_args = self._transport.get_worker_init_args()
-
-        self._worker = CameraWorkerProcess(
-            camera_type=self._camera_type_str,
-            camera_index=self._camera_index,
-            index=self._index,
-            camera_code=self._camera_code,
-            camera_name=self._camera_name,
-            initial_camera_settings=camera_settings_snapshot,
-            initial_global_settings=global_settings_snapshot,
-            **worker_args,
-        )
-        try:
-            self._worker.start()
-            self._worker_started = True
-            self._last_sent_global_settings = get_settings_sync()
-            self._last_seq_raw = 0
-            self._last_seq_masked = 0
-            self._last_seq_ai = 0
-            self._last_heartbeat_send = time.monotonic()
-            return True
-        except Exception as e:
-            print(f"Failed to start worker for {self._camera_name}: {e}")
-            self._cleanup_transport()
-            return False
-
-    def _stop_worker(self) -> None:
-        if self._transport is not None:
-            self._transport.send_command({"cmd": "stop"})
-
-        if self._worker is not None and self._worker.is_alive():
-            self._worker.join(timeout=_WORKER_STOP_TIMEOUT)
-            if self._worker.is_alive():
-                print(f"Worker {self._camera_name} did not stop, terminating")
-                self._worker.terminate()
-                self._worker.join(timeout=2.0)
-                if self._worker.is_alive():
-                    self._worker.kill()
-                    self._worker.join(timeout=1.0)
-
-        self._worker = None
-        self._worker_started = False
-        self._cleanup_transport()
-
-    def _cleanup_transport(self) -> None:
-        if self._transport is not None:
-            self._transport.cleanup()
-            self._transport = None
-
-    def _try_restart_worker(self) -> bool:
-        if self._restart_count >= _MAX_RESTART_ATTEMPTS:
-            return False
-        backoff = min(
-            _RESTART_BACKOFF_BASE * (2 ** self._restart_count),
-            _RESTART_BACKOFF_MAX,
-        )
-        now = time.monotonic()
-        if now - self._last_restart_time < backoff:
-            return False
-        self._restart_count += 1
-        self._last_restart_time = now
-        print(f"Restarting worker for {self._camera_name} "
-              f"(attempt {self._restart_count}/{_MAX_RESTART_ATTEMPTS})")
-        self._stop_worker()
-        return self._start_worker()
-
-    # ------------------------------------------------------------------
-    # Main proxy loop
+    # Proxy thread — handles AI engagement for scope_camera and keeps the
+    # camera "selected" on the worker as long as there is interest.
     # ------------------------------------------------------------------
     def run(self) -> None:
         self._active = True
-        if not self._start_worker():
-            self._active = False
-            return
+        mc = self._master_controller
+        controller = getattr(mc, "cameras_controller", None) if mc is not None else None
 
         try:
-            with self._lock_frame:
-                self._last_access_time_raw_frame = time.time()
+            self._touch_access(mode=0)
 
             while self._active:
-                # --- 1. Check worker health ---
-                if self._worker is None or not self._worker.is_alive():
-                    if not self._try_restart_worker():
-                        time.sleep(EPSILON_DELAY)
-                        if self._restart_count >= _MAX_RESTART_ATTEMPTS:
-                            break
-                        continue
+                if controller is None:
+                    break
 
-                # --- 2. Propagate settings changes to worker ---
-                self._propagate_settings()
+                # Still the active camera?  If the controller has switched
+                # to a different camera we exit the proxy thread so the new
+                # camera's proxy can take over.
+                if not controller.is_camera_active(self):
+                    break
 
-                # --- 3. Send heartbeat ---
-                now_mono = time.monotonic()
-                if now_mono - self._last_heartbeat_send >= _HEARTBEAT_INTERVAL:
-                    if self._transport:
-                        self._transport.send_command({"cmd": "heartbeat"})
-                    self._last_heartbeat_send = now_mono
+                # Propagate settings changes for this camera to the worker.
+                pending = self._get_pending_settings_update()
+                if pending is not None:
+                    snapshot, version = pending
+                    if snapshot is not None:
+                        try:
+                            controller.update_camera_settings(self, snapshot)
+                        except Exception as exc:
+                            print(f"Error sending camera settings for {self._camera_name}: {exc}")
+                    self._mark_settings_applied(settings_version=version)
 
-                # --- 4. Read frames from shared memory ---
-                self._read_frames_from_transport()
+                # Pose samples (scope_camera drives the AI engagement loop).
+                self._process_pose(controller=controller)
 
-                # --- 5. Process pose / engagement for scope_camera ---
-                self._process_pose()
+                # Tell the controller about our current demand + quality so
+                # it can aggregate and forward to the worker.
+                controller.update_demand_from_camera(self)
 
-                # --- 6. Update demand flags ---
-                self._update_demand_flags()
-
-                # --- 7. Check if any consumer is still active ---
                 if not self._should_stay_alive():
                     break
 
                 time.sleep(EPSILON_DELAY)
 
-        except Exception as e:
-            print(f"Error in camera proxy thread: {e}")
+        except Exception as exc:
+            print(f"Error in camera proxy thread ({self._camera_name}): {exc}")
         finally:
-            self._stop_worker()
             self._active = False
-            # Discard the last captured frames so the next run starts with the
-            # "Loading, please wait a minute..." placeholder instead of showing
-            # a frozen frame from the previous stream until the worker delivers
-            # a fresh one.
-            with self._lock_frame:
-                self._frame = self._create_blank_frame()
-            with self._lock_frame_masked:
-                self._frame_masked = self._create_blank_frame()
-            with self._lock_frame_masked_ai:
-                self._frame_masked_ai = self._create_blank_frame()
-                self._staged_ai_image = None
-                self._staged_ai_time = 0.0
-                self._staged_ai_valid = False
+            if controller is not None:
+                try:
+                    controller.deactivate_camera(self)
+                except Exception as exc:
+                    print(f"Error deactivating camera {self._camera_name}: {exc}")
 
     # ------------------------------------------------------------------
-    # Settings propagation
+    # Pose / engagement
     # ------------------------------------------------------------------
-    def _propagate_settings(self) -> None:
-        if self._transport is None:
-            return
-
-        # Camera-specific settings
-        pending = self._get_pending_settings_update()
-        if pending is not None:
-            settings_snapshot, version = pending
-            self._transport.send_command({
-                "cmd": "update_camera_settings",
-                "settings": settings_snapshot,
-            })
-            self._mark_settings_applied(settings_version=version)
-
-        # Global settings (identity check — O(1))
-        current_global = get_settings_sync()
-        if current_global is not self._last_sent_global_settings:
-            self._transport.send_command({
-                "cmd": "update_global_settings",
-                "settings": dict(deepcopy(current_global)),
-            })
-            self._last_sent_global_settings = current_global
-
-    # ------------------------------------------------------------------
-    # Frame reading
-    # ------------------------------------------------------------------
-    def _read_frames_from_transport(self) -> None:
-        if self._transport is None:
-            return
-        t = self._transport
-
-        # Raw
-        try:
-            _, _, _, _, _, seq_raw, _ = t.slot_raw.read_header()
-            if seq_raw != self._last_seq_raw:
-                img, ts, valid, seq = t.slot_raw.read_frame()
-                if img is not None and valid:
-                    with self._lock_frame:
-                        self._frame = Frame(valid=True, image=img, time=ts)
-                    self._last_seq_raw = seq
-        except Exception:
-            pass
-
-        # Masked
-        try:
-            _, _, _, _, _, seq_m, _ = t.slot_masked.read_header()
-            if seq_m != self._last_seq_masked:
-                img, ts, valid, seq = t.slot_masked.read_frame()
-                if img is not None and valid:
-                    with self._lock_frame_masked:
-                        self._frame_masked = Frame(valid=True, image=img, time=ts)
-                    self._last_seq_masked = seq
-        except Exception:
-            pass
-
-        # AI
-        try:
-            _, _, _, _, _, seq_a, _ = t.slot_ai.read_header()
-            if seq_a != self._last_seq_ai:
-                img, ts, valid, seq = t.slot_ai.read_frame()
-                if img is not None and valid:
-                    if self._camera_code == "scope_camera":
-                        # Stage the raw AI image. _process_pose will overlay
-                        # engagement/pose drawings before publishing to
-                        # _frame_masked_ai, so MJPEG consumers never observe
-                        # an un-drawn frame.
-                        with self._lock_frame_masked_ai:
-                            self._staged_ai_image = img
-                            self._staged_ai_time = ts
-                            self._staged_ai_valid = True
-                    else:
-                        with self._lock_frame_masked_ai:
-                            self._frame_masked_ai = Frame(valid=True, image=img, time=ts)
-                    self._last_seq_ai = seq
-        except Exception:
-            pass
-
-    # ------------------------------------------------------------------
-    # Pose / AI engagement
-    # ------------------------------------------------------------------
-    def _process_pose(self) -> None:
-        if self._transport is None:
-            return
+    def _process_pose(self, *, controller) -> None:
         if self._camera_code != "scope_camera":
-            self._drain_pose_pipe()
+            controller.drain_pose_for_non_ai(camera_index=self._index)
             return
 
         mc = self._master_controller
-        if mc is None:
-            self._drain_pose_pipe()
-            return
-        ai_agent = getattr(mc, "ai_agent", None)
+        ai_agent = getattr(mc, "ai_agent", None) if mc is not None else None
         if ai_agent is None:
-            self._drain_pose_pipe()
+            controller.drain_pose_for_non_ai(camera_index=self._index)
             return
 
-        latest_raw_pose = None
-        while self._transport.poll_pose():
-            try:
-                msg = self._transport.recv_pose()
-                if isinstance(msg, dict) and msg.get("type") == "pose":
-                    latest_raw_pose = msg.get("pose")
-            except Exception:
-                break
+        msgs = controller.collect_pose_messages(camera_index=self._index)
+        if not msgs:
+            return
 
-        # Claim the staged AI image (if any). We only overlay and publish
-        # when a new AI frame has been staged since the last publication;
-        # otherwise we leave the previously published _frame_masked_ai
-        # intact so the HTTP stream keeps its last good overlaid frame.
-        with self._lock_frame_masked_ai:
-            if not self._staged_ai_valid or self._staged_ai_image is None:
-                return
-            staged_image = self._staged_ai_image
-            staged_time = self._staged_ai_time
-            self._staged_ai_valid = False
-            self._staged_ai_image = None
+        # Always process the latest sample only (engagement is stateful and
+        # uses the newest information it has).
+        latest = msgs[-1]
+        raw_pose = latest.get("pose") if isinstance(latest, dict) else None
+        frame_time = latest.get("time", time.time()) if isinstance(latest, dict) else time.time()
+        image_width = int(latest.get("image_width", 0)) if isinstance(latest, dict) else 0
+        image_height = int(latest.get("image_height", 0)) if isinstance(latest, dict) else 0
 
         try:
+            from .settingscontroller import get_settings_sync
+            from .cameraai import translate_raw_pose_to_pose_dict
+            from .common import Frame
+            import numpy as np
+
             settings = get_settings_sync()
             ai_setup = settings.get("aiSetup", {}) if isinstance(settings, dict) else {}
 
-            pose = None
-            if latest_raw_pose is not None:
+            pose_dict = None
+            if raw_pose is not None:
                 try:
-                    from .cameraai import translate_raw_pose_to_pose_dict
-                    pose = translate_raw_pose_to_pose_dict(
-                        raw_pose=latest_raw_pose, ai_setup=ai_setup,
+                    pose_dict = translate_raw_pose_to_pose_dict(
+                        raw_pose=raw_pose, ai_setup=ai_setup,
                     )
-                except Exception as e:
-                    print(f"Error translating pose for {self._camera_name}: {e}")
-                    pose = None
+                except Exception as exc:
+                    print(f"Error translating pose for {self._camera_name}: {exc}")
+                    pose_dict = None
 
-            frame_with_pose = Frame(
-                valid=True, image=staged_image, time=staged_time, pose=pose,
-            )
-            engagement_result = ai_agent.engage(
-                frame=frame_with_pose, settings=settings,
-            )
-            ai_agent.draw_engagement_result(
-                frame=frame_with_pose,
+            # AIAgent.engage needs a Frame object so it can resolve the
+            # reticle position from the image shape.  We don't have the
+            # decoded AI image here (it lives in the worker), so we use a
+            # small placeholder that carries the expected resolution.
+            if image_width > 0 and image_height > 0:
+                width, height = image_width, image_height
+            else:
+                cam_settings = self.settings
+                width = int(cam_settings.get("stretch_width") or cam_settings.get("width") or 640)
+                height = int(cam_settings.get("stretch_height") or cam_settings.get("height") or 480)
+            placeholder = np.zeros((height, width, 3), dtype=np.uint8)
+            frame = Frame(valid=True, image=placeholder, time=frame_time, pose=pose_dict)
+            engagement_result = ai_agent.engage(frame=frame, settings=settings)
+            snapshot = ai_agent.build_engagement_snapshot(
                 engagement_result=engagement_result,
+                settings=settings if isinstance(settings, dict) else {},
             )
-            with self._lock_frame_masked_ai:
-                self._frame_masked_ai = frame_with_pose
-        except Exception as e:
-            print(f"Error processing pose for {self._camera_name}: {e}")
-
-    def _drain_pose_pipe(self) -> None:
-        if self._transport is None:
-            return
-        while self._transport.poll_pose():
-            try:
-                self._transport.recv_pose()
-            except Exception:
-                break
-
-    # ------------------------------------------------------------------
-    # Demand flags
-    # ------------------------------------------------------------------
-    def _update_demand_flags(self) -> None:
-        if self._transport is None:
-            return
-        now = time.time()
-        headless = self._is_headless_ai_processing_required()
-
-        with self._lock_frame:
-            elapsed_raw = now - self._last_access_time_raw_frame
-        with self._lock_frame_masked:
-            elapsed_masked = now - self._last_access_time_masked_frame
-        with self._lock_frame_masked_ai:
-            elapsed_ai = now - self._last_access_time_masked_ai_frame
-
-        demand_raw = elapsed_raw <= self.TIMEOUT_SECONDS or headless
-        demand_ai = elapsed_ai <= self.TIMEOUT_SECONDS or headless
-        demand_masked = elapsed_masked <= self.TIMEOUT_SECONDS or demand_ai
-
-        self._transport.send_command({
-            "cmd": "update_demand",
-            "raw": demand_raw,
-            "masked": demand_masked,
-            "ai": demand_ai,
-        })
+            controller.send_engagement_result(
+                result_payload=snapshot,
+                pose_dict=pose_dict,
+            )
+        except Exception as exc:
+            print(f"Error processing pose for {self._camera_name}: {exc}")
 
     def _should_stay_alive(self) -> bool:
         if self._is_headless_ai_processing_required():
             return True
-        with self._lock_frame:
-            elapsed = time.time() - self._last_access_time_raw_frame
-        return elapsed <= self.TIMEOUT_SECONDS
+        raw_t, masked_t, ai_t = self.get_last_access_times()
+        most_recent = max(raw_t, masked_t, ai_t)
+        return (time.time() - most_recent) <= self.TIMEOUT_SECONDS
 
     # ------------------------------------------------------------------
     # Stop
@@ -685,13 +556,18 @@ class Camera(threading.Thread):
         if threading.current_thread() is self:
             return
         if not self.is_alive():
-            self._stop_worker()
+            mc = self._master_controller
+            controller = getattr(mc, "cameras_controller", None) if mc is not None else None
+            if controller is not None:
+                try:
+                    controller.deactivate_camera(self)
+                except Exception:
+                    pass
             return
-        self.join(timeout=self.STOP_TIMEOUT_SECONDS + _WORKER_STOP_TIMEOUT)
+        self.join(timeout=self.STOP_TIMEOUT_SECONDS)
         if self.is_alive():
-            msg = (
+            print(
                 f"Camera proxy still alive after stop timeout "
                 f"(index={self._index}, camera_index={self._camera_index}, "
                 f"camera_code={self._camera_code}, camera_name={self._camera_name})"
             )
-            print(msg)

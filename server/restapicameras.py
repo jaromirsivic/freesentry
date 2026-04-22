@@ -10,7 +10,6 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 import asyncio
 import time
-import cv2
 
 from .camera import Camera
 from .common import EPSILON_DELAY
@@ -389,10 +388,8 @@ async def generate_camera_frames(
         case _:
             mode_str = f"mode={mode} (Unknown)"
     print(f"Streaming camera {index} in {mode_str}")
-    # uid of last frame sent to the client
-    uid_of_last_frame_sent_to_client = -1
-    # time of last frame sent to the client
-    time_of_last_frame_sent_to_client = 0
+    time_of_last_loading_sent = 0.0
+    last_sent_was_loading = False
     cameras = master_controller.cameras_controller.cameras
     if index < 0 or index >= len(cameras):
         return
@@ -407,28 +404,43 @@ async def generate_camera_frames(
             camera = cameras[index]
             if camera is not expected_camera:
                 break
-            # get the image based on the mode
-            frame = camera.get_stream_frame(mode=mode, stream_token=stream_token)
+            # Worker already JPEG-encoded at the requested quality; we only
+            # forward the bytes.  Frame semantics:
+            #   frame is None          -> stream token stale, stop
+            #   frame.valid            -> fresh JPEG, yield it
+            #   not valid and no data  -> no-change sentinel, skip
+            #   not valid and data     -> real "Loading..." placeholder,
+            #                             rate-limit to avoid flicker
+            frame = camera.get_stream_frame(
+                mode=mode, stream_token=stream_token, quality=quality,
+            )
             if frame is None:
                 break
-            # send image to the client if it is new or it has been 0.5 seconds since the last frame was sent
-            if frame.image is not None and \
-                (frame.uid != uid_of_last_frame_sent_to_client or now - time_of_last_frame_sent_to_client > 0.5):
-                # update the uid and time of the last frame sent to the client
-                uid_of_last_frame_sent_to_client = frame.uid
-                time_of_last_frame_sent_to_client = now
-                # encode the image as JPEG
-                _, jpeg = cv2.imencode('.jpg', frame.image, [cv2.IMWRITE_JPEG_QUALITY, quality])
-                image_bytes = jpeg.tobytes()                
-                # Yield as multipart frame
+
+            if frame.valid and frame.data:
+                last_sent_was_loading = False
                 yield (
                     b'--frame\r\n'
-                    b'Content-Type: image/jpeg\r\n\r\n' + image_bytes + b'\r\n'
+                    b'Content-Type: image/jpeg\r\n\r\n' + frame.data + b'\r\n'
                 )
-            
-            # Small delay to control frame rate
+            elif frame.data:
+                # Real Loading placeholder.  Emit once when we transition
+                # into the loading state, then refresh at most every 0.5s
+                # to keep the client connection warm without flickering.
+                if (
+                    not last_sent_was_loading
+                    or now - time_of_last_loading_sent > 0.5
+                ):
+                    time_of_last_loading_sent = now
+                    last_sent_was_loading = True
+                    yield (
+                        b'--frame\r\n'
+                        b'Content-Type: image/jpeg\r\n\r\n' + frame.data + b'\r\n'
+                    )
+            # else: no-change sentinel — skip and re-poll
+
             await asyncio.sleep(EPSILON_DELAY)
-            
+
         except Exception as e:
             print(f"Error streaming camera {index}: {e}")
             await asyncio.sleep(EPSILON_DELAY)

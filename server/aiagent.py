@@ -10,9 +10,8 @@ from datetime import datetime
 from .common import Frame
 from pydantic import BaseModel
 from enum import Enum
-import cv2
 import threading
-from .cameraai import draw_pose
+from .aidraw import draw_engagement_overlay
 
 # class EngagementHistory:
 #     def __init__(self):
@@ -643,73 +642,58 @@ class AIAgent(threading.Thread):
         """
         return Vector2D(x=cv2_coord.x * resolution[1], y=cv2_coord.y * resolution[0])
 
-    def draw_engagement_result(self, *, frame: Frame, engagement_result: EngagementResult) -> None:
-        """
-        Draw the pose overlay and engagement result on the frame.
+    def build_engagement_snapshot(
+        self, *, engagement_result: EngagementResult, settings: dict,
+    ) -> dict:
+        """Return a plain-dict snapshot of everything the worker needs to
+        draw the AI overlay for this engagement result.
 
-        This is the single place where AI-related overlays are drawn on the
-        AI slot frame. It first renders the pose organs (draw_pose) and then
-        draws the engagement status rectangle and text on top.
+        Produced in the main process and sent to the worker via the
+        ``ai_result_pipe``.  All values are JSON-friendly so they survive
+        ``multiprocessing`` pickling.
+        """
+        ai_setup = settings.get("aiSetup", {}) if isinstance(settings, dict) else {}
+        try:
+            draw_ai_stats = bool(ai_setup.get("drawAiStats", True))
+        except Exception:
+            draw_ai_stats = True
+        with self._engagement_state_lock:
+            engagement_counter = len(self._engagement_history)
+        return {
+            "status_value": engagement_result.status.value,
+            "engagement_counter": engagement_counter,
+            "fps": float(engagement_result.fps),
+            "draw_ai_stats": draw_ai_stats,
+            # The ai_setup snapshot is small and needed for organ rendering
+            # thresholds / multipliers; shipping it keeps the worker free of
+            # any dependency on settingscontroller.
+            "ai_setup": ai_setup if isinstance(ai_setup, dict) else {},
+        }
+
+    def draw_engagement_result(self, *, frame: Frame, engagement_result: EngagementResult) -> None:
+        """Legacy shim that renders the engagement overlay in-process.
+
+        The new architecture draws the overlay inside the camera worker
+        (see :func:`server.aidraw.draw_engagement_overlay`).  This method
+        is kept so external callers / tests continue to work.
         """
         try:
             settings = get_settings_sync()
-            ai_setup = settings.get("aiSetup", {})
-            # get the parameter drawAiStats from the ai setup
-            draw_ai_stats = ai_setup.get("drawAiStats", True)
-            if not draw_ai_stats:
-                return
-            # draw the pose overlay directly to frame.image
-            if frame.pose:
-                draw_pose(image=frame.image, pose=frame.pose, ai_setup=ai_setup, copy_image=False)
+        except Exception:
+            settings = {}
+        snapshot = self.build_engagement_snapshot(
+            engagement_result=engagement_result,
+            settings=settings if isinstance(settings, dict) else {},
+        )
+        try:
+            draw_engagement_overlay(
+                image=frame.image,
+                status_value=snapshot["status_value"],
+                engagement_counter=snapshot["engagement_counter"],
+                fps=snapshot["fps"],
+                pose=frame.pose,
+                ai_setup=snapshot["ai_setup"],
+                draw_ai_stats=snapshot["draw_ai_stats"],
+            )
         except Exception as e:
-            print(f"Error drawing pose overlay: {e}")
-
-        text_color = (0, 0, 0)
-        color = (240, 255, 240)
-        text_background = (255, 255, 255)
-        match engagement_result.status:
-            case EngagementStatus.WAITING_TO_START:
-                color = (128, 128, 128)
-            case EngagementStatus.FPS_CONDITION_NOT_SATISFIED:
-                color = (0, 128, 0)
-            case EngagementStatus.NOT_ENGAGING:
-                color = (0, 255, 0)
-            case EngagementStatus.ARMING:
-                # text_color = (0, 128, 255)
-                color = (0, 192, 255)
-            case EngagementStatus.DISENGAGING:
-                # text_color = (255, 128, 0)
-                color = (0, 192, 255)
-            case EngagementStatus.ENGAGING:
-                # text_color = (0, 0, 255)
-                color = (0, 0, 255)
-                text_background = color
-            case EngagementStatus.EXIT_STRATEGY_UNDER_EXECUTION:
-                color = (255, 0, 128)
-        # draw rectangle around the frame.image
-        scale = max(frame.image.shape[1], 1) / 1280
-        cv2.rectangle(frame.image, (0, 0), (int(450 * scale), int(140 * scale)), text_background, -1)
-        cv2.rectangle(frame.image, (0, 0), (frame.image.shape[1], frame.image.shape[0]), color, int(20 * scale))
-        # draw text on the frame.image
-        status_str = f'Status: {engagement_result.status.value}'
-        cv2.putText(frame.image, status_str, (int(20 * scale), int(40 * scale)), cv2.FONT_HERSHEY_SIMPLEX, scale, text_color, 1)
-        # draw engagement counter
-        with self._engagement_state_lock:
-            engagement_counter = len(self._engagement_history)
-        engagement_counter_str = f'Engagement Counter: {engagement_counter}'
-        cv2.putText(frame.image, engagement_counter_str, (int(20 * scale), int(80 * scale)), cv2.FONT_HERSHEY_SIMPLEX, scale, text_color, 1)
-        # draw fps
-        fps_str = f'FPS: {engagement_result.fps:.2f}'
-        cv2.putText(frame.image, fps_str, (int(20 * scale), int(120 * scale)), cv2.FONT_HERSHEY_SIMPLEX, scale, text_color, 1)
-
-        # cv2.rectangle(frame.image, (0, 0), (450, 140), text_background, -1)
-        # cv2.rectangle(frame.image, (0, 0), (frame.image.shape[1], frame.image.shape[0]), color, 20)
-        # # draw text on the frame.image
-        # status_str = f'Status: {engagement_result.status.value}'
-        # cv2.putText(frame.image, status_str, (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, text_color, 2)
-        # # draw engagement counter
-        # engagement_counter_str = f'Engagement Counter: {len(self._engagement_history)}'
-        # cv2.putText(frame.image, engagement_counter_str, (20, 80), cv2.FONT_HERSHEY_SIMPLEX, 1, text_color, 2)
-        # # draw fps
-        # fps_str = f'FPS: {engagement_result.fps:.2f}'
-        # cv2.putText(frame.image, fps_str, (20, 120), cv2.FONT_HERSHEY_SIMPLEX, 1, text_color, 2)
+            print(f"Error drawing engagement overlay: {e}")
