@@ -430,8 +430,19 @@ const ManualControl = () => {
                     console.error('Failed to update reticle settings:', camErr);
                 }
                 
-                // 5. Restart video stream with new settings
-                setStreamUrl(buildStreamUrl(tempCameraSettings));
+                // 5. Restart video stream with new settings.  Clear the
+                // URL first so React unmounts the existing <img> and then
+                // mounts a fresh one with the new URL — this forces a
+                // brand-new HTTP MJPEG connection (rather than letting
+                // the browser keep the previous decoded frame while the
+                // new stream warms up) and gives the server a chance to
+                // emit its "Loading, please wait a minute..." placeholder.
+                setStreamUrl(null);
+                setTimeout(() => {
+                    if (isMountedRef.current) {
+                        setStreamUrl(buildStreamUrl(tempCameraSettings));
+                    }
+                }, 0);
             } else {
                 console.error('Failed to save motor settings');
             }

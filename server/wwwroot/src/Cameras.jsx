@@ -308,6 +308,19 @@ const Cameras = () => {
         setActiveModalState(cameraCode);
         setOriginalStreamQuality(streamQuality);
         setOriginalDisplayMode(displayMode);
+        // Eagerly warm up the camera worker so the preview <img> below
+        // doesn't have to pay for process spawn + device open + first
+        // frame encode.  We fire a tiny stream request and abort it after
+        // ~50 ms — just long enough for the server to run
+        // Camera._ensure_active (which spawns the worker and opens the
+        // device).  Failures are silent on purpose: this is a best-effort
+        // latency hint, the real stream below still works without it.
+        try {
+            const controller = new AbortController();
+            const warmupUrl = `/api/cameras/stream/${encodeURIComponent(cameraCode)}?mode=0&quality=10&_warmup=${Date.now()}`;
+            fetch(warmupUrl, { signal: controller.signal }).catch(() => {});
+            setTimeout(() => { try { controller.abort(); } catch { /* noop */ } }, 50);
+        } catch { /* noop */ }
         // Enable preview and increment stream version
         setPreviewEnabledState(true);
         setStreamVersion(v => v + 1);

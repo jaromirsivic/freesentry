@@ -110,7 +110,8 @@ class CameraWorkerProcess(_mp_ctx.Process):
         import cv2
         from .cameradevice import create_camera_device
         from .cameraframetransport import JpegRingBuffer
-        from .aidraw import draw_engagement_overlay
+        from .aidraw import draw_engagement_overlay, draw_pose_overlay
+        from .cameraai import translate_raw_pose_to_pose_dict
 
         rings: dict[str, JpegRingBuffer] = {}
         for mode_key in ("raw", "masked", "ai"):
@@ -424,7 +425,26 @@ class CameraWorkerProcess(_mp_ctx.Process):
                     except (BrokenPipeError, OSError):
                         return
 
-                    # overlay engagement state using the latest result from main
+                    # Translate the *fresh* raw pose (same frame we're about to
+                    # draw on) into the dict form used by the overlay.  Using
+                    # the pose from this very frame avoids the 1-5 frame lag
+                    # that would happen if we waited for main to round-trip
+                    # its engagement snapshot back to us.
+                    ai_setup_for_draw = (
+                        global_settings.get("aiSetup") or {}
+                    ) if isinstance(global_settings, dict) else {}
+                    fresh_pose_dict: Any = None
+                    if raw_pose:
+                        try:
+                            fresh_pose_dict = translate_raw_pose_to_pose_dict(
+                                raw_pose=raw_pose, ai_setup=ai_setup_for_draw,
+                            )
+                        except Exception as exc:
+                            print(f"[Worker] pose translate error: {exc}")
+                            fresh_pose_dict = None
+
+                    # overlay engagement state using the latest result from main,
+                    # but always draw circles from the *fresh* pose of this frame.
                     if last_engagement is not None:
                         try:
                             draw_engagement_overlay(
@@ -432,12 +452,25 @@ class CameraWorkerProcess(_mp_ctx.Process):
                                 status_value=str(last_engagement.get("status_value", "not_engaging")),
                                 engagement_counter=int(last_engagement.get("engagement_counter", 0)),
                                 fps=float(last_engagement.get("fps", 0.0)),
-                                pose=last_engagement_pose,
-                                ai_setup=last_engagement.get("ai_setup", {}) or {},
+                                pose=fresh_pose_dict,
+                                ai_setup=ai_setup_for_draw,
                                 draw_ai_stats=bool(last_engagement.get("draw_ai_stats", True)),
                             )
                         except Exception as exc:
                             print(f"[Worker] overlay error: {exc}")
+                    elif fresh_pose_dict is not None:
+                        # Main hasn't produced an engagement snapshot yet (e.g.
+                        # the first AI frame after start-up).  Still show the
+                        # detected pose immediately so the user doesn't see a
+                        # "loading" pause.
+                        try:
+                            draw_pose_overlay(
+                                image=ai_frame,
+                                pose=fresh_pose_dict,
+                                ai_setup=ai_setup_for_draw,
+                            )
+                        except Exception as exc:
+                            print(f"[Worker] pose-only draw error: {exc}")
 
                     try:
                         ok, buf = cv2.imencode(

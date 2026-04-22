@@ -609,7 +609,7 @@ const Polygon = ({
 
             ctx.restore();
         }
-    }, [polygons, currentPolygon, imageLoaded, normalizedToCanvas, borderColor, fillColor, lineWidth, src, showReticle, reticleX, reticleY, reticleSize, reticleColor, reticleOutlineColor, mode, joystickStatic, joystickDynamic, joystickColor, joystickSize, joystickLineWidth, joystickLineColor1, joystickLineColor2, joystickLineMaxLength, containerSize, getJoystickReferenceDimension, zoom, zoomPanEnabled]);
+    }, [polygons, currentPolygon, imageLoaded, normalizedToCanvas, borderColor, fillColor, lineWidth, showReticle, reticleX, reticleY, reticleSize, reticleColor, reticleOutlineColor, mode, joystickStatic, joystickDynamic, joystickColor, joystickSize, joystickLineWidth, joystickLineColor1, joystickLineColor2, joystickLineMaxLength, containerSize, getJoystickReferenceDimension, zoom, zoomPanEnabled]);
 
     useEffect(() => {
         draw();
@@ -1321,6 +1321,7 @@ const Polygon = ({
                         alt=""
                         style={getImageStyle()}
                         onLoad={handleImageLoad}
+                        onError={handleImageLoad}
                         draggable={false}
                     />
                 )}

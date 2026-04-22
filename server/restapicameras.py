@@ -12,7 +12,7 @@ import asyncio
 import time
 
 from .camera import Camera
-from .common import EPSILON_DELAY
+from .common import EPSILON_DELAY, _make_loading_jpeg
 from . import settingscontroller
 from .context import get_master_controller
 from .settingserrors import SettingsError
@@ -395,6 +395,27 @@ async def generate_camera_frames(
         return
     expected_camera = cameras[index]
     stream_token = expected_camera.create_stream_token()
+    # Per-connection "last sequence handed to this browser".  Starts at 0
+    # on every new HTTP request, so a freshly-mounted <img> (mode switch
+    # + Apply, first page load, ...) never inherits a stale counter from
+    # a previous session.
+    last_seq_sent = 0
+    # Always emit the real "Loading, please wait a minute..." JPEG as the
+    # very first multipart part.  This guarantees that after a mode
+    # switch + Apply the browser immediately shows the Loading placeholder
+    # instead of sitting on the last decoded frame from the previous
+    # session until the worker publishes a new frame for the new mode.
+    try:
+        loading_bytes = _make_loading_jpeg()
+        if loading_bytes:
+            time_of_last_loading_sent = time.time()
+            last_sent_was_loading = True
+            yield (
+                b'--frame\r\n'
+                b'Content-Type: image/jpeg\r\n\r\n' + loading_bytes + b'\r\n'
+            )
+    except Exception as exc:
+        print(f"Error emitting initial Loading JPEG for camera {index}: {exc}")
     while True:
         try:
             now = time.time()
@@ -413,12 +434,14 @@ async def generate_camera_frames(
             #                             rate-limit to avoid flicker
             frame = camera.get_stream_frame(
                 mode=mode, stream_token=stream_token, quality=quality,
+                since_sequence=last_seq_sent,
             )
             if frame is None:
                 break
 
             if frame.valid and frame.data:
                 last_sent_was_loading = False
+                last_seq_sent = int(frame.sequence)
                 yield (
                     b'--frame\r\n'
                     b'Content-Type: image/jpeg\r\n\r\n' + frame.data + b'\r\n'

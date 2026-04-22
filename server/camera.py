@@ -82,10 +82,15 @@ class Camera(threading.Thread):
         self._last_access_time_ai: float = 0.0
         self._last_access_lock = threading.Lock()
 
-        # Sequence we've most recently handed to consumers (per mode).
-        self._last_seq_raw = 0
-        self._last_seq_masked = 0
-        self._last_seq_ai = 0
+        # NOTE: per-mode "last sequence handed out" used to live here as
+        # ``_last_seq_raw/masked/ai``.  That leaked state across HTTP
+        # connections — a newly-mounted ``<img>`` would inherit a stale
+        # ``since`` from an earlier session and sit on "no-change" until
+        # the worker produced a fresh frame (e.g. after a mode switch +
+        # Apply), leaving the browser blank or showing old pixels.  The
+        # counter now lives in ``generate_camera_frames`` (per HTTP
+        # connection) and is passed into ``get_stream_frame`` via
+        # ``since_sequence``.
 
         self._stream_id = 0
 
@@ -245,6 +250,16 @@ class Camera(threading.Thread):
                 self._last_access_time_raw = now
             else:
                 self._last_access_time_raw = now
+        # Push demand to the worker synchronously so the first stream
+        # request does not have to wait for the proxy thread's periodic
+        # update (which competes with _process_pose / AIAgent.engage).
+        mc = self._master_controller
+        controller = getattr(mc, "cameras_controller", None) if mc is not None else None
+        if controller is not None:
+            try:
+                controller.update_demand_from_camera(self)
+            except Exception:
+                pass
 
     def get_last_access_times(self) -> tuple[float, float, float]:
         with self._last_access_lock:
@@ -290,7 +305,12 @@ class Camera(threading.Thread):
                     threading.Thread.__init__(self)
                     self.daemon = True
                 self.start()
-                for _ in range(int(2 / EPSILON_DELAY)):
+                # Shortened spin-wait: if the worker legitimately needs
+                # more time to become active, the next get_stream_frame
+                # call drives another wait; meanwhile the HTTP generator
+                # immediately gets a Loading JPEG so the browser doesn't
+                # sit on a blank <img>.
+                for _ in range(int(0.5 / EPSILON_DELAY)):
                     if not self._is_stream_token_current(stream_token=stream_token):
                         return False
                     if self._active:
@@ -306,19 +326,33 @@ class Camera(threading.Thread):
     # Keep short so failed waits (worker idle) don't stall the relay.
     _WAIT_FOR_NEW_TIMEOUT = 0.030
 
-    def get_stream_frame(self, *, mode: int, stream_token: int, quality: int | None = None) -> JpegFrame | None:
+    def get_stream_frame(
+        self,
+        *,
+        mode: int,
+        stream_token: int,
+        quality: int | None = None,
+        since_sequence: int = 0,
+    ) -> JpegFrame | None:
         """Return the latest JPEG frame for *mode* captured by the shared
         worker.
+
+        *since_sequence* is the last sequence already handed to THIS HTTP
+        connection (kept in a local variable by the generator).  This
+        eliminates cross-connection state leaks: a freshly-mounted
+        browser ``<img>`` always passes ``since_sequence=0`` and will
+        receive the newest ring frame (or a Loading placeholder from
+        the HTTP generator) on its very first call, never a stale
+        "no-change" sentinel from an earlier connection.
 
         Three possible return shapes:
 
         * ``None`` — stream token is stale (camera switched or stopped);
           HTTP relay should break out of its yield loop.
         * ``JpegFrame(valid=True, data=<bytes>, ...)`` — a brand-new JPEG
-          whose sequence is strictly greater than the one we handed out
-          last.  The sequence may jump by more than 1 under back-pressure
-          — the ring is lossy newest-wins and intentionally drops stale
-          frames, which is what we want for a live stream.
+          whose ``sequence`` is strictly greater than *since_sequence*.
+          The relay updates its local ``last_seq`` from ``frame.sequence``
+          and yields the bytes.
         * ``JpegFrame(valid=False, data=<loading_bytes>, ...)`` — real
           "Loading..." placeholder: the worker hasn't produced any frame
           yet for this mode, or is producing for another camera because
@@ -346,13 +380,12 @@ class Camera(threading.Thread):
 
         if mode == 3:
             mode_key = "ai"
-            since = self._last_seq_ai
         elif mode == 1:
             mode_key = "masked"
-            since = self._last_seq_masked
         else:
             mode_key = "raw"
-            since = self._last_seq_raw
+
+        since = int(since_sequence) if since_sequence else 0
 
         data, ts, frame_mode, frame_camera_index, seq = controller.read_jpeg_for(
             camera=self, mode_key=mode_key, since_sequence=since,
@@ -388,17 +421,8 @@ class Camera(threading.Thread):
         if data is None:
             return self._no_change_frame(mode=mode)
 
-        # Case C: fresh frame.  Remember the sequence we handed out.  It
-        # may jump by more than 1 vs. the previous value — that's the
-        # lossy newest-wins behaviour of the ring doing its job under
-        # back-pressure, not a bug.
-        if mode == 3:
-            self._last_seq_ai = seq
-        elif mode == 1:
-            self._last_seq_masked = seq
-        else:
-            self._last_seq_raw = seq
-
+        # Case C: fresh frame.  The caller tracks its own ``last_seq``
+        # per-connection using the returned ``frame.sequence``.
         return JpegFrame(
             valid=True, data=data, time=ts, mode=frame_mode,
             sequence=seq, camera_index=frame_camera_index,
@@ -449,12 +473,14 @@ class Camera(threading.Thread):
                             print(f"Error sending camera settings for {self._camera_name}: {exc}")
                     self._mark_settings_applied(settings_version=version)
 
+                # Forward demand + quality to the worker BEFORE _process_pose
+                # so that a slow AIAgent.engage iteration can't delay the
+                # worker's reaction to a newly-requested mode (e.g. browser
+                # just opened a Raw stream).
+                controller.update_demand_from_camera(self)
+
                 # Pose samples (scope_camera drives the AI engagement loop).
                 self._process_pose(controller=controller)
-
-                # Tell the controller about our current demand + quality so
-                # it can aggregate and forward to the worker.
-                controller.update_demand_from_camera(self)
 
                 if not self._should_stay_alive():
                     break
@@ -475,6 +501,17 @@ class Camera(threading.Thread):
     # Pose / engagement
     # ------------------------------------------------------------------
     def _process_pose(self, *, controller) -> None:
+        """Consume raw-pose samples pushed by the camera worker and run the
+        engagement state machine here in the main process.
+
+        Note on pose drawing: the camera worker now translates its **own**
+        fresh ``raw_pose`` into a ``pose_dict`` in the same iteration it draws
+        on — the ``pose_dict`` we send back through ``ai_result_pipe`` below
+        is used only by :meth:`AIAgent.build_engagement_snapshot` (and for
+        diagnostics), **not** for drawing the organ circles.  That split
+        eliminates the 1-5 frame lag the circles used to have relative to
+        the underlying motion.
+        """
         if self._camera_code != "scope_camera":
             controller.drain_pose_for_non_ai(camera_index=self._index)
             return
@@ -487,6 +524,10 @@ class Camera(threading.Thread):
 
         msgs = controller.collect_pose_messages(camera_index=self._index)
         if not msgs:
+            # No pose messages queued by the worker — skip the entire
+            # placeholder-Frame / AIAgent.engage path so the proxy loop
+            # stays responsive (it needs to forward demand updates and
+            # settings).
             return
 
         # Always process the latest sample only (engagement is stateful and
