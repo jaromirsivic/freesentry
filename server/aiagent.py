@@ -360,18 +360,6 @@ class AIAgent(threading.Thread):
                     return True
         return False
 
-    def _get_fps(self, *, now: float) -> float:
-        """
-        Get the FPS from the immediate engagement history.
-        """
-        now_minus_2_seconds = now - 2
-        frames_during_last_2_seconds = 0
-        for i in range(len(self._immediate_engagement_history)-1, 0, -1):
-            if self._immediate_engagement_history[i].timestamp < now_minus_2_seconds:
-                break
-            frames_during_last_2_seconds += 1
-        return frames_during_last_2_seconds / 2
-
     def _get_organ_visible_duration(self, *, now: float, organ_must_be_visible_seconds: float) -> float:
         """
         Check if the organ is visible for the duration.
@@ -519,7 +507,7 @@ class AIAgent(threading.Thread):
             result.status = EngagementStatus.ARMING
             self._latest_status = EngagementStatus.ARMING
 
-    def engage(self, *, frame: Frame, settings: dict) -> EngagementResult:
+    def engage(self, *, frame: Frame, settings: dict, source_fps: float = 0.0) -> EngagementResult:
         """Compute the engagement result."""
         result = EngagementResult(
             timestamp=time.time(),
@@ -558,8 +546,8 @@ class AIAgent(threading.Thread):
             # Add to history (deque auto-evicts oldest)
             self._immediate_engagement_history.append(result)
 
-            # Compute FPS
-            result.fps = self._get_fps(now=now)
+            # FPS is measured worker-side and forwarded via pose message
+            result.fps = float(source_fps)
             result.fps_satisfied = result.fps >= result.min_fps_to_allow_engagement
 
             # Compute next status via state machine

@@ -575,6 +575,8 @@ class Camera(threading.Thread):
         frame_time = latest.get("time", time.time()) if isinstance(latest, dict) else time.time()
         image_width = int(latest.get("image_width", 0)) if isinstance(latest, dict) else 0
         image_height = int(latest.get("image_height", 0)) if isinstance(latest, dict) else 0
+        fps_info = latest.get("fps") if isinstance(latest, dict) else None
+        source_fps_ai = float((fps_info or {}).get("ai", 0.0))
 
         try:
             from .settingscontroller import get_settings_sync
@@ -607,7 +609,7 @@ class Camera(threading.Thread):
                 height = int(cam_settings.get("stretch_height") or cam_settings.get("height") or 480)
             placeholder = np.zeros((height, width, 3), dtype=np.uint8)
             frame = Frame(valid=True, image=placeholder, time=frame_time, pose=pose_dict)
-            engagement_result = ai_agent.engage(frame=frame, settings=settings)
+            engagement_result = ai_agent.engage(frame=frame, settings=settings, source_fps=source_fps_ai)
             snapshot = ai_agent.build_engagement_snapshot(
                 engagement_result=engagement_result,
                 settings=settings if isinstance(settings, dict) else {},

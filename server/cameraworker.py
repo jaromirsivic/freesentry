@@ -27,6 +27,7 @@ identical across Linux, macOS, and Windows.
 from __future__ import annotations
 
 import atexit
+import collections
 import multiprocessing
 import threading
 import time
@@ -49,6 +50,31 @@ MODE_RAW = 0
 MODE_MASKED = 1
 MODE_AI = 3
 MODE_KEY_BY_NUM = {MODE_RAW: "raw", MODE_MASKED: "masked", MODE_AI: "ai"}
+
+
+class RollingFps:
+    """Sliding-window FPS counter (default window: 2 s)."""
+
+    __slots__ = ("_window", "_ts")
+
+    def __init__(self, window: float = 2.0) -> None:
+        self._window = window
+        self._ts: collections.deque[float] = collections.deque()
+
+    def tick(self, now: float) -> None:
+        self._ts.append(now)
+        cutoff = now - self._window
+        while self._ts and self._ts[0] < cutoff:
+            self._ts.popleft()
+
+    def value(self, now: float) -> float:
+        cutoff = now - self._window
+        while self._ts and self._ts[0] < cutoff:
+            self._ts.popleft()
+        return len(self._ts) / self._window
+
+    def reset(self) -> None:
+        self._ts.clear()
 
 
 class CameraWorkerProcess(_mp_ctx.Process):
@@ -151,6 +177,20 @@ class CameraWorkerProcess(_mp_ctx.Process):
         last_engagement: dict | None = None
         last_engagement_pose: Any = None
 
+        # --- FPS measurement (producer-side, 2 s sliding window) ---------
+        fps_capture = RollingFps()
+        fps_raw = RollingFps()
+        fps_masked = RollingFps()
+        fps_ai = RollingFps()
+
+        def _fps_snapshot(now: float) -> dict:
+            return {
+                "capture": fps_capture.value(now),
+                "raw": fps_raw.value(now),
+                "masked": fps_masked.value(now),
+                "ai": fps_ai.value(now),
+            }
+
         # --- heartbeat timers --------------------------------------------
         last_heartbeat_recv = time.monotonic()
         idle_logged = False
@@ -201,6 +241,10 @@ class CameraWorkerProcess(_mp_ctx.Process):
             active_camera_name = ""
             active_camera_type = ""
             active_index = -1
+            fps_capture.reset()
+            fps_raw.reset()
+            fps_masked.reset()
+            fps_ai.reset()
 
         def _cleanup() -> None:
             _close_device()
@@ -359,6 +403,9 @@ class CameraWorkerProcess(_mp_ctx.Process):
                         continue
                     continue
 
+                now_ts = time.time()
+                fps_capture.tick(now_ts)
+
                 # --- 8. flip ---
                 fh = bool(camera_settings.get("flip_horizontal", False))
                 fv = bool(camera_settings.get("flip_vertical", False))
@@ -381,8 +428,6 @@ class CameraWorkerProcess(_mp_ctx.Process):
                 # --- 10. crop and resize ---
                 image = _crop_and_resize(image, camera_settings)
 
-                now_ts = time.time()
-
                 # --- 11. encode raw ---
                 if demand_raw:
                     try:
@@ -399,6 +444,7 @@ class CameraWorkerProcess(_mp_ctx.Process):
                                 camera_index=active_index,
                                 sequence=seq_raw,
                             )
+                            fps_raw.tick(now_ts)
                     except Exception as exc:
                         print(f"[Worker] JPEG encode raw error: {exc}")
 
@@ -426,6 +472,7 @@ class CameraWorkerProcess(_mp_ctx.Process):
                                 camera_index=active_index,
                                 sequence=seq_masked,
                             )
+                            fps_masked.tick(now_ts)
                     except Exception as exc:
                         print(f"[Worker] JPEG encode masked error: {exc}")
 
@@ -451,6 +498,7 @@ class CameraWorkerProcess(_mp_ctx.Process):
                                 "time": now_ts,
                                 "image_width": int(ai_w),
                                 "image_height": int(ai_h),
+                                "fps": _fps_snapshot(now_ts),
                             })
                     except (BrokenPipeError, OSError):
                         return
@@ -481,7 +529,7 @@ class CameraWorkerProcess(_mp_ctx.Process):
                                 image=ai_frame,
                                 status_value=str(last_engagement.get("status_value", "not_engaging")),
                                 engagement_counter=int(last_engagement.get("engagement_counter", 0)),
-                                fps=float(last_engagement.get("fps", 0.0)),
+                                fps=fps_ai.value(now_ts),
                                 pose=fresh_pose_dict,
                                 ai_setup=ai_setup_for_draw,
                                 draw_ai_stats=bool(last_engagement.get("draw_ai_stats", True)),
@@ -516,6 +564,7 @@ class CameraWorkerProcess(_mp_ctx.Process):
                                 camera_index=active_index,
                                 sequence=seq_ai,
                             )
+                            fps_ai.tick(now_ts)
                     except Exception as exc:
                         print(f"[Worker] JPEG encode ai error: {exc}")
 

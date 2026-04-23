@@ -25,6 +25,7 @@ Untitled *
 *.FCStd
 submoamoa/
 /server/temp
+discussion.md
 
 # Virtual environments
 .venv
