@@ -4,6 +4,7 @@ import ModalWindow from './components/ModalWindow';
 import Switch from './components/Switch';
 import ComboBox from './components/ComboBox';
 import StaticText from './components/StaticText';
+import Button from './components/Button';
 import HorizontalSeparator from './components/HorizontalSeparator';
 import Joystick1D from './components/Joystick1D';
 import Timer from './components/Timer';
@@ -937,24 +938,16 @@ const ManualControl = () => {
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                             <span style={{ width: '150px', flexShrink: 0 }} />
-                            <button
-                                type="button"
+                            <Button
+                                label={isResetting ? 'Resetting...' : 'Reset AI Engagements'}
                                 onClick={handleResetAiEngagements}
                                 disabled={isResetting || isSaving}
+                                color="var(--red_secondary)"
                                 style={{
                                     padding: '0.625rem 1rem',
-                                    backgroundColor: '#dc2626',
-                                    border: '1px solid #b91c1c',
-                                    borderRadius: '0.375rem',
-                                    color: '#ffffff',
-                                    fontWeight: 600,
-                                    cursor: isResetting || isSaving ? 'not-allowed' : 'pointer',
-                                    opacity: isResetting || isSaving ? 0.7 : 1,
-                                    transition: 'opacity 0.2s ease, background-color 0.2s ease'
+                                    width: 'auto'
                                 }}
-                            >
-                                {isResetting ? 'Resetting...' : 'Reset AI Engagements'}
-                            </button>
+                            />
                         </div>
                     </div>
 
