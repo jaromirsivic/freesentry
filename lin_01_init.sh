@@ -53,11 +53,17 @@ uvicorn server.main:app --app-dir /home/freesentry/freesentry --host 0.0.0.0 --p
 sudo chmod +x /home/freesentry/freesentry/lin_01_start.sh
 sudo chown freesentry:freesentry /home/freesentry/freesentry/lin_01_start.sh
 
-echo "add freesentry to crontab"
-sudo su
-crontab -e
-@reboot /home/freesentry/freesentry/rpi_01_start.sh &
-#{ sudo crontab -l -u root; echo '@reboot /home/freesentry/freesentry/rpi_01_start.sh &'; } | sudo crontab -u root -
+# add autorun script
+echo -e "[Unit]\nDescription=FreeSentry Uvicorn service\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=simple\nUser=freesentry\nGroup=freesentry\nWorkingDirectory=/home/freesentry/freesentry\nExecStart=/bin/bash -lc \"source .venv/bin/activate && uvicorn server.main:app --workers 1 --limit-concurrency 128 --host 0.0.0.0 --port 80\"\nRestart=always\nRestartSec=5\n\n[Install]\nWantedBy=multi-user.target" | sudo tee /etc/systemd/system/freesentry.service
+sudo systemctl daemon-reload
+sudo systemctl enable freesentry.service
+sudo systemctl start freesentry.service
+
+# echo "add freesentry to crontab"
+# sudo su
+# crontab -e
+# @reboot /home/freesentry/freesentry/rpi_01_start.sh &
+# #{ sudo crontab -l -u root; echo '@reboot /home/freesentry/freesentry/rpi_01_start.sh &'; } | sudo crontab -u root -
 sudo reboot
 
 # start freesentry server
@@ -65,6 +71,8 @@ echo "start freesentry server"
 cd /home/freesentry/freesentry
 source .venv/bin/activate
 uvicorn server.main:app --app-dir /home/freesentry/freesentry --host 0.0.0.0 --port 80
+
+
 
 # create image of sd card:
 #wget https://raw.githubusercontent.com/Drewsif/PiShrink/master/pishrink.sh

@@ -1,0 +1,16 @@
+[Unit]
+Description=FreeSentry Uvicorn service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=freesentry
+Group=freesentry
+WorkingDirectory=/home/freesentry/freesentry
+ExecStart=/bin/bash -lc "source .venv/bin/activate && uvicorn server.main:app --workers 1 --limit-concurrency 128 --host 0.0.0.0 --port 80"
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
