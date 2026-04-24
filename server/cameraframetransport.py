@@ -251,6 +251,46 @@ class JpegRingBuffer:
         except Exception:
             return False
 
+    def reset(self) -> None:
+        """Wipe every slot header and reset ``latest_idx`` so the next
+        :meth:`read_latest` call returns the "empty" sentinel until a
+        new frame is published.
+
+        Caller contract: no concurrent writer on this ring.  Concurrent
+        readers are safe; they simply observe the empty state (a reader
+        that picked up the old ``latest_idx`` just before the reset
+        either finds the slot's header already zeroed, or -- if it won
+        the slot lock first -- returns its frame one last time and the
+        next read is clean).
+
+        Ordering:
+
+        1. Per-slot header wipe under ``slot_locks[i]`` -- after this,
+           ``read_latest`` short-circuits at the ``data_len == 0 or
+           sequence == 0`` check regardless of which slot
+           ``latest_idx`` still points at.
+        2. ``latest_idx`` reset to 0 under ``index_lock``, so the next
+           writer deterministically lands in slot 1 (``(0 + 1) % 3``).
+        3. ``new_frame_event.clear()`` so a pending
+           :meth:`wait_for_new` blocks instead of being woken by a
+           lingering ``set()`` from the previous session.
+
+        Only the ``JPEG_HEADER_SIZE`` prefix of each slot is touched;
+        the (up to 2 MiB) payload area is left as-is because readers
+        never look past ``data_len``.
+        """
+        zero_header = struct.pack(JPEG_HEADER_FORMAT, 0, 0.0, 0, -1, 0)
+        for i in range(RING_SLOTS):
+            offset = i * self._slot_size
+            with self._slot_locks[i]:
+                self._shm.buf[offset:offset + JPEG_HEADER_SIZE] = zero_header
+        with self._index_lock:
+            self._shm.buf[self._total_size - 4:self._total_size] = struct.pack("<I", 0)
+        try:
+            self._new_frame_event.clear()
+        except Exception:
+            pass
+
     def close(self) -> None:
         try:
             self._shm.close()

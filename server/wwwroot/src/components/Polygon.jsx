@@ -76,6 +76,10 @@ const Polygon = ({
     const pinchStartZoomRef = useRef(1);
     const pinchCenterRef = useRef({ x: 0, y: 0 });
     const pinchStartZoomCenterRef = useRef({ x: 0.5, y: 0.5 }); // Store initial zoomCenter at pinch start
+    // Image-space point (normalized 0..1) under the pinch midpoint at pinch start.
+    // We keep this point anchored under the current pinch midpoint throughout the gesture,
+    // which yields the correct combined zoom+pan transform regardless of start zoom/center.
+    const pinchStartImagePointRef = useRef({ x: 0.5, y: 0.5 });
 
     // Middle-button pan state
     const [isPanning, setIsPanning] = useState(false);
@@ -609,7 +613,7 @@ const Polygon = ({
 
             ctx.restore();
         }
-    }, [polygons, currentPolygon, imageLoaded, normalizedToCanvas, borderColor, fillColor, lineWidth, showReticle, reticleX, reticleY, reticleSize, reticleColor, reticleOutlineColor, mode, joystickStatic, joystickDynamic, joystickColor, joystickSize, joystickLineWidth, joystickLineColor1, joystickLineColor2, joystickLineMaxLength, containerSize, getJoystickReferenceDimension, zoom, zoomPanEnabled]);
+    }, [polygons, currentPolygon, imageLoaded, normalizedToCanvas, borderColor, fillColor, lineWidth, src, showReticle, reticleX, reticleY, reticleSize, reticleColor, reticleOutlineColor, mode, joystickStatic, joystickDynamic, joystickColor, joystickSize, joystickLineWidth, joystickLineColor1, joystickLineColor2, joystickLineMaxLength, containerSize, getJoystickReferenceDimension, zoom, zoomPanEnabled]);
 
     useEffect(() => {
         draw();
@@ -652,6 +656,9 @@ const Polygon = ({
     const handlePinchTouchStart = useCallback((e) => {
         if (!zoomPanEnabled) return;
         if (e.touches.length !== 2) return;
+        if (!containerRef.current) return;
+
+        const rect = containerRef.current.getBoundingClientRect();
 
         // Calculate initial distance between two fingers
         const touch1 = e.touches[0];
@@ -660,12 +667,21 @@ const Polygon = ({
         const dy = touch2.clientY - touch1.clientY;
         const distance = Math.sqrt(dx * dx + dy * dy);
 
+        const midClientX = (touch1.clientX + touch2.clientX) / 2;
+        const midClientY = (touch1.clientY + touch2.clientY) / 2;
+
         pinchStartDistanceRef.current = distance;
         pinchStartZoomRef.current = zoom;
         pinchStartZoomCenterRef.current = { ...zoomCenter }; // Store current zoom center
-        pinchCenterRef.current = {
-            x: (touch1.clientX + touch2.clientX) / 2,
-            y: (touch1.clientY + touch2.clientY) / 2
+        pinchCenterRef.current = { x: midClientX, y: midClientY };
+
+        // Compute the image-space point that sits under the pinch midpoint at gesture start.
+        // Forward transform: screen = c + (image - c) * zoom  =>  image = c + (screen - c) / zoom
+        const s0x = (midClientX - rect.left) / rect.width;
+        const s0y = (midClientY - rect.top) / rect.height;
+        pinchStartImagePointRef.current = {
+            x: zoomCenter.x + (s0x - zoomCenter.x) / zoom,
+            y: zoomCenter.y + (s0y - zoomCenter.y) / zoom
         };
     }, [zoomPanEnabled, zoom, zoomCenter]);
 
@@ -690,25 +706,28 @@ const Polygon = ({
         const scale = distance / pinchStartDistanceRef.current;
         const newZoom = Math.max(1, Math.min(10, pinchStartZoomRef.current * scale));
 
-        // Calculate current center of pinch (midpoint between fingers)
-        const currentCenterX = (touch1.clientX + touch2.clientX) / 2;
-        const currentCenterY = (touch1.clientY + touch2.clientY) / 2;
+        // Current pinch midpoint in normalized container coordinates
+        const s1x = ((touch1.clientX + touch2.clientX) / 2 - rect.left) / rect.width;
+        const s1y = ((touch1.clientY + touch2.clientY) / 2 - rect.top) / rect.height;
 
-        // Calculate how much the pinch center has moved in screen pixels
-        const screenDeltaX = currentCenterX - pinchCenterRef.current.x;
-        const screenDeltaY = currentCenterY - pinchCenterRef.current.y;
-
-        // Convert screen delta to normalized delta.
-        // The transform is: screen = zoomCenter + (image - zoomCenter) * zoom
-        // Solving for the new zoomCenter that keeps the same image point under the pinch center:
-        //   c' = c - Δscreen / (zoom - 1)
-        const normalizedDeltaX = (screenDeltaX / rect.width) / (newZoom - 1);
-        const normalizedDeltaY = (screenDeltaY / rect.height) / (newZoom - 1);
-
-        // Calculate new zoom center by subtracting the delta from the start position
-        // Subtract because moving fingers right should move the view left (pan right)
-        let newZoomCenterX = pinchStartZoomCenterRef.current.x - normalizedDeltaX;
-        let newZoomCenterY = pinchStartZoomCenterRef.current.y - normalizedDeltaY;
+        // Solve for the new zoomCenter c1 that anchors the initially-pinched image point i0
+        // to the current pinch midpoint s1 at the new zoom z1:
+        //   s1 = c1 + (i0 - c1) * z1   =>   c1 = (s1 - i0 * z1) / (1 - z1)
+        // NOTE: using (s1 - s0) / (z1 - 1) is only correct when z0 == z1 (pure pan).
+        // During a real pinch both zoom and midpoint change, so that shortcut drifts the
+        // anchor — very visible on the 2nd pinch when pinchStart zoomCenter is no longer (0.5, 0.5).
+        let newZoomCenterX;
+        let newZoomCenterY;
+        if (newZoom === 1) {
+            // At zoom 1 the zoom center is visually irrelevant; keep the previous value so
+            // a subsequent increase in zoom during the same gesture continues smoothly.
+            newZoomCenterX = pinchStartZoomCenterRef.current.x;
+            newZoomCenterY = pinchStartZoomCenterRef.current.y;
+        } else {
+            const { x: i0x, y: i0y } = pinchStartImagePointRef.current;
+            newZoomCenterX = (s1x - i0x * newZoom) / (1 - newZoom);
+            newZoomCenterY = (s1y - i0y * newZoom) / (1 - newZoom);
+        }
 
         // Clamp zoom center to valid range [0, 1] to allow panning to image edges
         newZoomCenterX = Math.max(0, Math.min(1, newZoomCenterX));
@@ -1316,25 +1335,11 @@ const Polygon = ({
             >
                 {src && (
                     <img
-                        // Key on `src` forces React to unmount the old
-                        // <img> and mount a new one whenever the URL
-                        // changes.  This is critical for MJPEG streams:
-                        // Chrome (and some other browsers) keep the
-                        // previous multipart/x-mixed-replace connection
-                        // alive when the `src` attribute is simply
-                        // reassigned, which causes ~10s stalls when the
-                        // new stream URL is requested (e.g. Manual
-                        // Control Save after a mode switch).  Forcing a
-                        // full DOM remount releases the old connection
-                        // immediately and the browser opens a fresh one
-                        // for the new URL.
-                        key={src}
                         ref={imageRef}
                         src={src}
                         alt=""
                         style={getImageStyle()}
                         onLoad={handleImageLoad}
-                        onError={handleImageLoad}
                         draggable={false}
                     />
                 )}

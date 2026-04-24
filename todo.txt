@@ -4,3 +4,8 @@ Update camera settings to get_settings and set_settings
 Change No camera detected to wait
 Switch CUDA, CPU
 reset ai counters
+polygon movement is not working
+camera worker for each camera
+disable enhanced AI ncnn models
+draw cpu and ram into chart
+run server on multiple ports

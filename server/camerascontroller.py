@@ -73,6 +73,16 @@ class CamerasController:
         self._pose_lock = threading.Lock()
         self._pose_by_camera: dict[int, list[dict]] = {}
 
+        # --- watchdog status cache (populated by worker heartbeats) ---
+        # The worker's dedicated heartbeat thread sends a status snapshot
+        # every ~1 s piggybacked onto the heartbeat message (device
+        # state, capture health, AI model state, demand_seen, ring
+        # sequences).  The HTTP relay's stall watchdog reads the latest
+        # snapshot via ``get_worker_status`` to classify stalls.
+        self._worker_status_lock = threading.Lock()
+        self._last_worker_status: dict | None = None
+        self._last_worker_status_mono: float = 0.0
+
         # --- background threads ---
         self._io_thread: threading.Thread | None = None
         self._io_stop = threading.Event()
@@ -251,6 +261,12 @@ class CamerasController:
         self._active_camera = None
         with self._pose_lock:
             self._pose_by_camera.clear()
+        # Drop any cached worker status so the stall watchdog does not
+        # classify stalls against a now-stale snapshot from a worker
+        # that no longer exists.
+        with self._worker_status_lock:
+            self._last_worker_status = None
+            self._last_worker_status_mono = 0.0
 
     def _stop_worker_and_io(self) -> None:
         with self._worker_lock:
@@ -312,6 +328,11 @@ class CamerasController:
                     mtype = msg.get("type")
                     if mtype == "heartbeat":
                         self._last_worker_heartbeat = now_mono
+                        status = msg.get("status")
+                        if isinstance(status, dict):
+                            with self._worker_status_lock:
+                                self._last_worker_status = status
+                                self._last_worker_status_mono = now_mono
                         continue
                     if mtype == "pose":
                         cam_idx = int(msg.get("camera_index", -1))
@@ -513,6 +534,23 @@ class CamerasController:
             return transport.wait_for_new_jpeg(mode_key=mode_key, timeout=timeout)
         except Exception:
             return False
+
+    def get_worker_status(self) -> tuple[dict | None, float]:
+        """Return ``(latest_worker_status_snapshot, age_in_seconds)``.
+
+        The stall watchdog in the HTTP relay calls this to classify
+        stalls.  The snapshot itself is the dict emitted by the worker's
+        heartbeat thread (see :mod:`server.cameraworker`); age is the
+        monotonic-time delta since the snapshot arrived and is
+        ``math.inf`` if no status has ever been received (or the cache
+        was just cleared after a worker restart).
+        """
+        with self._worker_status_lock:
+            status = self._last_worker_status
+            stamp = self._last_worker_status_mono
+        if status is None or stamp == 0.0:
+            return None, float("inf")
+        return status, max(0.0, time.monotonic() - stamp)
 
     def collect_pose_messages(self, *, camera_index: int) -> list[dict]:
         with self._pose_lock:

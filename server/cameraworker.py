@@ -77,6 +77,36 @@ class RollingFps:
         self._ts.clear()
 
 
+def _should_reset_rings(*, device: Any, ring_write_in_progress: bool) -> bool:
+    """Return True iff the worker is safely idle enough for the
+    ``_reset_rings_if_idle`` helper in :meth:`CameraWorkerProcess.run`
+    to wipe the shared-memory ring buffers.
+
+    The predicate lives at module scope (rather than as a closure
+    inside ``run``) so unit tests can exercise it directly without
+    spawning a subprocess.  See ``tests/test_ring_reset.py``.
+
+    Two conditions must hold:
+
+    * ``device is None`` -- the capture device has actually been
+      released via ``_close_device``.  If a device handle is still
+      live, a later write from the same iteration of the main loop
+      could race the reset we're about to do.
+    * ``ring_write_in_progress is False`` -- no ``rings[...].write``
+      call is currently in flight.  The main loop flips this flag
+      around every write site so the flag is a conservative witness
+      of writer quiescence.
+
+    Either being false means the worker is "busy" and the reset must
+    be skipped.
+    """
+    if device is not None:
+        return False
+    if ring_write_in_progress:
+        return False
+    return True
+
+
 class CameraWorkerProcess(_mp_ctx.Process):
     """Singleton camera worker.
 
@@ -177,6 +207,19 @@ class CameraWorkerProcess(_mp_ctx.Process):
         last_engagement: dict | None = None
         last_engagement_pose: Any = None
 
+        # --- ring-write witness (for _reset_rings_if_idle guard) ---------
+        # Toggled True/False in a try/finally around each
+        # ``rings[...].write(...)`` call below so the reset helper in
+        # ``_apply_select`` can refuse to touch the shared-memory ring
+        # buffers while a publish is in flight.  In the current design
+        # the main loop is single-threaded and the command-drain branch
+        # where ``_apply_select`` runs is mutually exclusive with the
+        # capture/encode branch where the writes happen, so this flag
+        # is essentially a runtime assertion -- but it is cheap and
+        # keeps the invariant robust against future refactors that
+        # might move encoding into a helper thread.
+        ring_write_in_progress = False
+
         # --- FPS measurement (producer-side, 2 s sliding window) ---------
         fps_capture = RollingFps()
         fps_raw = RollingFps()
@@ -201,6 +244,28 @@ class CameraWorkerProcess(_mp_ctx.Process):
         # not thread-safe.
         pose_send_lock = threading.Lock()
 
+        # --- watchdog status snapshot ------------------------------------
+        # Shared between the capture loop (writer) and the heartbeat
+        # thread (reader).  The heartbeat thread piggybacks this snapshot
+        # onto the existing 1 Hz heartbeat message so main can classify
+        # stalls without needing a new side-channel.  Writers must hold
+        # ``status_lock`` for any update; the heartbeat reader only holds
+        # it long enough to copy the dict.
+        status_lock = threading.Lock()
+        status: dict = {
+            "active_camera_index": -1,
+            "active_camera_code": None,
+            "select_applied_mono": 0.0,
+            "device_state": "closed",
+            "last_capture_ok_mono": 0.0,
+            "last_capture_fail_mono": 0.0,
+            "ai_inference_started_mono": 0.0,
+            "ai_inference_completed_mono": 0.0,
+            "ai_model_state": "not_loaded",
+            "demand_seen": {"raw": False, "masked": False, "ai": False},
+            "seq": {"raw": 0, "masked": 0, "ai": 0},
+        }
+
         # Dedicated heartbeat thread: keeps sending liveness pings to
         # main every ``HEARTBEAT_SEND_INTERVAL`` seconds even while the
         # main loop is blocked in a slow operation (e.g. the first YOLO
@@ -211,8 +276,17 @@ class CameraWorkerProcess(_mp_ctx.Process):
         def _heartbeat_thread_main() -> None:
             while not heartbeat_stop.is_set():
                 try:
+                    with status_lock:
+                        status_snapshot = dict(status)
+                        status_snapshot["demand_seen"] = dict(status["demand_seen"])
+                        status_snapshot["seq"] = dict(status["seq"])
+                    status_snapshot["heartbeat_mono"] = time.monotonic()
                     with pose_send_lock:
-                        self._pose_conn.send({"type": "heartbeat", "time": time.time()})
+                        self._pose_conn.send({
+                            "type": "heartbeat",
+                            "time": time.time(),
+                            "status": status_snapshot,
+                        })
                 except (BrokenPipeError, OSError, EOFError):
                     return
                 except Exception as exc:
@@ -228,6 +302,20 @@ class CameraWorkerProcess(_mp_ctx.Process):
         heartbeat_thread.start()
 
         def _close_device() -> None:
+            """Close the currently-open capture device and reset the
+            worker's "which camera is active" bookkeeping.
+
+            NOTE: this does NOT clear the shared-memory ring buffers.
+            The ring contents (last JPEG per mode + ``latest_idx``) are
+            left intact so a consumer that is still draining frames
+            after a ``release_camera`` does not crash on an unexpectedly
+            empty slot.  The actual "reset to initial state" happens at
+            the next ``_apply_select``, via ``_reset_rings_if_idle``,
+            when the guard (``device is None`` and no write in flight)
+            passes.  If the guard fails the reset is skipped and the
+            new session starts against a non-empty ring -- same as
+            today's behaviour, just never worse.
+            """
             nonlocal device, active_camera_index, active_camera_code
             nonlocal active_camera_name, active_camera_type, active_index
             if device is not None:
@@ -245,6 +333,54 @@ class CameraWorkerProcess(_mp_ctx.Process):
             fps_raw.reset()
             fps_masked.reset()
             fps_ai.reset()
+            with status_lock:
+                status["device_state"] = "closed"
+                status["active_camera_index"] = -1
+                status["active_camera_code"] = None
+                status["select_applied_mono"] = 0.0
+                status["seq"] = {"raw": 0, "masked": 0, "ai": 0}
+
+        def _reset_rings_if_idle() -> None:
+            """Wipe the shared-memory rings so the new camera session
+            starts clean -- but only when the worker is demonstrably
+            not publishing.
+
+            This is invoked from ``_apply_select`` right after
+            ``_close_device`` and before ``create_camera_device``, so
+            in normal flow both guard conditions hold trivially.  The
+            explicit check via :func:`_should_reset_rings` turns that
+            invariant into a runtime self-check: if anything ever
+            violates it (future refactor moving encoding onto a helper
+            thread, a bug in ``_close_device`` that leaves ``device``
+            non-None, ...) the reset is skipped with a diagnostic log
+            line and the select still proceeds.  We never block or
+            retry here.
+
+            Skipping the reset is safe: the worst-case outcome is that
+            the browser briefly sees the last JPEG of the previous
+            session on its first read -- exactly the status quo this
+            plan set out to fix, never worse.
+            """
+            if not _should_reset_rings(
+                device=device,
+                ring_write_in_progress=ring_write_in_progress,
+            ):
+                if device is not None:
+                    print(
+                        "[Worker] reset skipped: device is not None "
+                        "(invariant _close_device-before-reset violated)"
+                    )
+                else:
+                    print(
+                        "[Worker] reset skipped: ring_write_in_progress=True "
+                        "(a publish is in flight; refusing to race)"
+                    )
+                return
+            for ring in rings.values():
+                try:
+                    ring.reset()
+                except Exception as exc:
+                    print(f"[Worker] ring reset failed: {exc}")
 
         def _cleanup() -> None:
             _close_device()
@@ -266,6 +402,11 @@ class CameraWorkerProcess(_mp_ctx.Process):
             nonlocal seq_raw, seq_masked, seq_ai, ai_image_seq
             nonlocal last_engagement, last_engagement_pose
             _close_device()
+            # Wipe the shared-memory rings so the new session starts
+            # from an empty state instead of inheriting the last JPEG
+            # (and sequence numbers) of the previous session.  Guarded:
+            # no-op if anything suggests a publish is still in flight.
+            _reset_rings_if_idle()
             active_camera_type = msg.get("camera_type", "dummy")
             active_camera_index = int(msg.get("camera_index", -1))
             active_index = int(msg.get("index", active_camera_index))
@@ -280,6 +421,11 @@ class CameraWorkerProcess(_mp_ctx.Process):
             ai_image_seq = 0
             last_engagement = None
             last_engagement_pose = None
+            with status_lock:
+                status["device_state"] = "opening"
+                status["active_camera_index"] = active_index
+                status["active_camera_code"] = active_camera_code
+                status["seq"] = {"raw": 0, "masked": 0, "ai": 0}
             try:
                 device = create_camera_device(
                     camera_type=active_camera_type,
@@ -290,15 +436,23 @@ class CameraWorkerProcess(_mp_ctx.Process):
             except Exception as exc:
                 print(f"[Worker] create_camera_device failed ({active_camera_name}): {exc}")
                 device = None
+                with status_lock:
+                    status["device_state"] = "failed"
+                    status["active_camera_index"] = -1
                 return
             if device is None or not device.open():
                 print(f"[Worker] Failed to open camera {active_camera_name}")
                 _close_device()
+                with status_lock:
+                    status["device_state"] = "failed"
                 return
             try:
                 device.set_properties(camera_settings)
             except Exception as exc:
                 print(f"[Worker] set_properties error for {active_camera_name}: {exc}")
+            with status_lock:
+                status["device_state"] = "open"
+                status["select_applied_mono"] = time.monotonic()
 
         # ---------------- main loop --------------------------------------
         try:
@@ -328,6 +482,12 @@ class CameraWorkerProcess(_mp_ctx.Process):
                             jpeg_quality_raw = int(msg.get("jpeg_quality_raw", jpeg_quality_raw))
                             jpeg_quality_masked = int(msg.get("jpeg_quality_masked", jpeg_quality_masked))
                             jpeg_quality_ai = int(msg.get("jpeg_quality_ai", jpeg_quality_ai))
+                            with status_lock:
+                                status["demand_seen"] = {
+                                    "raw": demand_raw,
+                                    "masked": demand_masked,
+                                    "ai": demand_ai,
+                                }
                         elif cmd == "update_camera_settings":
                             camera_settings = dict(msg.get("settings") or {})
                             if device is not None:
@@ -389,6 +549,9 @@ class CameraWorkerProcess(_mp_ctx.Process):
                     valid, image = False, None
 
                 if not valid or image is None:
+                    with status_lock:
+                        status["last_capture_fail_mono"] = time.monotonic()
+                        status["device_state"] = "opening"
                     try:
                         device.close()
                     except Exception:
@@ -396,15 +559,23 @@ class CameraWorkerProcess(_mp_ctx.Process):
                     time.sleep(0.25)
                     try:
                         if device is None or not device.open():
+                            with status_lock:
+                                status["device_state"] = "failed"
                             time.sleep(0.75)
                             continue
                     except Exception:
+                        with status_lock:
+                            status["device_state"] = "failed"
                         time.sleep(0.75)
                         continue
+                    with status_lock:
+                        status["device_state"] = "open"
                     continue
 
                 now_ts = time.time()
                 fps_capture.tick(now_ts)
+                with status_lock:
+                    status["last_capture_ok_mono"] = time.monotonic()
 
                 # --- 8. flip ---
                 fh = bool(camera_settings.get("flip_horizontal", False))
@@ -437,14 +608,20 @@ class CameraWorkerProcess(_mp_ctx.Process):
                         )
                         if ok:
                             seq_raw += 1
-                            rings["raw"].write(
-                                data=bytes(buf),
-                                timestamp=now_ts,
-                                mode=MODE_RAW,
-                                camera_index=active_index,
-                                sequence=seq_raw,
-                            )
+                            ring_write_in_progress = True
+                            try:
+                                rings["raw"].write(
+                                    data=bytes(buf),
+                                    timestamp=now_ts,
+                                    mode=MODE_RAW,
+                                    camera_index=active_index,
+                                    sequence=seq_raw,
+                                )
+                            finally:
+                                ring_write_in_progress = False
                             fps_raw.tick(now_ts)
+                            with status_lock:
+                                status["seq"]["raw"] = seq_raw
                     except Exception as exc:
                         print(f"[Worker] JPEG encode raw error: {exc}")
 
@@ -465,24 +642,40 @@ class CameraWorkerProcess(_mp_ctx.Process):
                         )
                         if ok:
                             seq_masked += 1
-                            rings["masked"].write(
-                                data=bytes(buf),
-                                timestamp=time.time(),
-                                mode=MODE_MASKED,
-                                camera_index=active_index,
-                                sequence=seq_masked,
-                            )
+                            ring_write_in_progress = True
+                            try:
+                                rings["masked"].write(
+                                    data=bytes(buf),
+                                    timestamp=time.time(),
+                                    mode=MODE_MASKED,
+                                    camera_index=active_index,
+                                    sequence=seq_masked,
+                                )
+                            finally:
+                                ring_write_in_progress = False
                             fps_masked.tick(now_ts)
+                            with status_lock:
+                                status["seq"]["masked"] = seq_masked
                     except Exception as exc:
                         print(f"[Worker] JPEG encode masked error: {exc}")
 
                 # --- 13. AI pipeline ---
                 if demand_ai and image_masked is not None:
+                    with status_lock:
+                        status["ai_inference_started_mono"] = time.monotonic()
+                        if status["ai_model_state"] != "ready":
+                            status["ai_model_state"] = "loading"
                     try:
                         ai_frame, raw_pose = _run_ai_inference(image_masked, global_settings)
+                        with status_lock:
+                            status["ai_inference_completed_mono"] = time.monotonic()
+                            status["ai_model_state"] = "ready"
                     except Exception as exc:
                         print(f"[Worker] AI inference error: {exc}")
                         ai_frame, raw_pose = image_masked, None
+                        with status_lock:
+                            status["ai_inference_completed_mono"] = time.monotonic()
+                            status["ai_model_state"] = "failed"
 
                     # send raw pose to main (for engagement state machine)
                     ai_image_seq += 1
@@ -557,14 +750,20 @@ class CameraWorkerProcess(_mp_ctx.Process):
                         )
                         if ok:
                             seq_ai += 1
-                            rings["ai"].write(
-                                data=bytes(buf),
-                                timestamp=time.time(),
-                                mode=MODE_AI,
-                                camera_index=active_index,
-                                sequence=seq_ai,
-                            )
+                            ring_write_in_progress = True
+                            try:
+                                rings["ai"].write(
+                                    data=bytes(buf),
+                                    timestamp=time.time(),
+                                    mode=MODE_AI,
+                                    camera_index=active_index,
+                                    sequence=seq_ai,
+                                )
+                            finally:
+                                ring_write_in_progress = False
                             fps_ai.tick(now_ts)
+                            with status_lock:
+                                status["seq"]["ai"] = seq_ai
                     except Exception as exc:
                         print(f"[Worker] JPEG encode ai error: {exc}")
 

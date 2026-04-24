@@ -367,6 +367,143 @@ async def stop_camera(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ----------------------------------------------------------------------
+# MJPEG stream stall watchdog
+# ----------------------------------------------------------------------
+#
+# Tunables -- all in seconds.  Documented in the plan at
+# .cursor/plans/generic_stream_stall_watchdog_03468505.plan.md.
+#
+# * _WATCHDOG_STALL_GRACE: no action until the stream has been "not
+#   live" (Loading or no-change) for at least this long.
+# * _WATCHDOG_GENTLE_PERIOD: rate-limit on gentle-recovery invocations
+#   (re-touch demand + bump settings version).
+# * _WATCHDOG_HARD_THRESHOLD: escalate from gentle to hard recovery
+#   (deactivate + rotate stream token) at this stall age.
+# * _WATCHDOG_HARD_COOLDOWN: minimum gap between two hard-recovery
+#   invocations on the same connection, to avoid thrashing when the
+#   root cause is external (camera unplugged, worker crashed, etc.).
+_WATCHDOG_STALL_GRACE = 1.5
+_WATCHDOG_GENTLE_PERIOD = 2.01
+_WATCHDOG_HARD_THRESHOLD = 4.01
+_WATCHDOG_HARD_COOLDOWN = 7.01
+
+
+def _watchdog_worker_legitimately_not_ready(
+    *,
+    status: dict | None,
+    status_age: float,
+    mode: int,
+    camera_index: int,
+) -> bool:
+    """Return True when the worker reports a state that *legitimately*
+    explains why no frames are arriving (device still opening, YOLO
+    warming up, capture currently failing, select still propagating).
+
+    In those cases the watchdog should *not* take recovery action: the
+    stall is expected and the stream will resume on its own once the
+    worker finishes what it is doing.
+    """
+    if status is None or status_age > 3.0:
+        # No fresh status -> don't assume desync; give the worker more
+        # time.  (If the worker is truly dead the existing heartbeat-
+        # stale detector in CamerasController handles it.)
+        return True
+    if int(status.get("active_camera_index", -1)) != int(camera_index):
+        # Worker is not on our camera yet; select_camera is still
+        # propagating through the command pipe.
+        return True
+    device_state = status.get("device_state", "closed")
+    if device_state in ("closed", "opening", "failed"):
+        return True
+    now_mono = time.monotonic()
+    select_applied = float(status.get("select_applied_mono", 0.0) or 0.0)
+    if select_applied and (now_mono - select_applied) < 1.5:
+        # Device was just opened; give capture/encoding a moment to
+        # produce the first frames of the new camera.
+        return True
+    last_fail = float(status.get("last_capture_fail_mono", 0.0) or 0.0)
+    last_ok = float(status.get("last_capture_ok_mono", 0.0) or 0.0)
+    if last_fail and last_fail > last_ok and (now_mono - last_fail) < 2.0:
+        # Recent capture failure (USB hiccup or similar); worker is
+        # retrying on its own.
+        return True
+    if mode == 3:
+        started = float(status.get("ai_inference_started_mono", 0.0) or 0.0)
+        completed = float(status.get("ai_inference_completed_mono", 0.0) or 0.0)
+        if started > completed and (now_mono - started) > 0.5:
+            # AI inference has been blocked for >500 ms -- YOLO is
+            # loading / first-inference warmup.
+            return True
+        if status.get("ai_model_state") in ("not_loaded", "loading"):
+            return True
+    return False
+
+
+def _watchdog_gentle_recovery(*, camera: Camera, mode: int) -> None:
+    """Gentle stage: force the demand flags back through to the worker
+    and bump the camera-settings version so the proxy thread re-sends
+    ``update_camera_settings`` on its next iteration.  Idempotent and
+    cheap enough to invoke every ~1 s while a stall persists.
+    """
+    try:
+        camera._touch_access(mode=mode)
+    except Exception as exc:
+        print(f"[Watchdog] gentle recovery touch_access failed: {exc}")
+    try:
+        camera.settings = camera.settings  # bump _settings_version
+    except Exception as exc:
+        print(f"[Watchdog] gentle recovery settings bump failed: {exc}")
+
+
+def _watchdog_hard_recovery(
+    *,
+    master_controller: "MasterController",
+    camera: Camera,
+    mode: int,
+    last_seq_by_mode: dict[str, int],
+) -> int:
+    """Hard stage: tear down the camera's proxy-thread and current
+    worker selection, then rotate the stream token in place so the
+    generator loop can transparently resume on the same HTTP
+    connection.  The next ``get_stream_frame`` call will re-enter
+    ``_ensure_active`` and re-issue ``select_camera`` to the worker.
+
+    Returns the freshly-created stream token that the generator must
+    start using.
+    """
+    print(
+        f"[Watchdog] hard recovery on camera index={camera.index} "
+        f"camera_code={camera.camera_code} mode={mode}"
+    )
+    # Pre-touch the REQUESTED mode BEFORE we tear down the proxy
+    # thread.  This is what prevents the recovery itself from
+    # re-triggering the update_demand(masked=False) race described in
+    # discussion.md: if we skipped this, the new proxy thread's init
+    # ``_touch_access(mode=0)`` in ``Camera.run`` would run while
+    # ``_last_access_time_masked`` is still 0 and would send
+    # ``update_demand(masked=False)`` to the worker right after
+    # ``select_camera`` -- exactly the bug the watchdog is supposed to
+    # recover from.  Setting the timestamps here means every
+    # subsequent ``update_demand`` from the restarted thread carries
+    # the correct demand flags for the mode we are actually streaming.
+    try:
+        camera._touch_access(mode=mode)
+    except Exception:
+        pass
+    try:
+        master_controller.cameras_controller.deactivate_camera(camera)
+    except Exception as exc:
+        print(f"[Watchdog] deactivate_camera failed: {exc}")
+    try:
+        camera.stop()
+    except Exception as exc:
+        print(f"[Watchdog] camera.stop failed: {exc}")
+    for key in last_seq_by_mode:
+        last_seq_by_mode[key] = 0
+    return camera.create_stream_token()
+
+
 async def generate_camera_frames(
     *,
     index: int,
@@ -410,6 +547,15 @@ async def generate_camera_frames(
     # served (which may differ from the mode the browser requested
     # during the AI-warmup fallback window).
     _MODE_NUM_TO_KEY: dict[int, str] = {0: "raw", 1: "masked", 3: "ai"}
+    # --- Stream stall watchdog state (per connection) ---------------
+    # ``stall_since_mono`` is set the first iteration the generator
+    # sees something other than a live frame (Loading placeholder or
+    # no-change sentinel) and cleared back to ``None`` as soon as a
+    # fresh frame yields.  The recovery clocks rate-limit each stage
+    # so we don't thrash.
+    stall_since_mono: float | None = None
+    last_gentle_recovery_mono: float = 0.0
+    last_hard_recovery_mono: float = 0.0
     # Emit the real "Loading, please wait a minute..." JPEG as the very
     # first multipart part so the browser immediately renders something
     # instead of a blank <img>.  The main loop below will replace it
@@ -450,6 +596,8 @@ async def generate_camera_frames(
 
             if frame.valid and frame.data:
                 last_sent_was_loading = False
+                # Live frame -> clear any in-flight stall state.
+                stall_since_mono = None
                 # Update the cursor for the ring that actually served
                 # this frame (mode=3 may be getting masked/raw frames
                 # while YOLO warms up).  Ignore unknown modes defensively.
@@ -464,6 +612,8 @@ async def generate_camera_frames(
                 # Real Loading placeholder.  Emit once when we transition
                 # into the loading state, then refresh at most every 0.5s
                 # to keep the client connection warm without flickering.
+                if stall_since_mono is None:
+                    stall_since_mono = time.monotonic()
                 if (
                     not last_sent_was_loading
                     or now - time_of_last_loading_sent > 0.5
@@ -474,7 +624,62 @@ async def generate_camera_frames(
                         b'--frame\r\n'
                         b'Content-Type: image/jpeg\r\n\r\n' + frame.data + b'\r\n'
                     )
-            # else: no-change sentinel — skip and re-poll
+            else:
+                # No-change sentinel -- the ring has frames, just none
+                # newer than the browser already has.  Normally this is
+                # just the inter-frame gap, but if it persists the
+                # watchdog below needs to notice.
+                if stall_since_mono is None:
+                    stall_since_mono = time.monotonic()
+
+            # --- Stream stall watchdog --------------------------------
+            # Classify + escalate only if we've been non-live for at
+            # least the grace window.  Consults the worker's 1 Hz
+            # status heartbeat to distinguish legitimate not-ready
+            # states (device opening, YOLO warmup, capture failing)
+            # from real pipeline desync that recovery can fix.
+            if stall_since_mono is not None:
+                stall_age = time.monotonic() - stall_since_mono
+                if stall_age >= _WATCHDOG_STALL_GRACE:
+                    status, status_age = (
+                        master_controller.cameras_controller.get_worker_status()
+                    )
+                    if not _watchdog_worker_legitimately_not_ready(
+                        status=status,
+                        status_age=status_age,
+                        mode=mode,
+                        camera_index=camera.index,
+                    ):
+                        if stall_age < _WATCHDOG_HARD_THRESHOLD:
+                            if (
+                                time.monotonic() - last_gentle_recovery_mono
+                                >= _WATCHDOG_GENTLE_PERIOD
+                            ):
+                                _watchdog_gentle_recovery(camera=camera, mode=mode)
+                                last_gentle_recovery_mono = time.monotonic()
+                        else:
+                            if (
+                                time.monotonic() - last_hard_recovery_mono
+                                >= _WATCHDOG_HARD_COOLDOWN
+                            ):
+                                stream_token = _watchdog_hard_recovery(
+                                    master_controller=master_controller,
+                                    camera=camera,
+                                    mode=mode,
+                                    last_seq_by_mode=last_seq_by_mode,
+                                )
+                                # Re-point expected_camera to the same
+                                # proxy so the identity check above
+                                # keeps passing (the Camera object
+                                # survives .stop()).
+                                expected_camera = camera
+                                last_hard_recovery_mono = time.monotonic()
+                                # Restart the stall clock so we don't
+                                # immediately re-trigger a second hard
+                                # recovery before the freshly-restarted
+                                # worker pipeline has a chance to
+                                # produce frames.
+                                stall_since_mono = time.monotonic()
 
             await asyncio.sleep(EPSILON_DELAY)
 
