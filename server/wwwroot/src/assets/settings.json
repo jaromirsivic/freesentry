@@ -812,7 +812,7 @@
         "camera": {
             "selectedCamera": "scope_camera",
             "streamQuality": 80,
-            "scopeCameraMode": 0,
+            "scopeCameraMode": 3,
             "spotterCamera1Mode": 0,
             "spotterCamera2Mode": 0,
             "spotterCamera3Mode": 0

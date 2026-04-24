@@ -147,6 +147,18 @@ const AIAgent = () => {
     const handleStartAIAgent = useCallback(async () => {
         setIsActivationModalOpen(false);
         try {
+            const resetResponse = await fetch('/api/manualcontrol/reset-ai-engagements', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            const resetData = await resetResponse.json();
+
+            if (!resetResponse.ok || !resetData.success) {
+                throw new Error(resetData.detail || 'Failed to reset AI engagements');
+            }
+
             await activateAIAgent();
         } catch (error) {
             console.error('Failed to activate AI agent:', error);
