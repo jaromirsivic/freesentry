@@ -10,6 +10,8 @@
 
 Build a **new, standalone Python project** that trains and runs a family of **extremely fast human-pose estimation** networks called **XTX**, in three variants: **`XTX-n`**, **`XTX-m`**, **`XTX-l`**.
 
+Put everything - source code, additional files, complete directory structure into the "./xtx" folder.
+
 The design is *inspired by* (not copied from, and **without any dependency on**) Ultralytics **YOLO26-pose** (`yolo26n-pose`, `yolo26m-pose`, `yolo26l-pose`). The full XTX network, losses, data pipeline, training loop, and inference are implemented **from scratch in pure PyTorch**.
 
 XTX must match or beat YOLO26-pose on accuracy at comparable or lower computational cost, with the headline differentiator being a **3-scale center-focused crop cascade (A/B/C)** that recovers small, distant people in the centre of the frame.
@@ -30,7 +32,7 @@ YOLO26 (Ultralytics, announced Sept 2025) introduced, for the `-pose` task:
 - 17 COCO person keypoints; end-to-end pose output shape `(N, 300, 57)` = 6 box values `[x1,y1,x2,y2,conf,cls]` + `17×3` keypoints `[x,y,visibility]`, max 300 detections.
 - Reference scale points (COCO val2017, 640px): `n` ≈ 2.9M params / 7.5 GFLOPs, `m` ≈ 21.5M / 73.1 GFLOPs, `l` ≈ 25.9M / 91.3 GFLOPs.
 
-XTX **adopts** the NMS-free dual head, DFL-free box regression, and RLE keypoint head, and **adds** the A/B/C crop cascade plus a centre-prior label assignment. XTX runs at a **360×360 crop resolution** (internally padded to 384×384), which is far smaller than YOLO26's 640, so per-crop cost is low even though we run 3 crops.
+XTX **adopts** the NMS-free dual head, DFL-free box regression, and RLE keypoint head, and **adds** the A/B/C crop cascade plus a centre-prior label assignment. XTX runs at a **384×384 crop resolution** (each crop is produced directly at 384×384, no padding), which is far smaller than YOLO26's 640, so per-crop cost is low even though we run 3 crops. 384 is chosen as the working resolution because it is divisible by 32 (stride-8/16/32 → 48/24/12 feature maps); the user-described 360 size is not (360/32 = 11.25), so the crops are resampled straight to 384 rather than cropped to 360 and padded.
 
 ---
 
@@ -86,7 +88,7 @@ class Pose:
     source_crop: str           # "A" | "B" | "C", which crop produced the surviving detection (debug/telemetry)
 ```
 
-- **Coordinate origin**: pixel coordinates are in the **original input image** coordinate system (the array passed in), not the cropped square. The library is responsible for mapping every detection from its 360-crop space all the way back to original-image pixels (see §4.4).
+- **Coordinate origin**: pixel coordinates are in the **original input image** coordinate system (the array passed in), not the cropped square. The library is responsible for mapping every detection from its 384-crop space all the way back to original-image pixels (see §4.4).
 - Keypoint order is the **17 COCO keypoints**, fixed indices (§7.2).
 - Per-keypoint `confidence` ∈ [0,1]; `visibility` is the argmax of the 3-way visibility head mapped to `{0,1,2}` (§7.2).
 - A convenience `to_array()` returns a single `np.ndarray` of shape `(N, 56)` = `[x1,y1,x2,y2,score, kpt0_x,kpt0_y,kpt0_conf, ... , kpt16_x,kpt16_y,kpt16_conf]` in original-image pixels, mirroring YOLO26's flattened layout (minus the class column, since there is a single class).
@@ -103,13 +105,12 @@ Provide `detect_poses_batch(images: list[np.ndarray], ...) -> list[list[Pose]]` 
 flowchart TD
     Img["Input image (numpy HxWx3)"] --> Norm["Normalize size: pad small to >=1080, resize large so short side = 1080"]
     Norm --> Square["Center square crop (S x S, S>=1080)"]
-    Square --> A["Image A: resize S->360 (full square)"]
-    Square --> B["Image B: center 720 crop -> resize to 360"]
-    Square --> C["Image C: center 360 crop (no resize)"]
-    A --> Pad["Pad each 360 crop -> 384x384"]
-    B --> Pad
-    C --> Pad
-    Pad --> Batch["Batch tensor (3, 3, 384, 384)"]
+    Square --> A["Image A: full square -> resize to 384x384"]
+    Square --> B["Image B: center 768 crop -> resize to 384x384 (2x downscale)"]
+    Square --> C["Image C: center 384 crop (native, no resize)"]
+    A --> Batch["Batch tensor (3, 3, 384, 384)"]
+    B --> Batch
+    C --> Batch
     Batch --> Net["XTX network (single forward, NMS-free head)"]
     Net --> DecA["Decode A detections"]
     Net --> DecB["Decode B detections"]
@@ -143,20 +144,22 @@ Let the input be `W×H`.
 
 Take the **centred square** of side `S = min(WW, HH)` (`S >= 1080`). Example: `1920×1080 → 1080×1080`; left/right margins are discarded as the user specified. Record crop offset `(ox, oy)`.
 
-### 4.3 Build A / B / C (each 360×360)
+### 4.3 Build A / B / C (each 384×384)
 
-From the square `S×S`:
+From the square `S×S`, build three `384×384` crops. The region sizes are chosen so the resampling is **as cheap as possible**: C is a native crop with **no resize**, and B is an exact **2× downscale**:
 
-- **Image A** = resize the whole `S×S` square down to `360×360`. Scale `sA = 360 / S`. Covers the entire square (large + medium people).
-- **Image B** = take the centred `720_S × 720_S` region of the square where `720_S = round(S * 720/1080)` (i.e. the central 2/3 by side at the 1080 reference; scale relative to `S`), then resize that region to `360×360`. *(At the reference `S=1080` this is exactly the central `720×720` resized to 360.)* Covers medium + small central people.
-- **Image C** = take the centred `360_S × 360_S` region where `360_S = round(S * 360/1080)`, then resize to `360×360`. *(At `S=1080`, the central `360×360` with no resize.)* Covers the smallest, most distant central people.
+- **Image A** = resize the whole `S×S` square down to `384×384`. Scale `sA = 384 / S`. Covers the entire square (large + medium people).
+- **Image B** = take the centred `768_S × 768_S` region of the square where `768_S = round(S * 768/1080)`, then resize that region to `384×384`. *(At the reference `S=1080` this is the central `768×768` downscaled to 384 — an exact 2× reduction, the cheapest possible downscale.)* Covers medium + small central people.
+- **Image C** = take the centred `384_S × 384_S` region where `384_S = round(S * 384/1080)`, used **as-is with no resize** *(at `S=1080`, the central `384×384` native crop)*. This is the fastest possible path (a pure slice, no interpolation) and gives the network real native pixels for the smallest, most distant central people.
 
-> Rationale for scaling `720`/`360` by `S/1080`: the user's numbers (720, 360) are defined at the canonical `S=1080`. To keep behaviour consistent when `S > 1080` (large images resized to short side 1080 can still yield `S` slightly above 1080 after the long side handling, or when small-pad produced a larger canvas), scale the region sizes by `S/1080`. If you prefer strict literal behaviour, after §4.1/§4.2 force `S` to exactly 1080 by an extra resize of the square to `1080×1080`; **choose this simpler "normalise square to 1080" approach** unless profiling shows quality loss, and document it. With the square fixed at 1080, B = central 720→360, C = central 360 (no resize). The rest of this spec assumes `S = 1080`.
+> Region field-of-view (full square / central 768 / central 384) is sized so that C requires no interpolation and B uses an exact 2× box reduction, minimising preprocessing cost. There is no padding and no 360 intermediate at any point.
+>
+> Rationale for scaling `768`/`384` by `S/1080`: the canonical region sizes are defined at `S=1080`. To keep behaviour consistent when `S > 1080` (large images resized to short side 1080 can still yield `S` slightly above 1080, or when small-pad produced a larger canvas), scale the region sizes by `S/1080`. If you prefer strict literal behaviour, after §4.1/§4.2 force `S` to exactly 1080 by an extra resize of the square to `1080×1080`; **choose this simpler "normalise square to 1080" approach** unless profiling shows quality loss, and document it. With the square fixed at 1080, B = central 768→384 (2× downscale), C = central 384 (native, no resize). The rest of this spec assumes `S = 1080`.
 
 ### 4.4 Network resolution and coordinate transforms
 
-- Each 360×360 crop is **padded** to **384×384** by adding a 12 px border on every side (constant value 114, the common gray pad value; document the choice). 384 is divisible by 32, so the stride-8/16/32 backbone produces clean `48/24/12` feature maps. **360 is not divisible by 32 (360/32 = 11.25), which is why padding to 384 is required.**
-- Maintain, per crop `k ∈ {A,B,C}`, the **affine transform** `T_k` mapping **network pixel (384 space) → original image pixel**. It is the composition of: remove 12px pad → crop-local 360 scale → region offset within square → square offset within working image → undo size-normalisation (un-resize / un-pad). Provide a single helper that returns each `T_k` as a 2×3 matrix so keypoints/boxes map back with one matrix multiply.
+- Each crop is `384×384`. **C is a pure slice (no interpolation)**, **B is one `cv2.resize` at an exact 2× reduction** (use `INTER_AREA`), and **A is one `cv2.resize`** of the full square. **No padding and no 360 intermediate.** 384 is divisible by 32, so the stride-8/16/32 backbone produces clean `48/24/12` feature maps; 360 is not divisible by 32 (360/32 = 11.25), which is why 384 is used as the crop/network resolution.
+- Maintain, per crop `k ∈ {A,B,C}`, the **affine transform** `T_k` mapping **network pixel (384 space) → original image pixel**. It is the composition of: crop-local `384 → region-size` scale (identity for C) → region offset within square → square offset within working image → undo size-normalisation (un-resize / un-pad). Provide a single helper that returns each `T_k` as a 2×3 matrix so keypoints/boxes map back with one matrix multiply.
 - `keypoints_norm` are produced by dividing original-image pixel coordinates by original `W, H`.
 
 ---
@@ -348,7 +351,7 @@ The program **recursively scans all `*.json`** under the chosen split folder and
 For each annotation and each crop `k ∈ {A,B,C}`:
 
 1. Denormalise bbox/keypoints to **original pixel** coords using JSON `width/height`.
-2. Apply the **same** size-normalisation + square crop + region selection + 360-resize + 384-pad as §4 to get **network-space (384) targets** via the inverse of `T_k`.
+2. Apply the **same** size-normalisation + square crop + region selection + direct 384-resize as §4 to get **network-space (384) targets** via the inverse of `T_k`.
 3. **Visibility/inclusion rules**:
    - A person is a **valid target in crop `k`** if a sufficient fraction of its visible keypoints (vis > 0) and its bbox centre fall inside crop `k`'s region (configurable `min_visible_keypoints`, default 1, and bbox-centre-inside rule).
    - Keypoints that fall outside the 384 frame are marked `visibility = 0` (absent) for that crop and **masked from localisation loss**.
@@ -473,9 +476,9 @@ Pipeline (no `ultralytics`):
   "data": {
     "dataset_path": "./dataset",
     "square_size": 1080,
-    "crop_size": 360,
+    "crop_size": 384,
     "network_size": 384,
-    "pad_value": 114,
+    "region_sizes": { "A": "full_square", "B": 768, "C": 384 },
     "abc_ratio": [1, 1, 1],
     "min_visible_keypoints": 1,
     "close_mosaic_epochs": 10,
@@ -534,7 +537,7 @@ xtx-pose/
     data/
       __init__.py
       annotations.py           # COCO-style JSON scan + parse + validate
-      preprocess.py            # size-norm, square crop, A/B/C, 384 pad, T_k transforms
+      preprocess.py            # size-norm, square crop, A/B/C direct 384 crops, T_k transforms
       dataset.py               # PyTorch Dataset (A/B/C samples) + collate_fn
       augment.py
     losses/
