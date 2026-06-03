@@ -107,8 +107,8 @@
             },
             "pwmFrequency": 4000,
             "strokeLength": 30,
-            "forwardEnablePin": 16,
-            "reverseEnablePin": 18
+            "forwardEnablePin": 10,
+            "reverseEnablePin": 16
         },
         {
             "enabled": true,

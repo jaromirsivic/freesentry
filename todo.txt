@@ -9,3 +9,7 @@ camera worker for each camera
 disable enhanced AI ncnn models
 draw cpu and ram into chart
 run server on multiple ports
+static reticle is in idfferent position when mobile phone is oriented vertically
+when user wants do display mask the image flickers
+warning when user selects anything but pwm pin for left arm or right arm
+write documentation
