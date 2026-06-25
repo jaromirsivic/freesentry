@@ -1,0 +1,12 @@
+# XTX Pose - core dependencies (standalone, no ultralytics/mmpose/detectron2).
+# Pin to the latest stable resolved at implementation time (PyTorch 2.11, Python 3.14).
+torch>=2.11
+torchvision>=0.26
+numpy>=2.0
+opencv-python>=4.10
+onnx>=1.17
+onnxsim>=0.4.36
+tqdm>=4.66
+
+# NCNN export tooling is platform-specific and installed separately (see README.md):
+#   pip install pnnx ncnn        # converter + runtime, when targeting Raspberry Pi
