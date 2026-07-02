@@ -1,0 +1,79 @@
+{
+  "training": {
+    "epochs": 50,
+    "checkpoint_interval_minutes": 5,
+    "batch_size": 32,
+    "optimizer": "musgd",
+    "lr0": 0.01,
+    "lr_final_factor": 0.01,
+    "warmup_epochs": 3,
+    "weight_decay": 0.0005,
+    "momentum": 0.937,
+    "amp": true,
+    "ema_decay": 0.9999,
+    "num_workers": 8,
+    "seed": 0
+  },
+  "data": {
+    "dataset_path": "./dataset",
+    "canvas_size": 1536,
+    "network_size": 384,
+    "level_regions": {
+      "level_1": 1536,
+      "level_2": 768,
+      "level_3": 384
+    },
+    "level_ratio": [
+      1,
+      1,
+      1
+    ],
+    "min_visible_keypoints": 1,
+    "close_mosaic_epochs": 10,
+    "augment": {
+      "fliplr": 0.5,
+      "hsv_h": 0.015,
+      "hsv_s": 0.7,
+      "hsv_v": 0.4,
+      "scale_jitter": 0.5,
+      "translate": 0.1,
+      "mosaic": 0.5
+    }
+  },
+  "model": {
+    "num_keypoints": 17,
+    "use_p2": {
+      "n": false,
+      "m": false,
+      "l": true
+    }
+  },
+  "loss": {
+    "box": 7.5,
+    "cls": 0.5,
+    "kpt": 12.0,
+    "vis": 1.0,
+    "center_prior_weight": 0.1,
+    "keypoint_loss": "rle",
+    "stal_min_anchors": 4,
+    "stal_size_px": 8,
+    "progloss": {
+      "o2m_start": 1.0,
+      "o2m_end": 0.25,
+      "o2o_start": 0.5,
+      "o2o_end": 1.0
+    }
+  },
+  "merge": {
+    "mode": "threshold",
+    "oks_match_thr": 0.3,
+    "iou_match_thr": 0.3,
+    "conf_threshold": 0.1,
+    "max_detections": 300,
+    "logistic_weights": []
+  },
+  "export": {
+    "ncnn_input_size": 384,
+    "onnx_opset": 17
+  }
+}
