@@ -9,10 +9,13 @@ from __future__ import annotations
 
 import logging
 import sys
+from pathlib import Path
 
 _CONFIGURED: bool = False
+_FILE_HANDLERS: dict[str, logging.FileHandler] = {}
 _DEFAULT_FORMAT: str = "%(asctime)s | %(levelname)-7s | %(name)s | %(message)s"
 _DEFAULT_DATEFMT: str = "%H:%M:%S"
+_FILE_DATEFMT: str = "%Y-%m-%d %H:%M:%S"
 
 
 def configure_logging(*, level: int = logging.INFO) -> None:
@@ -32,6 +35,29 @@ def configure_logging(*, level: int = logging.INFO) -> None:
     root.addHandler(handler)
     root.propagate = False
     _CONFIGURED = True
+
+
+def add_file_handler(log_path: Path | str, *, level: int = logging.INFO) -> None:
+    """Mirror all ``xtx2`` log output into ``log_path`` (appending).
+
+    Used by the trainer to keep a persistent training log next to the
+    checkpoints. Idempotent per path; repeated calls with the same file are
+    no-ops so resume does not stack duplicate handlers.
+    """
+
+    if not _CONFIGURED:
+        configure_logging()
+    path = Path(log_path).resolve()
+    key = str(path)
+    if key in _FILE_HANDLERS:
+        return
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handler = logging.FileHandler(path, mode="a", encoding="utf-8")
+    handler.setLevel(level)
+    handler.setFormatter(logging.Formatter(fmt=_DEFAULT_FORMAT, datefmt=_FILE_DATEFMT))
+    logging.getLogger("xtx2").addHandler(handler)
+    _FILE_HANDLERS[key] = handler
 
 
 def get_logger(name: str) -> logging.Logger:

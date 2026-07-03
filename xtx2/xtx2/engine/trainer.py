@@ -21,7 +21,7 @@ from ..data.dataset import BalancedSampler, XTX2PoseDataset, collate_fn, denorma
 from ..losses import XTX2Loss
 from ..models import build_model
 from ..utils.keypoints import KEYPOINT_NAMES
-from ..utils.logging import get_logger
+from ..utils.logging import add_file_handler, get_logger
 from .checkpoint import ModelEMA, build_checkpoint, discover_checkpoints, load_checkpoint, save_checkpoint
 from .merge import MergeParams, calibrate_thresholds
 from .metrics import ImageGroundTruth, ImagePredictions, evaluate
@@ -171,6 +171,8 @@ class Trainer:
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         self.output_dir = Path(output_dir or f"runs/xtx2-{variant}")
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        # Mirror all console output into a persistent log next to the checkpoints.
+        add_file_handler(self.output_dir / "train.log")
 
         train_cfg = config.get("training", {})
         data_cfg = config.get("data", {})

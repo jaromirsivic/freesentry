@@ -1,12 +1,25 @@
 @echo off
-rem XTX2 Pose - interactive training launcher (double-clickable).
+rem XTX2 Pose - interactive training launcher (double-clickable). Uses uv.
 cd /d %~dp0
 
+where uv >nul 2>nul
+if errorlevel 1 (
+    echo uv not found - downloading uv...
+    powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+    set "Path=%USERPROFILE%\.local\bin;%Path%"
+)
+where uv >nul 2>nul
+if errorlevel 1 (
+    echo Failed to install uv. See https://docs.astral.sh/uv/
+    pause
+    exit /b 1
+)
+
 if not exist ".venv\Scripts\python.exe" (
-    echo Creating virtual environment...
-    python -m venv .venv
+    echo Creating virtual environment with uv...
+    uv venv
     if errorlevel 1 (
-        echo Failed to create the virtual environment. Is Python on PATH?
+        echo Failed to create the virtual environment.
         pause
         exit /b 1
     )
@@ -14,8 +27,7 @@ if not exist ".venv\Scripts\python.exe" (
 
 if not exist ".venv\.deps_installed" (
     echo Installing requirements ^(first run^)...
-    ".venv\Scripts\python.exe" -m pip install --upgrade pip
-    ".venv\Scripts\python.exe" -m pip install -r requirements.txt
+    uv pip install -r requirements.txt --python .venv\Scripts\python.exe
     if errorlevel 1 (
         echo Failed to install requirements.
         pause
@@ -25,5 +37,5 @@ if not exist ".venv\.deps_installed" (
 )
 
 call ".venv\Scripts\activate.bat"
-python train.py
+python train.py %*
 pause
