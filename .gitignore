@@ -27,6 +27,8 @@ submoamoa/
 /server/temp
 discussion.md
 /models_3d/*
+/xtx2/runs/*
+.pt
 
 # Virtual environments
 .venv

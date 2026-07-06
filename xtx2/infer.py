@@ -27,12 +27,21 @@ logger = get_logger("infer")
 _COLOR_BY_LEVEL = {1: (0, 255, 0), 2: (0, 200, 255), 3: (255, 128, 0)}
 
 
-def draw_poses(image: np.ndarray, poses: list[Pose], *, kpt_thr: float = 0.3) -> np.ndarray:
+def draw_poses(
+    image: np.ndarray,
+    poses: list[Pose],
+    *,
+    kpt_thr: float = 0.3,
+    bbox_color: tuple[int, int, int] | None = None,
+    skeleton_color: tuple[int, int, int] | None = None,
+    node_color: tuple[int, int, int] = (0, 0, 255),
+) -> np.ndarray:
     """Draw bounding boxes and the 17-keypoint skeleton onto a copy of ``image``."""
 
     canvas = image.copy()
     for pose in poses:
-        color = _COLOR_BY_LEVEL.get(pose.source_level, (0, 255, 0))
+        color = bbox_color if bbox_color is not None else _COLOR_BY_LEVEL.get(pose.source_level, (0, 255, 0))
+        edge_color = skeleton_color if skeleton_color is not None else color
         x1, y1, x2, y2 = pose.bbox_xyxy.astype(int)
         cv2.rectangle(canvas, (x1, y1), (x2, y2), color, 2)
         cv2.putText(
@@ -44,10 +53,10 @@ def draw_poses(image: np.ndarray, poses: list[Pose], *, kpt_thr: float = 0.3) ->
             if kpts[a, 2] >= kpt_thr and kpts[b, 2] >= kpt_thr:
                 pa = (int(kpts[a, 0]), int(kpts[a, 1]))
                 pb = (int(kpts[b, 0]), int(kpts[b, 1]))
-                cv2.line(canvas, pa, pb, color, 2, cv2.LINE_AA)
+                cv2.line(canvas, pa, pb, edge_color, 2, cv2.LINE_AA)
         for k in range(kpts.shape[0]):
             if kpts[k, 2] >= kpt_thr:
-                cv2.circle(canvas, (int(kpts[k, 0]), int(kpts[k, 1])), 3, (0, 0, 255), -1)
+                cv2.circle(canvas, (int(kpts[k, 0]), int(kpts[k, 1])), 3, node_color, -1)
     return canvas
 
 
@@ -90,6 +99,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-det", type=int, default=300)
     parser.add_argument("--save", default=None, help="Path to write the annotated image")
     parser.add_argument("--json", dest="json_out", default=None, help="Path to write JSON poses")
+    parser.add_argument(
+        "--viz-green-red",
+        action="store_true",
+        help="Draw bounding boxes in green and keypoints/skeleton in red",
+    )
     return parser.parse_args()
 
 
@@ -122,7 +136,14 @@ def main() -> None:
     if save_path is None and interactive:
         save_path = str(image_path.with_name(image_path.stem + "_poses.jpg"))
     if save_path:
-        cv2.imwrite(save_path, draw_poses(image, poses))
+        draw_kwargs: dict[str, tuple[int, int, int]] = {}
+        if args.viz_green_red:
+            draw_kwargs = {
+                "bbox_color": (0, 255, 0),
+                "skeleton_color": (0, 0, 255),
+                "node_color": (0, 0, 255),
+            }
+        cv2.imwrite(save_path, draw_poses(image, poses, **draw_kwargs))
         logger.info("Wrote annotated image -> %s", save_path)
 
 

@@ -66,9 +66,9 @@
   },
   "merge": {
     "mode": "threshold",
-    "oks_match_thr": 0.3,
-    "iou_match_thr": 0.3,
-    "conf_threshold": 0.1,
+    "oks_match_thr": 0.8000000000000003,
+    "iou_match_thr": 0.8000000000000003,
+    "conf_threshold": 0.2,
     "max_detections": 300,
     "logistic_weights": []
   },
