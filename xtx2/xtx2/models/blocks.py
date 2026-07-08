@@ -228,7 +228,7 @@ class RepConv(nn.Module):
         )
         fused.weight.data = kernel
         fused.bias.data = bias  # type: ignore[union-attr]
-        self.fused_conv = fused
+        self.fused_conv = fused.to(kernel.device)
         # Drop training-only branches to free memory and simplify export.
         self.__delattr__("conv3")
         self.__delattr__("conv1")
@@ -346,9 +346,13 @@ def _fuse_conv_bn(conv: nn.Conv2d, bn: nn.BatchNorm2d) -> nn.Conv2d:
     std = (bn.running_var + bn.eps).sqrt()
     scale = bn.weight / std
     fused.weight.data = w_conv * scale.reshape(-1, 1, 1, 1)
-    conv_bias = conv.bias if conv.bias is not None else torch.zeros(conv.out_channels)
+    conv_bias = (
+        conv.bias
+        if conv.bias is not None
+        else torch.zeros(conv.out_channels, dtype=bn.weight.dtype, device=bn.weight.device)
+    )
     fused.bias.data = bn.bias + (conv_bias - bn.running_mean) * scale  # type: ignore[union-attr]
-    return fused
+    return fused.to(conv.weight.device)
 
 
 @torch.no_grad()
