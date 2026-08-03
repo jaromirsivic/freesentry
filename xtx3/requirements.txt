@@ -1,0 +1,12 @@
+# NOTE: torch and torchvision are installed separately by the .bat launchers so
+# the correct CUDA/CPU build is chosen (a plain "pip install torch" pulls the
+# CPU-only wheel and would clobber a CUDA build). To install manually:
+#   GPU (CUDA 13.x): uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cu130
+#   CPU only:        uv pip install torch torchvision
+numpy>=1.26
+opencv-python>=4.9
+onnx>=1.16
+onnxsim>=0.4.36
+onnxruntime>=1.18
+tqdm>=4.66
+pytest>=8.0

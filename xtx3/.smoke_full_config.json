@@ -1,0 +1,8 @@
+{
+  "training": {
+    "checkpoint_interval_minutes": 1
+  },
+  "validation": {
+    "max_images": 40
+  }
+}

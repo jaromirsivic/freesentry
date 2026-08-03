@@ -28,6 +28,8 @@ submoamoa/
 discussion.md
 /models_3d/*
 /xtx2/runs/*
+/xtx3/.smoke_dataset/
+/xtx3/runs_smoke/
 .pt
 
 # Virtual environments

@@ -1,0 +1,15 @@
+{
+  "training": {
+    "epochs": 2,
+    "checkpoint_interval_minutes": 1,
+    "batch_size": 8,
+    "warmup_epochs": 1,
+    "num_workers": 2
+  },
+  "data": {
+    "close_mosaic_epochs": 1
+  },
+  "validation": {
+    "max_images": 40
+  }
+}
