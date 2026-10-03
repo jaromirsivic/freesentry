@@ -55,6 +55,41 @@ python train.py --variant u --dataset D:\xtxtraining
 python infer.py --weights runs/xtx3-u/best.pt --image scene.jpg --save out.jpg
 ```
 
+## Local TensorBoard monitoring
+
+Double-click `start_tensorboard.bat` before or during training. It installs
+TensorBoard into `xtx3/.venv` with uv if needed, starts a local server at
+`http://127.0.0.1:6006/`, and opens the default web browser once the server is ready.
+Double-click `stop_tensorboard.bat` to stop that server without stopping training.
+Starting twice reuses the running server. Server logs are in `.tensorboard/`.
+
+The dashboard reads all sessions under `runs/`. For checkpoints outside this
+directory, use `start_tensorboard.bat -LogDir "D:\my-training"`. To use another
+port, stop the server and run `start_tensorboard.bat -Port 6007`.
+
+New training sessions write events to `<output>/tensorboard/<timestamp>-<id>`.
+Resumed sessions use a new directory and retain the checkpoint's global step.
+Old text logs cannot provide weight histograms or model graphs retroactively.
+Data appears after training starts, and validation metrics after each epoch.
+
+- **Scalars:** total and component losses, AP/AP50/AP75/AR, learning rate,
+  epoch, input size, images/sec, gradient norm before clipping, AMP scale,
+  ProgLoss weights, and CUDA allocated/reserved memory when using CUDA.
+- **Graphs:** the inference network (one-to-one head, for the configured input size).
+- **Text:** full model architecture including both heads, parameter names/shapes/counts,
+  run configuration, and the final evaluation report.
+- **Histograms / Distributions:** model and learned loss parameters, and their
+  gradients after the training step (model gradients are clipped). Each tensor
+  uses at most 8192 deterministically sampled values to limit overhead.
+
+`training.tensorboard` in `config.json` controls logging: scalars every 10 steps
+(also the first and last batch), histograms once per epoch, and a graph at startup.
+Set `enabled` or `graph` to `false` to disable them, or increase
+`log_every_steps` / `histogram_every_epochs` for less frequent logging.
+When resuming, the checkpoint configuration takes precedence, with these same
+defaults if it has no TensorBoard settings. Event files are flushed every five
+seconds and on exit, including interruption with Ctrl+C.
+
 ## Library API
 
 ```python

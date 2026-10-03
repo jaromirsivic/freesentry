@@ -1,0 +1,97 @@
+{
+  "detection": {
+    "precision": 0.13174157303370787,
+    "recall": 0.7962648556876061,
+    "f1": 0.2260785731501567,
+    "tp": 469,
+    "fp": 3091,
+    "fn": 120
+  },
+  "per_landmark": {
+    "nose": {
+      "mean_oks": 0.7596481950666376,
+      "matched_points": 372,
+      "visibility_accuracy": 0.8635394456289979
+    },
+    "left_eye": {
+      "mean_oks": 0.7830216928559285,
+      "matched_points": 313,
+      "visibility_accuracy": 0.8443496801705757
+    },
+    "right_eye": {
+      "mean_oks": 0.7937610488344463,
+      "matched_points": 326,
+      "visibility_accuracy": 0.8507462686567164
+    },
+    "left_ear": {
+      "mean_oks": 0.8395704507226007,
+      "matched_points": 237,
+      "visibility_accuracy": 0.7142857142857143
+    },
+    "right_ear": {
+      "mean_oks": 0.8429733956835638,
+      "matched_points": 281,
+      "visibility_accuracy": 0.7547974413646056
+    },
+    "left_shoulder": {
+      "mean_oks": 0.8778865888852464,
+      "matched_points": 445,
+      "visibility_accuracy": 0.8805970149253731
+    },
+    "right_shoulder": {
+      "mean_oks": 0.8814489007862778,
+      "matched_points": 446,
+      "visibility_accuracy": 0.8699360341151386
+    },
+    "left_hip": {
+      "mean_oks": 0.8735236723261676,
+      "matched_points": 404,
+      "visibility_accuracy": 0.7142857142857143
+    },
+    "right_hip": {
+      "mean_oks": 0.8797334288622811,
+      "matched_points": 406,
+      "visibility_accuracy": 0.7505330490405118
+    }
+  },
+  "face_scale": {
+    "small": {
+      "gt": 171,
+      "recall": 0.8245614035087719,
+      "mean_matched_oks": 0.8056517044800914
+    },
+    "medium": {
+      "gt": 235,
+      "recall": 0.8680851063829788,
+      "mean_matched_oks": 0.8558921222928205
+    },
+    "large": {
+      "gt": 67,
+      "recall": 0.8955223880597015,
+      "mean_matched_oks": 0.8445268231711526
+    }
+  },
+  "torso_scale": {
+    "small": {
+      "gt": 50,
+      "recall": 0.72,
+      "mean_matched_oks": 0.8050195557530122
+    },
+    "medium": {
+      "gt": 324,
+      "recall": 0.8364197530864198,
+      "mean_matched_oks": 0.8208540701053063
+    },
+    "large": {
+      "gt": 161,
+      "recall": 0.9130434782608695,
+      "mean_matched_oks": 0.8658110730050866
+    }
+  },
+  "oks": {
+    "AP": 0.45894024058739535,
+    "AP50": 0.7064013375589645,
+    "AP75": 0.0,
+    "AR": 0.5730050933786078
+  }
+}

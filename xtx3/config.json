@@ -13,6 +13,12 @@
     "ema_decay": 0.9999,
     "num_workers": 8,
     "seed": 0,
+    "tensorboard": {
+      "enabled": true,
+      "log_every_steps": 10,
+      "histogram_every_epochs": 1,
+      "graph": true
+    },
     "multi_scale": {
       "u": [256, 320, 384],
       "n": [],

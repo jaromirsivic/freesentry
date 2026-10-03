@@ -330,6 +330,21 @@ class Trainer:
         logger.info("Resumed from %s at epoch %d", checkpoint_path, self.start_epoch)
 
     def train(self) -> dict[str, Any]:
+        from ..utils.tensorboard import TrainingMonitor
+
+        self.monitor = None
+        options = self.config.get("training", {}).get("tensorboard", {})
+        if options.get("enabled", True):
+            self.monitor = TrainingMonitor(
+                self.output_dir, self.config, self.model, self.network_size, self.global_step,
+            )
+        try:
+            return self._train_loop()
+        finally:
+            if self.monitor is not None:
+                self.monitor.close()
+
+    def _train_loop(self) -> dict[str, Any]:
         last_ckpt_time = time.time()
         for epoch in range(self.start_epoch, self.epochs):
             if epoch >= self.epochs - self.close_mosaic_epochs:
@@ -338,6 +353,9 @@ class Trainer:
             last_ckpt_time = self._train_epoch(epoch, last_ckpt_time)
 
             metrics = self.validate()
+            if self.monitor is not None:
+                self.monitor.scalars("validation", metrics, self.global_step)
+                self.monitor.writer.flush()
             logger.info(
                 "Epoch %d/%d val: AP=%.4f AP50=%.4f AP75=%.4f AR=%.4f",
                 epoch + 1, self.epochs, metrics["AP"], metrics["AP50"], metrics["AP75"], metrics["AR"],
@@ -369,6 +387,8 @@ class Trainer:
                 self._save("best.pt", epoch=self.epochs - 1, metrics={"oks_map": self.best_ap})
 
         detailed = self.validate_detailed()
+        if self.monitor is not None:
+            self.monitor.writer.add_text("validation/final_report", f"```json\n{json.dumps(detailed, indent=2)}\n```", self.global_step)
         self._log_detailed(detailed)
         (self.output_dir / "eval_report.json").write_text(
             json.dumps(detailed, indent=2), encoding="utf-8"
@@ -426,11 +446,30 @@ class Trainer:
                 losses = self.criterion(output, targets, image_size=image_size)
             self.scaler.scale(losses["total"]).backward()
             self.scaler.unscale_(self.optimizer)
-            torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=10.0)
+            grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=10.0)
             self.scaler.step(self.optimizer)
             self.scaler.update()
             self.ema.update(self.model)
             self.global_step += 1
+
+            if self.monitor is not None:
+                if self.global_step % self.monitor.log_every == 0 or step == 0 or step == num_batches - 1:
+                    elapsed = max(time.time() - epoch_start, 1e-6)
+                    self.monitor.scalars("loss", {k: v.detach() if torch.is_tensor(v) else v for k, v in losses.items()}, self.global_step)
+                    w_o2m, w_o2o = self.criterion.current_weights()
+                    self.monitor.scalars("training", {
+                        "lr": lr, "epoch": epoch_float, "image_size": image_size,
+                        "images_per_second": (step + 1) * self.batch_size / elapsed,
+                        "gradient_norm_before_clip": grad_norm.detach(),
+                        "amp_scale": self.scaler.get_scale(), "o2m_weight": w_o2m, "o2o_weight": w_o2o,
+                    }, self.global_step)
+                    if self.device == "cuda":
+                        self.monitor.scalars("cuda", {
+                            "allocated_MiB": torch.cuda.memory_allocated() / 2**20,
+                            "reserved_MiB": torch.cuda.memory_reserved() / 2**20,
+                        }, self.global_step)
+                if step == num_batches - 1 and (epoch + 1) % self.monitor.histogram_every == 0:
+                    self.monitor.histograms({"model": self.model, "criterion": self.criterion}, self.global_step)
 
             if step % 10 == 0 or step == num_batches - 1:
                 elapsed = max(time.time() - epoch_start, 1e-6)

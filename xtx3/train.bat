@@ -6,6 +6,15 @@ call :ensure_env
 if errorlevel 1 exit /b 1
 
 call ".venv\Scripts\activate.bat"
+python -c "import tensorboard" >nul 2>nul
+if errorlevel 1 (
+    uv pip install --python ".venv\Scripts\python.exe" "tensorboard>=2.20,<3"
+    if errorlevel 1 (
+        echo Failed to install TensorBoard.
+        pause
+        exit /b 1
+    )
+)
 python train.py %*
 pause
 exit /b 0

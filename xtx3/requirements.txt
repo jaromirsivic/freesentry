@@ -9,4 +9,5 @@ onnx>=1.16
 onnxsim>=0.4.36
 onnxruntime>=1.18
 tqdm>=4.66
+tensorboard>=2.20,<3
 pytest>=8.0
