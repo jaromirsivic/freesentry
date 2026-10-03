@@ -6187,3 +6187,5 @@
 2026-10-03 10:42:02 | INFO    | xtx3.engine.checkpoint | Saved checkpoint -> runs\xtx3-n\last.pt
 2026-10-03 10:42:12 | INFO    | xtx3.engine.trainer | E15/50 S3681/4244 | total=138.807 box=0.377 cls=1.773 kpt=11.182 vis=0.908 | prog w_o2m=0.78 w_o2o=0.65 | lr=0.00852 | size=384 | 29.0 img/s | ETA 621s
 2026-10-03 10:42:23 | INFO    | xtx3.engine.trainer | E15/50 S3691/4244 | total=145.635 box=0.432 cls=1.733 kpt=11.713 vis=0.969 | prog w_o2m=0.78 w_o2o=0.65 | lr=0.00852 | size=384 | 29.0 img/s | ETA 610s
+2026-10-03 10:42:34 | INFO    | xtx3.engine.trainer | E15/50 S3701/4244 | total=137.727 box=0.406 cls=1.708 kpt=11.079 vis=0.883 | prog w_o2m=0.78 w_o2o=0.65 | lr=0.00852 | size=384 | 29.0 img/s | ETA 599s
+2026-10-03 10:42:45 | INFO    | xtx3.engine.trainer | E15/50 S3711/4244 | total=144.916 box=0.363 cls=1.804 kpt=11.703 vis=0.850 | prog w_o2m=0.78 w_o2o=0.65 | lr=0.00852 | size=384 | 29.0 img/s | ETA 588s
