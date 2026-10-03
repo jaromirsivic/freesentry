@@ -1,0 +1,4 @@
+.venv/
+.last_selection.json
+screenshots/
+__pycache__/
