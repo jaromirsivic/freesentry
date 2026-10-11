@@ -255,7 +255,7 @@ class XTX4Runner:
 
     def run_batch(self, images: list[np.ndarray], *, conf: float, max_det: int) -> tuple[list, list]:
         api, torch = self.api, self.torch
-        params = api._resolve(self.model, conf, max_det, self.size, None)
+        params = api._resolve(self.model, conf, max_det, self.size, False)  # NMS only via --oks-nms
         results = [api.preprocess_image(img, mode="whole", network_size=params["network_size"]) for img in images]
         view = api._WHOLE_VIEW
         batch = api._views_to_batch([r.views[view] for r in results], device=params["device"],
@@ -306,8 +306,82 @@ class XTX4Runner:
     def api_reference(self, image: np.ndarray, *, conf: float, max_det: int) -> ImagePredictions:
         with self.torch.inference_mode():
             poses = self.api.detect_poses(image, self.model, conf_threshold=conf, max_detections=max_det,
-                                          network_size=self.size)
+                                          network_size=self.size, oks_nms=False)
         return _poses_to_pred(poses)
+
+
+class NcnnRunner:
+    """Exported ncnn graph through the torch-free runtime (``xtx4.runtime``).
+
+    Replicates ``NcnnPoseRunner.detect`` (whole mode, runner NMS **off**) step by step so the
+    per-landmark ``present_prob`` / ``visible_prob`` can be read from the raw pose output; parity
+    with ``detect(..., oks_nms=False)`` is checked on a few images. Host NMS, when wanted, is
+    applied once by ``--oks-nms`` exactly as for the other model kinds.
+    """
+
+    def __init__(self, *, size: int, manifest: Path | None = None, param: Path | None = None,
+                 bin_path: Path | None = None, num_threads: int = 4, fp16: bool | None = None,
+                 view_mode: str = "whole") -> None:
+        from xtx4.runtime import decode as rdec
+        from xtx4.runtime.ncnn_runner import NcnnPoseRunner
+        from xtx4.runtime.preprocess import prepare_views
+
+        if view_mode != "whole":
+            raise SystemExit("--model-kind ncnn supports only --view-mode whole")
+        kwargs: dict[str, Any] = {"num_threads": num_threads}
+        if fp16 is not None:
+            kwargs["fp16"] = fp16
+        if manifest is not None:
+            self.runner = NcnnPoseRunner.from_manifest(manifest, size, **kwargs)
+        elif param is not None and bin_path is not None:
+            self.runner = NcnnPoseRunner(param, bin_path, size=size, **kwargs)
+        else:
+            raise SystemExit("--model-kind ncnn needs --manifest or --param + --bin")
+        self.rdec = rdec
+        self.prepare_views = prepare_views
+        self.device = "cpu"
+        self.torch = None
+
+    def predict_one(self, image: np.ndarray, *, conf: float, max_det: int) -> ImagePredictions:
+        r, rdec = self.runner, self.rdec
+        prepared = self.prepare_views(image, network_size=r.size, mode="whole")
+        (key, view), = prepared.views.items()
+        person, pose = r.forward(view)
+        scores = rdec.person_scores(person)
+        keep, _ = rdec.select_candidates(scores, conf_threshold=conf, max_detections=max_det)
+        self.last_keep = keep  # anchor indices of the returned detections (tests / diagnostics)
+        if keep.size == 0:
+            return _empty_pred()
+        keypoints, visibility, sigma_px = rdec.decode_selected(
+            pose, keep, network_size=r.size, strides=r.strides, num_keypoints=r.num_keypoints,
+            sigma_conf_coeff=r.sigma_conf_coeff, sigma_floor=r.sigma_floor,
+            present_threshold=r.present_threshold, visible_threshold=r.visible_threshold,
+        )
+        poses = rdec.to_frame_poses(scores[keep], keypoints, visibility, sigma_px,
+                                    transform=prepared.transforms[key], view=key, anchor_indices=keep)
+        raw = np.asarray(pose, dtype=np.float32).reshape(-1, r.num_keypoints, 5)[keep]
+        present = 1.0 / (1.0 + np.exp(-raw[..., 3].astype(np.float64)))
+        visible = 1.0 / (1.0 + np.exp(-raw[..., 4].astype(np.float64)))
+        return ImagePredictions(
+            keypoints=np.stack([np.asarray(q.keypoints, np.float64) for q in poses]),
+            scores=np.array([q.score for q in poses], dtype=np.float64),
+            visibility=np.stack([np.asarray(q.visibility, np.int64) for q in poses]),
+            present_prob=present,
+            visible_prob=visible,
+        )
+
+    def run_batch(self, images: list[np.ndarray], *, conf: float, max_det: int) -> tuple[list, list]:
+        return [self.predict_one(img, conf=conf, max_det=max_det) for img in images], []
+
+    def api_reference(self, image: np.ndarray, *, conf: float, max_det: int) -> ImagePredictions:
+        result = self.runner.detect(image, conf_threshold=conf, max_detections=max_det, oks_nms=False,
+                                    keep_views=False)
+        return _poses_to_pred(result.poses)
+
+    def describe(self) -> dict[str, Any]:
+        r = self.runner
+        return {"param": str(r.param_path), "bin": str(r.bin_path), "fp16": bool(r.fp16),
+                "num_threads": int(r.num_threads), "strides": list(r.strides), "describe": r.describe()}
 
 
 def _parity(a: ImagePredictions, b: ImagePredictions) -> dict[str, Any]:
@@ -642,8 +716,13 @@ def upsert_summary(path: Path, rows: list[tuple[str, str]]) -> None:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    p.add_argument("--model-kind", choices=("xtx3", "xtx4"), required=True)
-    p.add_argument("--weights", type=Path, required=True)
+    p.add_argument("--model-kind", choices=("xtx3", "xtx4", "ncnn"), required=True)
+    p.add_argument("--weights", type=Path, default=None, help="checkpoint (xtx3/xtx4)")
+    p.add_argument("--manifest", type=Path, default=None, help="ncnn: export manifest.json (or its directory)")
+    p.add_argument("--param", type=Path, default=None, help="ncnn: .ncnn.param (with --bin, instead of --manifest)")
+    p.add_argument("--bin", type=Path, default=None, help="ncnn: .ncnn.bin")
+    p.add_argument("--ncnn-threads", type=int, default=4)
+    p.add_argument("--ncnn-fp32", action="store_true", help="ncnn: disable fp16 storage/arithmetic")
     p.add_argument("--dataset", type=Path, required=True)
     p.add_argument("--split", choices=("test", "train"), default="test")
     p.add_argument("--sizes", type=int, nargs="+", default=[320])
@@ -700,7 +779,17 @@ def attach_coco_check(args: argparse.Namespace, gtset: GTSet) -> int:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     out_path = args.out if args.out.is_absolute() else REPO_ROOT / args.out
-    name = args.name or f"{args.model_kind}:{args.weights.parent.name}"
+    if args.model_kind == "ncnn":
+        if args.manifest is None and (args.param is None or args.bin is None):
+            raise SystemExit("--model-kind ncnn needs --manifest or --param + --bin")
+        src = args.manifest if args.manifest is not None else args.param
+        src_dir = src if src.is_dir() else src.parent
+        default_name = f"ncnn:{src_dir.parent.name}/{src_dir.name}"
+    else:
+        if args.weights is None:
+            raise SystemExit(f"--model-kind {args.model_kind} needs --weights")
+        default_name = f"{args.model_kind}:{args.weights.parent.name}"
+    name = args.name or default_name
     t_gt = time.perf_counter()
     gtset = load_ground_truth(args.dataset, args.split, args.max_images)
     logger.info("Ground truth: %d images, %d persons (%.1fs)", len(gtset.gts),
@@ -713,8 +802,9 @@ def main(argv: list[str] | None = None) -> int:
     report: dict[str, Any] = {
         "created": datetime.now().isoformat(timespec="seconds"),
         "model_kind": args.model_kind,
-        "weights": str(args.weights),
-        "weights_sha256": _sha256(args.weights) if args.weights.exists() else None,
+        "weights": None if args.weights is None else str(args.weights),
+        "weights_sha256": _sha256(args.weights) if args.weights is not None and args.weights.exists() else None,
+        "ncnn_manifest": None if args.manifest is None else str(args.manifest),
         "dataset": str(args.dataset),
         "split": args.split,
         "view_mode": args.view_mode,
@@ -753,8 +843,16 @@ def main(argv: list[str] | None = None) -> int:
                 raise SystemExit(f"{path}: {len(result['preds'])} cached images vs {len(gtset.gts)} GT images")
             logger.info("Loaded cached predictions %s (S=%d)", path, size)
         else:
-            runner_cls = XTX3Runner if args.model_kind == "xtx3" else XTX4Runner
-            runner = runner_cls(args.weights, device=args.device, view_mode=args.view_mode, size=size)
+            if args.model_kind == "ncnn":
+                runner = NcnnRunner(size=size, manifest=args.manifest, param=args.param, bin_path=args.bin,
+                                    num_threads=args.ncnn_threads, fp16=False if args.ncnn_fp32 else None,
+                                    view_mode=args.view_mode)
+                ncnn_info = runner.describe()
+                ncnn_info["bin_sha256"] = _sha256(Path(ncnn_info["bin"]))
+            else:
+                runner_cls = XTX3Runner if args.model_kind == "xtx3" else XTX4Runner
+                runner = runner_cls(args.weights, device=args.device, view_mode=args.view_mode, size=size)
+                ncnn_info = None
             logger.info("Inference %s S=%d mode=%s on %d images", name, size, args.view_mode, len(gtset.gts))
             result = run_inference(runner, gtset, conf=args.score_threshold, max_det=args.max_det,
                                    batch_size=args.batch_size, workers=args.workers)
@@ -781,6 +879,7 @@ def main(argv: list[str] | None = None) -> int:
             "image_size_mismatch": result["size_mismatch"],
             "api_parity": result["api_parity"],
             "oks_nms_threshold": args.oks_nms,
+            "ncnn": ncnn_info if not args.load_preds else None,
             "oks_nms": nms_stats,
             "api": metrics_block(result["preds"], gtset.gts, args, coco_n=args.coco_check),
         }

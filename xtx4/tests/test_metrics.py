@@ -296,3 +296,62 @@ def test_visibility_calibration_recovers_thresholds() -> None:
     # Without probabilities there is nothing to calibrate.
     plain = [_pred([g.keypoints[0]], [0.9]) for g in gts]
     assert calibrate_visibility(plain, gts) is None
+
+
+# ------------------------------------------------------------ ncnn code path of scripts/evaluate.py
+
+
+def test_ncnn_eval_path_matches_onnxruntime() -> None:
+    """``--model-kind ncnn`` (scripts/evaluate.py NcnnRunner) vs onnxruntime on the random-weight
+    ``bench/graphs/u_b_320`` export: shapes, scores, frame-px keypoints and probabilities."""
+
+    import sys
+    from pathlib import Path
+
+    pytest.importorskip("ncnn")
+    ort = pytest.importorskip("onnxruntime")
+    root = Path(__file__).resolve().parents[1]
+    graphs = root / "bench" / "graphs"
+    param, bin_path, onnx_path = (graphs / f"u_b_320{ext}" for ext in (".ncnn.param", ".ncnn.bin", ".onnx"))
+    if not (param.is_file() and bin_path.is_file() and onnx_path.is_file()):
+        pytest.skip("bench/graphs/u_b_320 export not present")
+    sys.path.insert(0, str(root / "scripts"))
+    try:
+        import evaluate as ev
+    finally:
+        sys.path.remove(str(root / "scripts"))
+    from xtx4.runtime import decode as rdec
+    from xtx4.runtime.preprocess import prepare_views
+
+    runner = ev.NcnnRunner(size=320, param=param, bin_path=bin_path, num_threads=2)
+    num_anchors = runner.runner.num_anchors
+    assert num_anchors == (320 // 8) ** 2 + (320 // 16) ** 2 + (320 // 32) ** 2
+    image = np.random.default_rng(0).uniform(0, 255, (360, 500, 3)).astype(np.uint8)
+    pred = runner.predict_one(image, conf=0.0, max_det=num_anchors)
+    keep = runner.last_keep
+    assert pred.keypoints.shape == (num_anchors, K, 3)
+    assert pred.present_prob.shape == pred.visible_prob.shape == pred.visibility.shape == (num_anchors, K)
+    assert np.all(np.diff(pred.scores) <= 0)
+
+    prepared = prepare_views(image, network_size=320, mode="whole")
+    (key, view), = prepared.views.items()
+    blob = view.astype(np.float32).transpose(2, 0, 1)[None] / 255.0
+    sess = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
+    person, pose = sess.run(None, {sess.get_inputs()[0].name: blob})[:2]
+    assert person.shape == (1, num_anchors, 1) and pose.shape == (1, num_anchors, K * 5)
+    nc_person, nc_pose = runner.runner.forward(view)
+    assert float(np.abs(nc_person.reshape(-1) - person.reshape(-1)).max()) < 0.05
+    assert float(np.abs(nc_pose.reshape(-1) - pose.reshape(-1)).max()) < 0.05
+
+    scores = rdec.person_scores(person)
+    kp, vis, sig = rdec.decode_selected(pose, keep, network_size=320, strides=runner.runner.strides, num_keypoints=K)
+    ref = rdec.to_frame_poses(scores[keep], kp, vis, sig, transform=prepared.transforms[key], anchor_indices=keep)
+    ref_xy = np.stack([p.keypoints for p in ref])[..., :2]
+    raw = pose.reshape(num_anchors, K, 5)[keep]
+    np.testing.assert_allclose(pred.scores, scores[keep], atol=1e-3)
+    np.testing.assert_allclose(pred.keypoints[..., :2], ref_xy, atol=0.05)
+    np.testing.assert_allclose(pred.present_prob, 1 / (1 + np.exp(-raw[..., 3])), atol=1e-3)
+    np.testing.assert_allclose(pred.visible_prob, 1 / (1 + np.exp(-raw[..., 4])), atol=1e-3)
+    # The public runner path (NMS off) returns the same detections.
+    api = runner.api_reference(image, conf=0.0, max_det=num_anchors)
+    np.testing.assert_allclose(api.keypoints, pred.keypoints, atol=1e-5)
