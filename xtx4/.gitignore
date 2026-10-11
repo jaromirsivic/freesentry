@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+runs/
+bench/graphs/
+reports/*.tmp
+.cache/
+*.onnx
+*.ncnn.bin
+*.ncnn.param
+*.pnnx.*
+reports/.sha1cache_*.json
+reports/manifest_*.json

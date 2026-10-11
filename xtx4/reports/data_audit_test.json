@@ -1,0 +1,167 @@
+{
+  "network_size": 320,
+  "counts": {
+    "images": 11320,
+    "persons": 29030,
+    "crowd_regions": 0,
+    "images_without_persons": 429,
+    "datasets": [
+      "xtx"
+    ]
+  },
+  "labeled_per_landmark": {
+    "nose": {
+      "labeled": 20345,
+      "labeled_frac": 0.7008267309679642,
+      "v=-1": 0,
+      "v=0": 8685,
+      "v=1": 1092,
+      "v=2": 19253
+    },
+    "left_eye": {
+      "labeled": 17673,
+      "labeled_frac": 0.6087840165346193,
+      "v=-1": 0,
+      "v=0": 11357,
+      "v=1": 431,
+      "v=2": 17242
+    },
+    "right_eye": {
+      "labeled": 17775,
+      "labeled_frac": 0.6122976231484671,
+      "v=-1": 0,
+      "v=0": 11255,
+      "v=1": 503,
+      "v=2": 17272
+    },
+    "left_ear": {
+      "labeled": 15351,
+      "labeled_frac": 0.5287977953840854,
+      "v=-1": 0,
+      "v=0": 13679,
+      "v=1": 918,
+      "v=2": 14433
+    },
+    "right_ear": {
+      "labeled": 15754,
+      "labeled_frac": 0.5426799862211505,
+      "v=-1": 0,
+      "v=0": 13276,
+      "v=1": 1281,
+      "v=2": 14473
+    },
+    "left_shoulder": {
+      "labeled": 26205,
+      "labeled_frac": 0.9026868756458836,
+      "v=-1": 0,
+      "v=0": 2825,
+      "v=1": 2349,
+      "v=2": 23856
+    },
+    "right_shoulder": {
+      "labeled": 26318,
+      "labeled_frac": 0.9065794006200483,
+      "v=-1": 0,
+      "v=0": 2712,
+      "v=1": 2526,
+      "v=2": 23792
+    },
+    "left_hip": {
+      "labeled": 22747,
+      "labeled_frac": 0.783568722011712,
+      "v=-1": 0,
+      "v=0": 6283,
+      "v=1": 4469,
+      "v=2": 18278
+    },
+    "right_hip": {
+      "labeled": 22877,
+      "labeled_frac": 0.7880468480881846,
+      "v=-1": 0,
+      "v=0": 6153,
+      "v=1": 4560,
+      "v=2": 18317
+    }
+  },
+  "visibility_histogram_total": {
+    "v=-1": 0,
+    "v=0": 76225,
+    "v=1": 18129,
+    "v=2": 166916
+  },
+  "labeled_points_per_person": {
+    "1": 659,
+    "2": 1481,
+    "3": 869,
+    "4": 2600,
+    "5": 3063,
+    "6": 3909,
+    "7": 5722,
+    "8": 6949,
+    "9": 3778
+  },
+  "face_spread": {
+    "definition": "max pairwise distance of labeled face points (>=2 labeled)",
+    "persons_without_face_spread": 6139,
+    "source_px": {
+      "<8": 2192,
+      "8-16": 5980,
+      "16-32": 7568,
+      "32-64": 4672,
+      "64-128": 1953,
+      ">=128": 526
+    },
+    "net_px_at_320": {
+      "<8": 7847,
+      "8-16": 7548,
+      "16-32": 4849,
+      ">=32": 2647
+    },
+    "median_net_px_at_320": 11.000000774860382
+  },
+  "torso_spread_net_px_at_320": {
+    "<8": 261,
+    "8-16": 3163,
+    "16-32": 8569,
+    ">=32": 14922
+  },
+  "persons_per_image": {
+    "exact": {
+      "0": 429,
+      "1": 5197,
+      "2": 2084,
+      "3": 1073,
+      "4": 722,
+      "5": 468,
+      "6": 350,
+      "7": 247,
+      "8": 208,
+      "9": 145,
+      "10": 144,
+      "11": 115,
+      "12": 79,
+      "13": 59
+    },
+    "buckets": {
+      "0": 429,
+      "1": 5197,
+      "2-4": 3879,
+      "5+": 1815
+    }
+  },
+  "edge_truncated": {
+    "persons_labeled_point_within_16px_at_net": 5787,
+    "persons_bbox_touching_border": 5990
+  },
+  "oversample_candidates_small_face_and_3plus_persons": 3110,
+  "image_max_side": {
+    "min": 144,
+    "median": 640.0,
+    "max": 640,
+    "gt_640": 0
+  },
+  "split": "test",
+  "root": "D:\\xtxtraining",
+  "manifest_sha1": "1eb26d0e72b13d31030fe05cc05b5858fd8c37ff",
+  "duplicate_images_within_split": 1
+}

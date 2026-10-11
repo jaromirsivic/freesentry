@@ -1,0 +1,140 @@
+{
+  "run": {
+    "name": "xtx4-u",
+    "seed": 0,
+    "notes": "Default XTX4-u (candidate u_b). See implementation_plan_fable.md section 5.2. Runs are written to run.output_root/<run_name> (D: has >1 TB free; C: is full).",
+    "output_root": "D:/xtx4_runs"
+  },
+  "model": {
+    "variant": "u_b",
+    "num_keypoints": 9,
+    "levels": "P3P4P5",
+    "act": "relu",
+    "block": "rep",
+    "p2_assist": false
+  },
+  "data": {
+    "dataset_path": "D:/xtxtraining",
+    "sizes": [
+      256,
+      320,
+      384
+    ],
+    "size_probs": [
+      0.2,
+      0.5,
+      0.3
+    ],
+    "eval_size": 320,
+    "cache_dir": null,
+    "cache_max_side": 640,
+    "min_labeled_keypoints": 1,
+    "extra_datasets": [],
+    "augment": {
+      "fliplr": 0.5,
+      "hsv_h": 0.015,
+      "hsv_s": 0.7,
+      "hsv_v": 0.4,
+      "scale_min": 0.5,
+      "scale_max": 1.5,
+      "translate": 0.1,
+      "mosaic": 0.5,
+      "upper_body_crop": 0.3,
+      "motion_blur": 0.2,
+      "noise": 0.2,
+      "jpeg": 0.3,
+      "gamma": 0.3
+    }
+  },
+  "training": {
+    "epochs": 300,
+    "batch_size": 64,
+    "accumulate": 1,
+    "optimizer": "sgd",
+    "lr0": 0.01,
+    "lr_final_factor": 0.01,
+    "momentum": 0.937,
+    "nesterov": true,
+    "weight_decay": 0.0005,
+    "warmup_epochs": 3,
+    "amp": true,
+    "channels_last": false,
+    "ema_decay": 0.9998,
+    "ema_warmup_steps": 2000,
+    "close_mosaic_epochs": 15,
+    "num_workers": 6,
+    "checkpoint_interval_minutes": 10,
+    "val_images_per_epoch": 2000,
+    "full_val_every": 10,
+    "grad_clip_norm": 10.0,
+    "profile_steps": 50,
+    "tensorboard": {
+      "enabled": true,
+      "log_every_steps": 10,
+      "histogram_every_epochs": 5,
+      "graph": true
+    }
+  },
+  "loss": {
+    "person": 1.0,
+    "kpt": 15.0,
+    "present": 1.0,
+    "visible": 0.5,
+    "oks_weight": 1.0,
+    "rle_weight": 0.0417,
+    "kpt_loss": "soks",
+    "rle_convention": "reference",
+    "person_loss": "bce",
+    "unlabeled_present_weight": 1.0,
+    "assign": {
+      "alpha": 0.5,
+      "beta": 6.0,
+      "topk_o2m": 10,
+      "topk_o2o": 7,
+      "topk2_o2o": 1,
+      "extent_expand": 0.25,
+      "extent_min_px": 16,
+      "single_point_box_px": 24,
+      "min_candidates": 4,
+      "root_warmup_epochs": 3,
+      "root_prior_weight": 0.1
+    },
+    "progloss": {
+      "o2m_start": 0.8,
+      "o2m_end": 0.1
+    }
+  },
+  "decode": {
+    "conf_threshold": 0.25,
+    "max_detections": 100,
+    "sigma_conf_coeff": 0.0,
+    "sigma_floor": 0.05,
+    "present_threshold": 0.5,
+    "visible_threshold": 0.5,
+    "oks_nms": false,
+    "oks_nms_threshold": 0.5,
+    "oks_nms_iou_threshold": null,
+    "oks_nms_scale_factor": 1.5
+  },
+  "eval": {
+    "score_threshold": 0.001,
+    "max_det": 100,
+    "sizes": [
+      256,
+      320,
+      384
+    ],
+    "match_threshold": 0.5
+  },
+  "export": {
+    "auto_export": true,
+    "onnx_opset": 17,
+    "converter": "pnnx",
+    "sizes": [
+      256,
+      320,
+      384
+    ],
+    "fp16": true
+  }
+}

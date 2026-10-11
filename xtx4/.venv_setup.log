@@ -1,0 +1,65 @@
+Using CPython 3.12.13
+warning: The requested interpreter resolved to Python 3.12.13, which is incompatible with the project's Python requirement: `>=3.14`.
+The following `requires-python` declarations do not permit this version:
+- freesentry: >=3.14
+- xtx2: >=3.14
+Creating virtual environment at: .venv
+Activate with: .venv\Scripts\activate
+Resolved 42 packages in 458ms
+Downloading onnx (7.5MiB)
+Downloading onnxsim (7.6MiB)
+Downloading numpy (12.0MiB)
+ Downloaded onnx
+ Downloaded onnxsim
+ Downloaded numpy
+Prepared 7 packages in 4.75s
+Installed 42 packages in 8.34s
+ + absl-py==2.5.1
+ + certifi==2026.7.22
+ + charset-normalizer==3.5.2
+ + colorama==0.4.6
+ + filelock==4.1.0
+ + flatbuffers==25.12.19
+ + fsspec==2026.9.0
+ + grpcio==1.84.0
+ + idna==3.20
+ + iniconfig==2.3.1
+ + jinja2==3.1.6
+ + markdown==3.11
+ + markupsafe==3.0.4
+ + ml-dtypes==0.6.0
+ + mpmath==1.3.0
+ + ncnn==1.0.20260526
+ + networkx==3.7
+ + numpy==2.5.4
+ + onnx==1.23.2
+ + onnxruntime==1.31.0
+ + onnxsim==0.8.1
+ + opencv-python==5.0.0.93
+ + packaging==26.3
+ + pillow==12.3.0
+ + pluggy==1.6.0
+ + pnnx==20260526
+ + portalocker==4.4.0
+ + protobuf==7.36.2
+ + psutil==7.2.2
+ + pycocotools==2.0.11
+ + pygments==2.21.0
+ + pytest==9.1.1
+ + requests==2.34.2
+ + setuptools==84.0.0
+ + sympy==1.14.0
+ + tensorboard==2.21.0
+ + tensorboard-data-server==0.7.2
+ + torch==2.14.1
+ + tqdm==4.70.1
+ + typing-extensions==4.16.0
+ + urllib3==2.8.0
+ + werkzeug==3.1.9
+Resolved 13 packages in 787ms
+Downloading torchvision (6.3MiB)
+ Downloaded torchvision
+Prepared 1 package in 1.06s
+Installed 1 package in 53ms
+ + torchvision==0.29.1+cu130
+DONE

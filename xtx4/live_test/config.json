@@ -1,0 +1,52 @@
+{
+  "networks": [
+    {
+      "id": "xtx4-u",
+      "label": "XTX4-u (trained run D:/xtx4_runs/xtx4-u, whole-frame)",
+      "manifest": "D:/xtx4_runs/xtx4-u/export/manifest.json",
+      "default_size": 320
+    },
+    {
+      "id": "u_b-random",
+      "label": "u_b random weights (bench graph, latency only)",
+      "param": "../bench/graphs/u_b_{size}.ncnn.param",
+      "bin": "../bench/graphs/u_b_{size}.ncnn.bin",
+      "sizes": [256, 320, 384],
+      "default_size": 320,
+      "strides": [8, 16, 32],
+      "input_blob": "in0",
+      "output_blobs": { "person": "out0", "pose": "out1" }
+    }
+  ],
+  "camera": {
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "mjpg": true,
+    "max_probe_index": 8,
+    "mirror": true,
+    "windows_backend": "msmf"
+  },
+  "inference": {
+    "conf_threshold": 0.25,
+    "kpt_threshold": 0.3,
+    "max_detections": 50,
+    "num_threads": 4,
+    "use_vulkan": false,
+    "fp16": true,
+    "oks_nms": false,
+    "oks_nms_threshold": "manifest",
+    "oks_nms_iou_threshold": "manifest",
+    "oks_nms_scale_factor": "manifest",
+    "present_threshold": "manifest",
+    "visible_threshold": "manifest"
+  },
+  "display": {
+    "window_title": "XTX4 live test",
+    "show_scores": true,
+    "show_labels": false,
+    "show_hud": true,
+    "point_radius": 4,
+    "line_thickness": 2
+  }
+}

@@ -31,6 +31,7 @@ discussion.md
 /xtx3/.smoke_dataset/
 /xtx3/runs_smoke/
 /xtx3/.tensorboard/
+/xtx3/runs
 .pt
 
 # Virtual environments

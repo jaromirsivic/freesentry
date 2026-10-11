@@ -1,0 +1,8 @@
+# XTX4 live test - runtime dependencies (no torch needed).
+# Installed by init.bat / init.sh into ./.venv with uv. The decode/runtime code is
+# imported from the xtx4 package one directory up (xtx4/runtime, torch-free).
+ncnn>=1.0.20240410
+numpy>=1.26
+opencv-python>=4.9
+cv2-enumerate-cameras>=1.1
+psutil>=5.9

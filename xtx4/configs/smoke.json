@@ -1,0 +1,22 @@
+{
+  "run": { "name": "xtx4-u-smoke", "seed": 0 },
+  "data": {
+    "dataset_path": "../xtx3/.smoke_dataset",
+    "sizes": [256, 320],
+    "size_probs": [0.5, 0.5],
+    "eval_size": 320
+  },
+  "training": {
+    "epochs": 2,
+    "batch_size": 8,
+    "warmup_epochs": 1,
+    "num_workers": 2,
+    "close_mosaic_epochs": 1,
+    "checkpoint_interval_minutes": 1,
+    "val_images_per_epoch": 40,
+    "full_val_every": 1,
+    "profile_steps": 5,
+    "tensorboard": { "enabled": true, "log_every_steps": 1, "histogram_every_epochs": 1, "graph": false }
+  },
+  "export": { "auto_export": false }
+}

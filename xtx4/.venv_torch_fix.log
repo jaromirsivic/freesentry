@@ -1,0 +1,10 @@
+Resolved 13 packages in 230ms
+Downloading torch (1.9GiB)
+ Downloaded torch
+Prepared 1 package in 5m 31s
+Uninstalled 1 package in 1.08s
+Installed 1 package in 2.53s
+ - torch==2.14.1
+ + torch==2.14.1+cu130
+2.14.1+cu130 True
+DONE

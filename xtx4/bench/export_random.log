@@ -1,0 +1,218 @@
+12:49:10 | INFO    | xtx4.models.xtx4 | Built XTX4-u_a: levels=P3P4P5 block=rep act=relu p2_assist=False params=1.291M
+12:49:11 | INFO    | xtx4.models.xtx4 | Fused XTX4-u_a for deployment (one2many head dropped)
+12:49:12 | INFO    | xtx4.export.onnx_ncnn | Exported ONNX -> bench\graphs\u_a_256.onnx (opset 17, input 256)
+12:49:31 | INFO    | xtx4.export.onnx_ncnn | Simplified ONNX with onnxsim
+12:49:31 | INFO    | xtx4.export.onnx_ncnn | Verified ONNX vs PyTorch: max |diff| = 2.86e-06 (tolerance 1e-03)
+12:49:31 | INFO    | xtx4.export.onnx_ncnn | Running pnnx: C:\git\freesentry\xtx4\.venv\Scripts\pnnx.EXE bench\graphs\u_a_256.onnx ncnnparam=bench\graphs\u_a_256.ncnn.param ncnnbin=bench\graphs\u_a_256.ncnn.bin ncnnpy=bench\graphs\u_a_256_ncnn.py pnnxparam=bench\graphs\u_a_256.pnnx.param pnnxbin=bench\graphs\u_a_256.pnnx.bin pnnxpy=bench\graphs\u_a_256_pnnx.py pnnxonnx=bench\graphs\u_a_256.pnnx.onnx fp16=1
+12:49:46 | INFO    | xtx4.export.onnx_ncnn | Converted to ncnn -> bench\graphs\u_a_256.ncnn.param (+ .bin, fp16=1): inputs=['in0'] outputs=['out0', 'out1'] layers={'BinaryOp': 8, 'Concat': 15, 'Convolution': 53, 'Input': 1, 'Interp': 2, 'Permute': 6, 'Pooling': 3, 'Reshape': 7, 'Slice': 8, 'Split': 20}
+12:49:46 | INFO    | xtx4.export_random | u_a_256: N=1344 GMAC=0.253 params(deploy)=0.993M onnx diff=2.9e-06 ncnn=['fp16'] (35.7s)
+12:49:46 | INFO    | xtx4.models.xtx4 | Built XTX4-u_a: levels=P3P4P5 block=rep act=relu p2_assist=False params=1.291M
+12:49:46 | INFO    | xtx4.models.xtx4 | Fused XTX4-u_a for deployment (one2many head dropped)
+12:49:47 | INFO    | xtx4.export.onnx_ncnn | Exported ONNX -> bench\graphs\u_a_320.onnx (opset 17, input 320)
+12:49:47 | INFO    | xtx4.export.onnx_ncnn | Simplified ONNX with onnxsim
+12:49:47 | INFO    | xtx4.export.onnx_ncnn | Verified ONNX vs PyTorch: max |diff| = 2.38e-06 (tolerance 1e-03)
+12:49:47 | INFO    | xtx4.export.onnx_ncnn | Running pnnx: C:\git\freesentry\xtx4\.venv\Scripts\pnnx.EXE bench\graphs\u_a_320.onnx ncnnparam=bench\graphs\u_a_320.ncnn.param ncnnbin=bench\graphs\u_a_320.ncnn.bin ncnnpy=bench\graphs\u_a_320_ncnn.py pnnxparam=bench\graphs\u_a_320.pnnx.param pnnxbin=bench\graphs\u_a_320.pnnx.bin pnnxpy=bench\graphs\u_a_320_pnnx.py pnnxonnx=bench\graphs\u_a_320.pnnx.onnx fp16=1
+12:50:00 | INFO    | xtx4.export.onnx_ncnn | Converted to ncnn -> bench\graphs\u_a_320.ncnn.param (+ .bin, fp16=1): inputs=['in0'] outputs=['out0', 'out1'] layers={'BinaryOp': 8, 'Concat': 15, 'Convolution': 53, 'Input': 1, 'Interp': 2, 'Permute': 6, 'Pooling': 3, 'Reshape': 7, 'Slice': 8, 'Split': 20}
+12:50:00 | INFO    | xtx4.export_random | u_a_320: N=2100 GMAC=0.395 params(deploy)=0.993M onnx diff=2.4e-06 ncnn=['fp16'] (14.3s)
+12:50:00 | INFO    | xtx4.models.xtx4 | Built XTX4-u_a: levels=P3P4P5 block=rep act=relu p2_assist=False params=1.291M
+12:50:00 | INFO    | xtx4.models.xtx4 | Fused XTX4-u_a for deployment (one2many head dropped)
+12:50:01 | INFO    | xtx4.export.onnx_ncnn | Exported ONNX -> bench\graphs\u_a_384.onnx (opset 17, input 384)
+12:50:01 | INFO    | xtx4.export.onnx_ncnn | Simplified ONNX with onnxsim
+12:50:01 | INFO    | xtx4.export.onnx_ncnn | Verified ONNX vs PyTorch: max |diff| = 2.86e-06 (tolerance 1e-03)
+12:50:01 | INFO    | xtx4.export.onnx_ncnn | Running pnnx: C:\git\freesentry\xtx4\.venv\Scripts\pnnx.EXE bench\graphs\u_a_384.onnx ncnnparam=bench\graphs\u_a_384.ncnn.param ncnnbin=bench\graphs\u_a_384.ncnn.bin ncnnpy=bench\graphs\u_a_384_ncnn.py pnnxparam=bench\graphs\u_a_384.pnnx.param pnnxbin=bench\graphs\u_a_384.pnnx.bin pnnxpy=bench\graphs\u_a_384_pnnx.py pnnxonnx=bench\graphs\u_a_384.pnnx.onnx fp16=1
+12:50:14 | INFO    | xtx4.export.onnx_ncnn | Converted to ncnn -> bench\graphs\u_a_384.ncnn.param (+ .bin, fp16=1): inputs=['in0'] outputs=['out0', 'out1'] layers={'BinaryOp': 8, 'Concat': 15, 'Convolution': 53, 'Input': 1, 'Interp': 2, 'Permute': 6, 'Pooling': 3, 'Reshape': 7, 'Slice': 8, 'Split': 20}
+12:50:14 | INFO    | xtx4.export_random | u_a_384: N=3024 GMAC=0.568 params(deploy)=0.993M onnx diff=2.9e-06 ncnn=['fp16'] (13.7s)
+12:50:14 | INFO    | xtx4.models.xtx4 | Built XTX4-u_b: levels=P3P4P5 block=rep act=relu p2_assist=False params=2.592M
+12:50:14 | INFO    | xtx4.models.xtx4 | Fused XTX4-u_b for deployment (one2many head dropped)
+12:50:15 | INFO    | xtx4.export.onnx_ncnn | Exported ONNX -> bench\graphs\u_b_256.onnx (opset 17, input 256)
+12:50:15 | INFO    | xtx4.export.onnx_ncnn | Simplified ONNX with onnxsim
+12:50:15 | INFO    | xtx4.export.onnx_ncnn | Verified ONNX vs PyTorch: max |diff| = 3.34e-06 (tolerance 1e-03)
+12:50:15 | INFO    | xtx4.export.onnx_ncnn | Running pnnx: C:\git\freesentry\xtx4\.venv\Scripts\pnnx.EXE bench\graphs\u_b_256.onnx ncnnparam=bench\graphs\u_b_256.ncnn.param ncnnbin=bench\graphs\u_b_256.ncnn.bin ncnnpy=bench\graphs\u_b_256_ncnn.py pnnxparam=bench\graphs\u_b_256.pnnx.param pnnxbin=bench\graphs\u_b_256.pnnx.bin pnnxpy=bench\graphs\u_b_256_pnnx.py pnnxonnx=bench\graphs\u_b_256.pnnx.onnx fp16=1
+12:50:28 | INFO    | xtx4.export.onnx_ncnn | Converted to ncnn -> bench\graphs\u_b_256.ncnn.param (+ .bin, fp16=1): inputs=['in0'] outputs=['out0', 'out1'] layers={'BinaryOp': 10, 'Concat': 15, 'Convolution': 57, 'Input': 1, 'Interp': 2, 'Permute': 6, 'Pooling': 3, 'Reshape': 7, 'Slice': 8, 'Split': 22}
+12:50:28 | INFO    | xtx4.export_random | u_b_256: N=1344 GMAC=0.489 params(deploy)=2.032M onnx diff=3.3e-06 ncnn=['fp16'] (13.8s)
+12:50:28 | INFO    | xtx4.models.xtx4 | Built XTX4-u_b: levels=P3P4P5 block=rep act=relu p2_assist=False params=2.592M
+12:50:28 | INFO    | xtx4.models.xtx4 | Fused XTX4-u_b for deployment (one2many head dropped)
+12:50:28 | INFO    | xtx4.export.onnx_ncnn | Exported ONNX -> bench\graphs\u_b_320.onnx (opset 17, input 320)
+12:50:28 | INFO    | xtx4.export.onnx_ncnn | Simplified ONNX with onnxsim
+12:50:29 | INFO    | xtx4.export.onnx_ncnn | Verified ONNX vs PyTorch: max |diff| = 3.81e-06 (tolerance 1e-03)
+12:50:29 | INFO    | xtx4.export.onnx_ncnn | Running pnnx: C:\git\freesentry\xtx4\.venv\Scripts\pnnx.EXE bench\graphs\u_b_320.onnx ncnnparam=bench\graphs\u_b_320.ncnn.param ncnnbin=bench\graphs\u_b_320.ncnn.bin ncnnpy=bench\graphs\u_b_320_ncnn.py pnnxparam=bench\graphs\u_b_320.pnnx.param pnnxbin=bench\graphs\u_b_320.pnnx.bin pnnxpy=bench\graphs\u_b_320_pnnx.py pnnxonnx=bench\graphs\u_b_320.pnnx.onnx fp16=1
+12:50:41 | INFO    | xtx4.export.onnx_ncnn | Converted to ncnn -> bench\graphs\u_b_320.ncnn.param (+ .bin, fp16=1): inputs=['in0'] outputs=['out0', 'out1'] layers={'BinaryOp': 10, 'Concat': 15, 'Convolution': 57, 'Input': 1, 'Interp': 2, 'Permute': 6, 'Pooling': 3, 'Reshape': 7, 'Slice': 8, 'Split': 22}
+12:50:42 | INFO    | xtx4.export_random | u_b_320: N=2100 GMAC=0.765 params(deploy)=2.032M onnx diff=3.8e-06 ncnn=['fp16'] (13.8s)
+12:50:42 | INFO    | xtx4.models.xtx4 | Built XTX4-u_b: levels=P3P4P5 block=rep act=relu p2_assist=False params=2.592M
+12:50:42 | INFO    | xtx4.models.xtx4 | Fused XTX4-u_b for deployment (one2many head dropped)
+12:50:42 | INFO    | xtx4.export.onnx_ncnn | Exported ONNX -> bench\graphs\u_b_384.onnx (opset 17, input 384)
+12:50:42 | INFO    | xtx4.export.onnx_ncnn | Simplified ONNX with onnxsim
+12:50:42 | INFO    | xtx4.export.onnx_ncnn | Verified ONNX vs PyTorch: max |diff| = 3.34e-06 (tolerance 1e-03)
+12:50:42 | INFO    | xtx4.export.onnx_ncnn | Running pnnx: C:\git\freesentry\xtx4\.venv\Scripts\pnnx.EXE bench\graphs\u_b_384.onnx ncnnparam=bench\graphs\u_b_384.ncnn.param ncnnbin=bench\graphs\u_b_384.ncnn.bin ncnnpy=bench\graphs\u_b_384_ncnn.py pnnxparam=bench\graphs\u_b_384.pnnx.param pnnxbin=bench\graphs\u_b_384.pnnx.bin pnnxpy=bench\graphs\u_b_384_pnnx.py pnnxonnx=bench\graphs\u_b_384.pnnx.onnx fp16=1
+12:50:56 | INFO    | xtx4.export.onnx_ncnn | Converted to ncnn -> bench\graphs\u_b_384.ncnn.param (+ .bin, fp16=1): inputs=['in0'] outputs=['out0', 'out1'] layers={'BinaryOp': 10, 'Concat': 15, 'Convolution': 57, 'Input': 1, 'Interp': 2, 'Permute': 6, 'Pooling': 3, 'Reshape': 7, 'Slice': 8, 'Split': 22}
+12:50:56 | INFO    | xtx4.export_random | u_b_384: N=3024 GMAC=1.101 params(deploy)=2.032M onnx diff=3.3e-06 ncnn=['fp16'] (14.5s)
+12:50:56 | INFO    | xtx4.models.xtx4 | Built XTX4-u_c: levels=P3P4P5 block=rep act=relu p2_assist=False params=4.830M
+12:50:56 | INFO    | xtx4.models.xtx4 | Fused XTX4-u_c for deployment (one2many head dropped)
+12:50:57 | INFO    | xtx4.export.onnx_ncnn | Exported ONNX -> bench\graphs\u_c_256.onnx (opset 17, input 256)
+12:50:57 | INFO    | xtx4.export.onnx_ncnn | Simplified ONNX with onnxsim
+12:50:57 | INFO    | xtx4.export.onnx_ncnn | Verified ONNX vs PyTorch: max |diff| = 3.34e-06 (tolerance 1e-03)
+12:50:57 | INFO    | xtx4.export.onnx_ncnn | Running pnnx: C:\git\freesentry\xtx4\.venv\Scripts\pnnx.EXE bench\graphs\u_c_256.onnx ncnnparam=bench\graphs\u_c_256.ncnn.param ncnnbin=bench\graphs\u_c_256.ncnn.bin ncnnpy=bench\graphs\u_c_256_ncnn.py pnnxparam=bench\graphs\u_c_256.pnnx.param pnnxbin=bench\graphs\u_c_256.pnnx.bin pnnxpy=bench\graphs\u_c_256_pnnx.py pnnxonnx=bench\graphs\u_c_256.pnnx.onnx fp16=1
+12:51:10 | INFO    | xtx4.export.onnx_ncnn | Converted to ncnn -> bench\graphs\u_c_256.ncnn.param (+ .bin, fp16=1): inputs=['in0'] outputs=['out0', 'out1'] layers={'BinaryOp': 10, 'Concat': 15, 'Convolution': 57, 'Input': 1, 'Interp': 2, 'Permute': 6, 'Pooling': 3, 'Reshape': 7, 'Slice': 8, 'Split': 22}
+12:51:11 | INFO    | xtx4.export_random | u_c_256: N=1344 GMAC=0.983 params(deploy)=3.940M onnx diff=3.3e-06 ncnn=['fp16'] (14.6s)
+12:51:11 | INFO    | xtx4.models.xtx4 | Built XTX4-u_c: levels=P3P4P5 block=rep act=relu p2_assist=False params=4.830M
+12:51:11 | INFO    | xtx4.models.xtx4 | Fused XTX4-u_c for deployment (one2many head dropped)
+12:51:11 | INFO    | xtx4.export.onnx_ncnn | Exported ONNX -> bench\graphs\u_c_320.onnx (opset 17, input 320)
+12:51:11 | INFO    | xtx4.export.onnx_ncnn | Simplified ONNX with onnxsim
+12:51:12 | INFO    | xtx4.export.onnx_ncnn | Verified ONNX vs PyTorch: max |diff| = 2.86e-06 (tolerance 1e-03)
+12:51:12 | INFO    | xtx4.export.onnx_ncnn | Running pnnx: C:\git\freesentry\xtx4\.venv\Scripts\pnnx.EXE bench\graphs\u_c_320.onnx ncnnparam=bench\graphs\u_c_320.ncnn.param ncnnbin=bench\graphs\u_c_320.ncnn.bin ncnnpy=bench\graphs\u_c_320_ncnn.py pnnxparam=bench\graphs\u_c_320.pnnx.param pnnxbin=bench\graphs\u_c_320.pnnx.bin pnnxpy=bench\graphs\u_c_320_pnnx.py pnnxonnx=bench\graphs\u_c_320.pnnx.onnx fp16=1
+12:51:23 | INFO    | xtx4.export.onnx_ncnn | Converted to ncnn -> bench\graphs\u_c_320.ncnn.param (+ .bin, fp16=1): inputs=['in0'] outputs=['out0', 'out1'] layers={'BinaryOp': 10, 'Concat': 15, 'Convolution': 57, 'Input': 1, 'Interp': 2, 'Permute': 6, 'Pooling': 3, 'Reshape': 7, 'Slice': 8, 'Split': 22}
+12:51:23 | INFO    | xtx4.export_random | u_c_320: N=2100 GMAC=1.535 params(deploy)=3.940M onnx diff=2.9e-06 ncnn=['fp16'] (12.7s)
+12:51:23 | INFO    | xtx4.models.xtx4 | Built XTX4-u_c: levels=P3P4P5 block=rep act=relu p2_assist=False params=4.830M
+12:51:24 | INFO    | xtx4.models.xtx4 | Fused XTX4-u_c for deployment (one2many head dropped)
+12:51:24 | INFO    | xtx4.export.onnx_ncnn | Exported ONNX -> bench\graphs\u_c_384.onnx (opset 17, input 384)
+12:51:24 | INFO    | xtx4.export.onnx_ncnn | Simplified ONNX with onnxsim
+12:51:24 | INFO    | xtx4.export.onnx_ncnn | Verified ONNX vs PyTorch: max |diff| = 3.34e-06 (tolerance 1e-03)
+12:51:24 | INFO    | xtx4.export.onnx_ncnn | Running pnnx: C:\git\freesentry\xtx4\.venv\Scripts\pnnx.EXE bench\graphs\u_c_384.onnx ncnnparam=bench\graphs\u_c_384.ncnn.param ncnnbin=bench\graphs\u_c_384.ncnn.bin ncnnpy=bench\graphs\u_c_384_ncnn.py pnnxparam=bench\graphs\u_c_384.pnnx.param pnnxbin=bench\graphs\u_c_384.pnnx.bin pnnxpy=bench\graphs\u_c_384_pnnx.py pnnxonnx=bench\graphs\u_c_384.pnnx.onnx fp16=1
+12:51:35 | INFO    | xtx4.export.onnx_ncnn | Converted to ncnn -> bench\graphs\u_c_384.ncnn.param (+ .bin, fp16=1): inputs=['in0'] outputs=['out0', 'out1'] layers={'BinaryOp': 10, 'Concat': 15, 'Convolution': 57, 'Input': 1, 'Interp': 2, 'Permute': 6, 'Pooling': 3, 'Reshape': 7, 'Slice': 8, 'Split': 22}
+12:51:35 | INFO    | xtx4.export_random | u_c_384: N=3024 GMAC=2.211 params(deploy)=3.940M onnx diff=3.3e-06 ncnn=['fp16'] (12.2s)
+12:51:35 | INFO    | xtx4.models.xtx4 | Built XTX4-xtx3u_ctrl: levels=P3P4P5 block=dw act=silu p2_assist=False params=0.671M
+12:51:36 | INFO    | xtx4.models.xtx4 | Fused XTX4-xtx3u_ctrl for deployment (one2many head dropped)
+12:51:36 | INFO    | xtx4.export.onnx_ncnn | Exported ONNX -> bench\graphs\xtx3u_ctrl_256.onnx (opset 17, input 256)
+12:51:36 | INFO    | xtx4.export.onnx_ncnn | Simplified ONNX with onnxsim
+12:51:36 | INFO    | xtx4.export.onnx_ncnn | Verified ONNX vs PyTorch: max |diff| = 9.54e-07 (tolerance 1e-03)
+12:51:36 | INFO    | xtx4.export.onnx_ncnn | Running pnnx: C:\git\freesentry\xtx4\.venv\Scripts\pnnx.EXE bench\graphs\xtx3u_ctrl_256.onnx ncnnparam=bench\graphs\xtx3u_ctrl_256.ncnn.param ncnnbin=bench\graphs\xtx3u_ctrl_256.ncnn.bin ncnnpy=bench\graphs\xtx3u_ctrl_256_ncnn.py pnnxparam=bench\graphs\xtx3u_ctrl_256.pnnx.param pnnxbin=bench\graphs\xtx3u_ctrl_256.pnnx.bin pnnxpy=bench\graphs\xtx3u_ctrl_256_pnnx.py pnnxonnx=bench\graphs\xtx3u_ctrl_256.pnnx.onnx fp16=1
+12:51:47 | INFO    | xtx4.export.onnx_ncnn | Converted to ncnn -> bench\graphs\xtx3u_ctrl_256.ncnn.param (+ .bin, fp16=1): inputs=['in0'] outputs=['out0', 'out1'] layers={'BinaryOp': 8, 'Concat': 17, 'Convolution': 55, 'ConvolutionDepthWise': 18, 'Input': 1, 'Interp': 2, 'Permute': 6, 'Pooling': 5, 'Reshape': 7, 'Sigmoid': 4, 'Slice': 10, 'Split': 24, 'Swish': 63}
+12:51:47 | INFO    | xtx4.export_random | xtx3u_ctrl_256: N=1344 GMAC=0.220 params(deploy)=0.623M onnx diff=9.5e-07 ncnn=['fp16'] (11.7s)
+12:51:47 | INFO    | xtx4.models.xtx4 | Built XTX4-xtx3u_ctrl: levels=P3P4P5 block=dw act=silu p2_assist=False params=0.671M
+12:51:47 | INFO    | xtx4.models.xtx4 | Fused XTX4-xtx3u_ctrl for deployment (one2many head dropped)
+12:51:48 | INFO    | xtx4.export.onnx_ncnn | Exported ONNX -> bench\graphs\xtx3u_ctrl_320.onnx (opset 17, input 320)
+12:51:48 | INFO    | xtx4.export.onnx_ncnn | Simplified ONNX with onnxsim
+12:51:48 | INFO    | xtx4.export.onnx_ncnn | Verified ONNX vs PyTorch: max |diff| = 9.54e-07 (tolerance 1e-03)
+12:51:48 | INFO    | xtx4.export.onnx_ncnn | Running pnnx: C:\git\freesentry\xtx4\.venv\Scripts\pnnx.EXE bench\graphs\xtx3u_ctrl_320.onnx ncnnparam=bench\graphs\xtx3u_ctrl_320.ncnn.param ncnnbin=bench\graphs\xtx3u_ctrl_320.ncnn.bin ncnnpy=bench\graphs\xtx3u_ctrl_320_ncnn.py pnnxparam=bench\graphs\xtx3u_ctrl_320.pnnx.param pnnxbin=bench\graphs\xtx3u_ctrl_320.pnnx.bin pnnxpy=bench\graphs\xtx3u_ctrl_320_pnnx.py pnnxonnx=bench\graphs\xtx3u_ctrl_320.pnnx.onnx fp16=1
+12:52:00 | INFO    | xtx4.export.onnx_ncnn | Converted to ncnn -> bench\graphs\xtx3u_ctrl_320.ncnn.param (+ .bin, fp16=1): inputs=['in0'] outputs=['out0', 'out1'] layers={'BinaryOp': 8, 'Concat': 17, 'Convolution': 55, 'ConvolutionDepthWise': 18, 'Input': 1, 'Interp': 2, 'Permute': 6, 'Pooling': 5, 'Reshape': 7, 'Sigmoid': 4, 'Slice': 10, 'Split': 24, 'Swish': 63}
+12:52:00 | INFO    | xtx4.export_random | xtx3u_ctrl_320: N=2100 GMAC=0.344 params(deploy)=0.623M onnx diff=9.5e-07 ncnn=['fp16'] (13.1s)
+12:52:00 | INFO    | xtx4.models.xtx4 | Built XTX4-xtx3u_ctrl: levels=P3P4P5 block=dw act=silu p2_assist=False params=0.671M
+12:52:00 | INFO    | xtx4.models.xtx4 | Fused XTX4-xtx3u_ctrl for deployment (one2many head dropped)
+12:52:01 | INFO    | xtx4.export.onnx_ncnn | Exported ONNX -> bench\graphs\xtx3u_ctrl_384.onnx (opset 17, input 384)
+12:52:01 | INFO    | xtx4.export.onnx_ncnn | Simplified ONNX with onnxsim
+12:52:01 | INFO    | xtx4.export.onnx_ncnn | Verified ONNX vs PyTorch: max |diff| = 9.54e-07 (tolerance 1e-03)
+12:52:01 | INFO    | xtx4.export.onnx_ncnn | Running pnnx: C:\git\freesentry\xtx4\.venv\Scripts\pnnx.EXE bench\graphs\xtx3u_ctrl_384.onnx ncnnparam=bench\graphs\xtx3u_ctrl_384.ncnn.param ncnnbin=bench\graphs\xtx3u_ctrl_384.ncnn.bin ncnnpy=bench\graphs\xtx3u_ctrl_384_ncnn.py pnnxparam=bench\graphs\xtx3u_ctrl_384.pnnx.param pnnxbin=bench\graphs\xtx3u_ctrl_384.pnnx.bin pnnxpy=bench\graphs\xtx3u_ctrl_384_pnnx.py pnnxonnx=bench\graphs\xtx3u_ctrl_384.pnnx.onnx fp16=1
+12:52:13 | INFO    | xtx4.export.onnx_ncnn | Converted to ncnn -> bench\graphs\xtx3u_ctrl_384.ncnn.param (+ .bin, fp16=1): inputs=['in0'] outputs=['out0', 'out1'] layers={'BinaryOp': 8, 'Concat': 17, 'Convolution': 55, 'ConvolutionDepthWise': 18, 'Input': 1, 'Interp': 2, 'Permute': 6, 'Pooling': 5, 'Reshape': 7, 'Sigmoid': 4, 'Slice': 10, 'Split': 24, 'Swish': 63}
+12:52:14 | INFO    | xtx4.export_random | xtx3u_ctrl_384: N=3024 GMAC=0.496 params(deploy)=0.623M onnx diff=9.5e-07 ncnn=['fp16'] (13.4s)
+12:52:14 | INFO    | xtx4.models.xtx4 | Built XTX4-u_b: levels=P3P5 block=rep act=relu p2_assist=False params=2.072M
+12:52:14 | INFO    | xtx4.models.xtx4 | Fused XTX4-u_b for deployment (one2many head dropped)
+12:52:14 | INFO    | xtx4.export.onnx_ncnn | Exported ONNX -> bench\graphs\u_b_P3P5_256.onnx (opset 17, input 256)
+12:52:14 | INFO    | xtx4.export.onnx_ncnn | Simplified ONNX with onnxsim
+12:52:14 | INFO    | xtx4.export.onnx_ncnn | Verified ONNX vs PyTorch: max |diff| = 2.86e-06 (tolerance 1e-03)
+12:52:14 | INFO    | xtx4.export.onnx_ncnn | Running pnnx: C:\git\freesentry\xtx4\.venv\Scripts\pnnx.EXE bench\graphs\u_b_P3P5_256.onnx ncnnparam=bench\graphs\u_b_P3P5_256.ncnn.param ncnnbin=bench\graphs\u_b_P3P5_256.ncnn.bin ncnnpy=bench\graphs\u_b_P3P5_256_ncnn.py pnnxparam=bench\graphs\u_b_P3P5_256.pnnx.param pnnxbin=bench\graphs\u_b_P3P5_256.pnnx.bin pnnxpy=bench\graphs\u_b_P3P5_256_pnnx.py pnnxonnx=bench\graphs\u_b_P3P5_256.pnnx.onnx fp16=1
+12:52:27 | INFO    | xtx4.export.onnx_ncnn | Converted to ncnn -> bench\graphs\u_b_P3P5_256.ncnn.param (+ .bin, fp16=1): inputs=['in0'] outputs=['out0', 'out1'] layers={'BinaryOp': 9, 'Concat': 13, 'Convolution': 49, 'Input': 1, 'Interp': 2, 'Permute': 4, 'Pooling': 3, 'Reshape': 5, 'Slice': 7, 'Split': 18}
+12:52:27 | INFO    | xtx4.export_random | u_b_P3P5_256: N=1088 GMAC=0.421 params(deploy)=1.673M onnx diff=2.9e-06 ncnn=['fp16'] (13.1s)
+12:52:27 | INFO    | xtx4.models.xtx4 | Built XTX4-u_b: levels=P3P5 block=rep act=relu p2_assist=False params=2.072M
+12:52:27 | INFO    | xtx4.models.xtx4 | Fused XTX4-u_b for deployment (one2many head dropped)
+12:52:27 | INFO    | xtx4.export.onnx_ncnn | Exported ONNX -> bench\graphs\u_b_P3P5_320.onnx (opset 17, input 320)
+12:52:27 | INFO    | xtx4.export.onnx_ncnn | Simplified ONNX with onnxsim
+12:52:27 | INFO    | xtx4.export.onnx_ncnn | Verified ONNX vs PyTorch: max |diff| = 2.86e-06 (tolerance 1e-03)
+12:52:27 | INFO    | xtx4.export.onnx_ncnn | Running pnnx: C:\git\freesentry\xtx4\.venv\Scripts\pnnx.EXE bench\graphs\u_b_P3P5_320.onnx ncnnparam=bench\graphs\u_b_P3P5_320.ncnn.param ncnnbin=bench\graphs\u_b_P3P5_320.ncnn.bin ncnnpy=bench\graphs\u_b_P3P5_320_ncnn.py pnnxparam=bench\graphs\u_b_P3P5_320.pnnx.param pnnxbin=bench\graphs\u_b_P3P5_320.pnnx.bin pnnxpy=bench\graphs\u_b_P3P5_320_pnnx.py pnnxonnx=bench\graphs\u_b_P3P5_320.pnnx.onnx fp16=1
+12:52:40 | INFO    | xtx4.export.onnx_ncnn | Converted to ncnn -> bench\graphs\u_b_P3P5_320.ncnn.param (+ .bin, fp16=1): inputs=['in0'] outputs=['out0', 'out1'] layers={'BinaryOp': 9, 'Concat': 13, 'Convolution': 49, 'Input': 1, 'Interp': 2, 'Permute': 4, 'Pooling': 3, 'Reshape': 5, 'Slice': 7, 'Split': 18}
+12:52:40 | INFO    | xtx4.export_random | u_b_P3P5_320: N=1700 GMAC=0.658 params(deploy)=1.673M onnx diff=2.9e-06 ncnn=['fp16'] (13.2s)
+12:52:40 | INFO    | xtx4.models.xtx4 | Built XTX4-u_b: levels=P3P5 block=rep act=relu p2_assist=False params=2.072M
+12:52:40 | INFO    | xtx4.models.xtx4 | Fused XTX4-u_b for deployment (one2many head dropped)
+12:52:40 | INFO    | xtx4.export.onnx_ncnn | Exported ONNX -> bench\graphs\u_b_P3P5_384.onnx (opset 17, input 384)
+12:52:41 | INFO    | xtx4.export.onnx_ncnn | Simplified ONNX with onnxsim
+12:52:41 | INFO    | xtx4.export.onnx_ncnn | Verified ONNX vs PyTorch: max |diff| = 3.34e-06 (tolerance 1e-03)
+12:52:41 | INFO    | xtx4.export.onnx_ncnn | Running pnnx: C:\git\freesentry\xtx4\.venv\Scripts\pnnx.EXE bench\graphs\u_b_P3P5_384.onnx ncnnparam=bench\graphs\u_b_P3P5_384.ncnn.param ncnnbin=bench\graphs\u_b_P3P5_384.ncnn.bin ncnnpy=bench\graphs\u_b_P3P5_384_ncnn.py pnnxparam=bench\graphs\u_b_P3P5_384.pnnx.param pnnxbin=bench\graphs\u_b_P3P5_384.pnnx.bin pnnxpy=bench\graphs\u_b_P3P5_384_pnnx.py pnnxonnx=bench\graphs\u_b_P3P5_384.pnnx.onnx fp16=1
+12:52:53 | INFO    | xtx4.export.onnx_ncnn | Converted to ncnn -> bench\graphs\u_b_P3P5_384.ncnn.param (+ .bin, fp16=1): inputs=['in0'] outputs=['out0', 'out1'] layers={'BinaryOp': 9, 'Concat': 13, 'Convolution': 49, 'Input': 1, 'Interp': 2, 'Permute': 4, 'Pooling': 3, 'Reshape': 5, 'Slice': 7, 'Split': 18}
+12:52:53 | INFO    | xtx4.export_random | u_b_P3P5_384: N=2448 GMAC=0.947 params(deploy)=1.673M onnx diff=3.3e-06 ncnn=['fp16'] (13.5s)
+12:52:53 | INFO    | xtx4.models.xtx4 | Built XTX4-u_b: levels=P4P5 block=rep act=relu p2_assist=False params=2.208M
+12:52:54 | INFO    | xtx4.models.xtx4 | Fused XTX4-u_b for deployment (one2many head dropped)
+12:52:54 | INFO    | xtx4.export.onnx_ncnn | Exported ONNX -> bench\graphs\u_b_P4P5_256.onnx (opset 17, input 256)
+12:52:54 | INFO    | xtx4.export.onnx_ncnn | Simplified ONNX with onnxsim
+12:52:54 | INFO    | xtx4.export.onnx_ncnn | Verified ONNX vs PyTorch: max |diff| = 1.91e-06 (tolerance 1e-03)
+12:52:54 | INFO    | xtx4.export.onnx_ncnn | Running pnnx: C:\git\freesentry\xtx4\.venv\Scripts\pnnx.EXE bench\graphs\u_b_P4P5_256.onnx ncnnparam=bench\graphs\u_b_P4P5_256.ncnn.param ncnnbin=bench\graphs\u_b_P4P5_256.ncnn.bin ncnnpy=bench\graphs\u_b_P4P5_256_ncnn.py pnnxparam=bench\graphs\u_b_P4P5_256.pnnx.param pnnxbin=bench\graphs\u_b_P4P5_256.pnnx.bin pnnxpy=bench\graphs\u_b_P4P5_256_pnnx.py pnnxonnx=bench\graphs\u_b_P4P5_256.pnnx.onnx fp16=1
+12:53:06 | INFO    | xtx4.export.onnx_ncnn | Converted to ncnn -> bench\graphs\u_b_P4P5_256.ncnn.param (+ .bin, fp16=1): inputs=['in0'] outputs=['out0', 'out1'] layers={'BinaryOp': 8, 'Concat': 11, 'Convolution': 44, 'Input': 1, 'Interp': 1, 'Permute': 4, 'Pooling': 3, 'Reshape': 5, 'Slice': 6, 'Split': 16}
+12:53:06 | INFO    | xtx4.export_random | u_b_P4P5_256: N=320 GMAC=0.332 params(deploy)=1.758M onnx diff=1.9e-06 ncnn=['fp16'] (13.0s)
+12:53:07 | INFO    | xtx4.models.xtx4 | Built XTX4-u_b: levels=P4P5 block=rep act=relu p2_assist=False params=2.208M
+12:53:07 | INFO    | xtx4.models.xtx4 | Fused XTX4-u_b for deployment (one2many head dropped)
+12:53:07 | INFO    | xtx4.export.onnx_ncnn | Exported ONNX -> bench\graphs\u_b_P4P5_320.onnx (opset 17, input 320)
+12:53:07 | INFO    | xtx4.export.onnx_ncnn | Simplified ONNX with onnxsim
+12:53:07 | INFO    | xtx4.export.onnx_ncnn | Verified ONNX vs PyTorch: max |diff| = 2.38e-06 (tolerance 1e-03)
+12:53:07 | INFO    | xtx4.export.onnx_ncnn | Running pnnx: C:\git\freesentry\xtx4\.venv\Scripts\pnnx.EXE bench\graphs\u_b_P4P5_320.onnx ncnnparam=bench\graphs\u_b_P4P5_320.ncnn.param ncnnbin=bench\graphs\u_b_P4P5_320.ncnn.bin ncnnpy=bench\graphs\u_b_P4P5_320_ncnn.py pnnxparam=bench\graphs\u_b_P4P5_320.pnnx.param pnnxbin=bench\graphs\u_b_P4P5_320.pnnx.bin pnnxpy=bench\graphs\u_b_P4P5_320_pnnx.py pnnxonnx=bench\graphs\u_b_P4P5_320.pnnx.onnx fp16=1
+12:53:20 | INFO    | xtx4.export.onnx_ncnn | Converted to ncnn -> bench\graphs\u_b_P4P5_320.ncnn.param (+ .bin, fp16=1): inputs=['in0'] outputs=['out0', 'out1'] layers={'BinaryOp': 8, 'Concat': 11, 'Convolution': 44, 'Input': 1, 'Interp': 1, 'Permute': 4, 'Pooling': 3, 'Reshape': 5, 'Slice': 6, 'Split': 16}
+12:53:20 | INFO    | xtx4.export_random | u_b_P4P5_320: N=500 GMAC=0.519 params(deploy)=1.758M onnx diff=2.4e-06 ncnn=['fp16'] (13.3s)
+12:53:20 | INFO    | xtx4.models.xtx4 | Built XTX4-u_b: levels=P4P5 block=rep act=relu p2_assist=False params=2.208M
+12:53:20 | INFO    | xtx4.models.xtx4 | Fused XTX4-u_b for deployment (one2many head dropped)
+12:53:20 | INFO    | xtx4.export.onnx_ncnn | Exported ONNX -> bench\graphs\u_b_P4P5_384.onnx (opset 17, input 384)
+12:53:20 | INFO    | xtx4.export.onnx_ncnn | Simplified ONNX with onnxsim
+12:53:20 | INFO    | xtx4.export.onnx_ncnn | Verified ONNX vs PyTorch: max |diff| = 2.86e-06 (tolerance 1e-03)
+12:53:21 | INFO    | xtx4.export.onnx_ncnn | Running pnnx: C:\git\freesentry\xtx4\.venv\Scripts\pnnx.EXE bench\graphs\u_b_P4P5_384.onnx ncnnparam=bench\graphs\u_b_P4P5_384.ncnn.param ncnnbin=bench\graphs\u_b_P4P5_384.ncnn.bin ncnnpy=bench\graphs\u_b_P4P5_384_ncnn.py pnnxparam=bench\graphs\u_b_P4P5_384.pnnx.param pnnxbin=bench\graphs\u_b_P4P5_384.pnnx.bin pnnxpy=bench\graphs\u_b_P4P5_384_pnnx.py pnnxonnx=bench\graphs\u_b_P4P5_384.pnnx.onnx fp16=1
+12:53:33 | INFO    | xtx4.export.onnx_ncnn | Converted to ncnn -> bench\graphs\u_b_P4P5_384.ncnn.param (+ .bin, fp16=1): inputs=['in0'] outputs=['out0', 'out1'] layers={'BinaryOp': 8, 'Concat': 11, 'Convolution': 44, 'Input': 1, 'Interp': 1, 'Permute': 4, 'Pooling': 3, 'Reshape': 5, 'Slice': 6, 'Split': 16}
+12:53:33 | INFO    | xtx4.export_random | u_b_P4P5_384: N=720 GMAC=0.747 params(deploy)=1.758M onnx diff=2.9e-06 ncnn=['fp16'] (13.5s)
+12:53:33 | INFO    | xtx4.models.xtx4 | Built XTX4-u_b: levels=P3P4P5 block=rep act=hswish p2_assist=False params=2.592M
+12:53:34 | INFO    | xtx4.models.xtx4 | Fused XTX4-u_b for deployment (one2many head dropped)
+12:53:34 | INFO    | xtx4.export.onnx_ncnn | Exported ONNX -> bench\graphs\u_b_hswish_256.onnx (opset 17, input 256)
+12:53:34 | INFO    | xtx4.export.onnx_ncnn | Simplified ONNX with onnxsim
+12:53:34 | INFO    | xtx4.export.onnx_ncnn | Verified ONNX vs PyTorch: max |diff| = 4.29e-06 (tolerance 1e-03)
+12:53:34 | INFO    | xtx4.export.onnx_ncnn | Running pnnx: C:\git\freesentry\xtx4\.venv\Scripts\pnnx.EXE bench\graphs\u_b_hswish_256.onnx ncnnparam=bench\graphs\u_b_hswish_256.ncnn.param ncnnbin=bench\graphs\u_b_hswish_256.ncnn.bin ncnnpy=bench\graphs\u_b_hswish_256_ncnn.py pnnxparam=bench\graphs\u_b_hswish_256.pnnx.param pnnxbin=bench\graphs\u_b_hswish_256.pnnx.bin pnnxpy=bench\graphs\u_b_hswish_256_pnnx.py pnnxonnx=bench\graphs\u_b_hswish_256.pnnx.onnx fp16=1
+12:53:46 | INFO    | xtx4.export.onnx_ncnn | Converted to ncnn -> bench\graphs\u_b_hswish_256.ncnn.param (+ .bin, fp16=1): inputs=['in0'] outputs=['out0', 'out1'] layers={'BinaryOp': 10, 'Concat': 15, 'Convolution': 57, 'HardSwish': 51, 'Input': 1, 'Interp': 2, 'Permute': 6, 'Pooling': 3, 'Reshape': 7, 'Slice': 8, 'Split': 22}
+12:53:47 | INFO    | xtx4.export_random | u_b_hswish_256: N=1344 GMAC=0.489 params(deploy)=2.032M onnx diff=4.3e-06 ncnn=['fp16'] (13.3s)
+12:53:47 | INFO    | xtx4.models.xtx4 | Built XTX4-u_b: levels=P3P4P5 block=rep act=hswish p2_assist=False params=2.592M
+12:53:47 | INFO    | xtx4.models.xtx4 | Fused XTX4-u_b for deployment (one2many head dropped)
+12:53:47 | INFO    | xtx4.export.onnx_ncnn | Exported ONNX -> bench\graphs\u_b_hswish_320.onnx (opset 17, input 320)
+12:53:47 | INFO    | xtx4.export.onnx_ncnn | Simplified ONNX with onnxsim
+12:53:47 | INFO    | xtx4.export.onnx_ncnn | Verified ONNX vs PyTorch: max |diff| = 4.29e-06 (tolerance 1e-03)
+12:53:47 | INFO    | xtx4.export.onnx_ncnn | Running pnnx: C:\git\freesentry\xtx4\.venv\Scripts\pnnx.EXE bench\graphs\u_b_hswish_320.onnx ncnnparam=bench\graphs\u_b_hswish_320.ncnn.param ncnnbin=bench\graphs\u_b_hswish_320.ncnn.bin ncnnpy=bench\graphs\u_b_hswish_320_ncnn.py pnnxparam=bench\graphs\u_b_hswish_320.pnnx.param pnnxbin=bench\graphs\u_b_hswish_320.pnnx.bin pnnxpy=bench\graphs\u_b_hswish_320_pnnx.py pnnxonnx=bench\graphs\u_b_hswish_320.pnnx.onnx fp16=1
+12:54:00 | INFO    | xtx4.export.onnx_ncnn | Converted to ncnn -> bench\graphs\u_b_hswish_320.ncnn.param (+ .bin, fp16=1): inputs=['in0'] outputs=['out0', 'out1'] layers={'BinaryOp': 10, 'Concat': 15, 'Convolution': 57, 'HardSwish': 51, 'Input': 1, 'Interp': 2, 'Permute': 6, 'Pooling': 3, 'Reshape': 7, 'Slice': 8, 'Split': 22}
+12:54:00 | INFO    | xtx4.export_random | u_b_hswish_320: N=2100 GMAC=0.765 params(deploy)=2.032M onnx diff=4.3e-06 ncnn=['fp16'] (13.7s)
+12:54:00 | INFO    | xtx4.models.xtx4 | Built XTX4-u_b: levels=P3P4P5 block=rep act=hswish p2_assist=False params=2.592M
+12:54:00 | INFO    | xtx4.models.xtx4 | Fused XTX4-u_b for deployment (one2many head dropped)
+12:54:01 | INFO    | xtx4.export.onnx_ncnn | Exported ONNX -> bench\graphs\u_b_hswish_384.onnx (opset 17, input 384)
+12:54:01 | INFO    | xtx4.export.onnx_ncnn | Simplified ONNX with onnxsim
+12:54:01 | INFO    | xtx4.export.onnx_ncnn | Verified ONNX vs PyTorch: max |diff| = 4.29e-06 (tolerance 1e-03)
+12:54:01 | INFO    | xtx4.export.onnx_ncnn | Running pnnx: C:\git\freesentry\xtx4\.venv\Scripts\pnnx.EXE bench\graphs\u_b_hswish_384.onnx ncnnparam=bench\graphs\u_b_hswish_384.ncnn.param ncnnbin=bench\graphs\u_b_hswish_384.ncnn.bin ncnnpy=bench\graphs\u_b_hswish_384_ncnn.py pnnxparam=bench\graphs\u_b_hswish_384.pnnx.param pnnxbin=bench\graphs\u_b_hswish_384.pnnx.bin pnnxpy=bench\graphs\u_b_hswish_384_pnnx.py pnnxonnx=bench\graphs\u_b_hswish_384.pnnx.onnx fp16=1
+12:54:14 | INFO    | xtx4.export.onnx_ncnn | Converted to ncnn -> bench\graphs\u_b_hswish_384.ncnn.param (+ .bin, fp16=1): inputs=['in0'] outputs=['out0', 'out1'] layers={'BinaryOp': 10, 'Concat': 15, 'Convolution': 57, 'HardSwish': 51, 'Input': 1, 'Interp': 2, 'Permute': 6, 'Pooling': 3, 'Reshape': 7, 'Slice': 8, 'Split': 22}
+12:54:14 | INFO    | xtx4.export_random | u_b_hswish_384: N=3024 GMAC=1.101 params(deploy)=2.032M onnx diff=4.3e-06 ncnn=['fp16'] (13.6s)
+12:54:14 | INFO    | xtx4.models.xtx4 | Built XTX4-u_b: levels=P3P4P5 block=rep act=silu p2_assist=False params=2.592M
+12:54:14 | INFO    | xtx4.models.xtx4 | Fused XTX4-u_b for deployment (one2many head dropped)
+12:54:14 | INFO    | xtx4.export.onnx_ncnn | Exported ONNX -> bench\graphs\u_b_silu_256.onnx (opset 17, input 256)
+12:54:15 | INFO    | xtx4.export.onnx_ncnn | Simplified ONNX with onnxsim
+12:54:15 | INFO    | xtx4.export.onnx_ncnn | Verified ONNX vs PyTorch: max |diff| = 3.34e-06 (tolerance 1e-03)
+12:54:15 | INFO    | xtx4.export.onnx_ncnn | Running pnnx: C:\git\freesentry\xtx4\.venv\Scripts\pnnx.EXE bench\graphs\u_b_silu_256.onnx ncnnparam=bench\graphs\u_b_silu_256.ncnn.param ncnnbin=bench\graphs\u_b_silu_256.ncnn.bin ncnnpy=bench\graphs\u_b_silu_256_ncnn.py pnnxparam=bench\graphs\u_b_silu_256.pnnx.param pnnxbin=bench\graphs\u_b_silu_256.pnnx.bin pnnxpy=bench\graphs\u_b_silu_256_pnnx.py pnnxonnx=bench\graphs\u_b_silu_256.pnnx.onnx fp16=1
+12:54:28 | INFO    | xtx4.export.onnx_ncnn | Converted to ncnn -> bench\graphs\u_b_silu_256.ncnn.param (+ .bin, fp16=1): inputs=['in0'] outputs=['out0', 'out1'] layers={'BinaryOp': 20, 'Concat': 15, 'Convolution': 57, 'Input': 1, 'Interp': 2, 'Permute': 6, 'Pooling': 3, 'Reshape': 7, 'Sigmoid': 10, 'Slice': 8, 'Split': 32, 'Swish': 41}
+12:54:29 | INFO    | xtx4.export_random | u_b_silu_256: N=1344 GMAC=0.489 params(deploy)=2.032M onnx diff=3.3e-06 ncnn=['fp16'] (14.7s)
+12:54:29 | INFO    | xtx4.models.xtx4 | Built XTX4-u_b: levels=P3P4P5 block=rep act=silu p2_assist=False params=2.592M
+12:54:29 | INFO    | xtx4.models.xtx4 | Fused XTX4-u_b for deployment (one2many head dropped)
+12:54:29 | INFO    | xtx4.export.onnx_ncnn | Exported ONNX -> bench\graphs\u_b_silu_320.onnx (opset 17, input 320)
+12:54:29 | INFO    | xtx4.export.onnx_ncnn | Simplified ONNX with onnxsim
+12:54:30 | INFO    | xtx4.export.onnx_ncnn | Verified ONNX vs PyTorch: max |diff| = 3.34e-06 (tolerance 1e-03)
+12:54:30 | INFO    | xtx4.export.onnx_ncnn | Running pnnx: C:\git\freesentry\xtx4\.venv\Scripts\pnnx.EXE bench\graphs\u_b_silu_320.onnx ncnnparam=bench\graphs\u_b_silu_320.ncnn.param ncnnbin=bench\graphs\u_b_silu_320.ncnn.bin ncnnpy=bench\graphs\u_b_silu_320_ncnn.py pnnxparam=bench\graphs\u_b_silu_320.pnnx.param pnnxbin=bench\graphs\u_b_silu_320.pnnx.bin pnnxpy=bench\graphs\u_b_silu_320_pnnx.py pnnxonnx=bench\graphs\u_b_silu_320.pnnx.onnx fp16=1
+12:54:43 | INFO    | xtx4.export.onnx_ncnn | Converted to ncnn -> bench\graphs\u_b_silu_320.ncnn.param (+ .bin, fp16=1): inputs=['in0'] outputs=['out0', 'out1'] layers={'BinaryOp': 20, 'Concat': 15, 'Convolution': 57, 'Input': 1, 'Interp': 2, 'Permute': 6, 'Pooling': 3, 'Reshape': 7, 'Sigmoid': 10, 'Slice': 8, 'Split': 32, 'Swish': 41}
+12:54:43 | INFO    | xtx4.export_random | u_b_silu_320: N=2100 GMAC=0.765 params(deploy)=2.032M onnx diff=3.3e-06 ncnn=['fp16'] (14.7s)
+12:54:43 | INFO    | xtx4.models.xtx4 | Built XTX4-u_b: levels=P3P4P5 block=rep act=silu p2_assist=False params=2.592M
+12:54:44 | INFO    | xtx4.models.xtx4 | Fused XTX4-u_b for deployment (one2many head dropped)
+12:54:44 | INFO    | xtx4.export.onnx_ncnn | Exported ONNX -> bench\graphs\u_b_silu_384.onnx (opset 17, input 384)
+12:54:44 | INFO    | xtx4.export.onnx_ncnn | Simplified ONNX with onnxsim
+12:54:44 | INFO    | xtx4.export.onnx_ncnn | Verified ONNX vs PyTorch: max |diff| = 3.81e-06 (tolerance 1e-03)
+12:54:44 | INFO    | xtx4.export.onnx_ncnn | Running pnnx: C:\git\freesentry\xtx4\.venv\Scripts\pnnx.EXE bench\graphs\u_b_silu_384.onnx ncnnparam=bench\graphs\u_b_silu_384.ncnn.param ncnnbin=bench\graphs\u_b_silu_384.ncnn.bin ncnnpy=bench\graphs\u_b_silu_384_ncnn.py pnnxparam=bench\graphs\u_b_silu_384.pnnx.param pnnxbin=bench\graphs\u_b_silu_384.pnnx.bin pnnxpy=bench\graphs\u_b_silu_384_pnnx.py pnnxonnx=bench\graphs\u_b_silu_384.pnnx.onnx fp16=1
+12:54:58 | INFO    | xtx4.export.onnx_ncnn | Converted to ncnn -> bench\graphs\u_b_silu_384.ncnn.param (+ .bin, fp16=1): inputs=['in0'] outputs=['out0', 'out1'] layers={'BinaryOp': 20, 'Concat': 15, 'Convolution': 57, 'Input': 1, 'Interp': 2, 'Permute': 6, 'Pooling': 3, 'Reshape': 7, 'Sigmoid': 10, 'Slice': 8, 'Split': 32, 'Swish': 41}
+12:54:58 | INFO    | xtx4.export_random | u_b_silu_384: N=3024 GMAC=1.101 params(deploy)=2.032M onnx diff=3.8e-06 ncnn=['fp16'] (14.8s)
+12:54:58 | INFO    | xtx4.models.xtx4 | Built XTX4-u_b: levels=P3P4P5 block=rep act=relu p2_assist=True params=2.615M
+12:54:58 | INFO    | xtx4.models.xtx4 | Fused XTX4-u_b for deployment (one2many head dropped)
+12:54:59 | INFO    | xtx4.export.onnx_ncnn | Exported ONNX -> bench\graphs\u_b_p2assist_256.onnx (opset 17, input 256)
+12:54:59 | INFO    | xtx4.export.onnx_ncnn | Simplified ONNX with onnxsim
+12:54:59 | INFO    | xtx4.export.onnx_ncnn | Verified ONNX vs PyTorch: max |diff| = 2.86e-06 (tolerance 1e-03)
+12:54:59 | INFO    | xtx4.export.onnx_ncnn | Running pnnx: C:\git\freesentry\xtx4\.venv\Scripts\pnnx.EXE bench\graphs\u_b_p2assist_256.onnx ncnnparam=bench\graphs\u_b_p2assist_256.ncnn.param ncnnbin=bench\graphs\u_b_p2assist_256.ncnn.bin ncnnpy=bench\graphs\u_b_p2assist_256_ncnn.py pnnxparam=bench\graphs\u_b_p2assist_256.pnnx.param pnnxbin=bench\graphs\u_b_p2assist_256.pnnx.bin pnnxpy=bench\graphs\u_b_p2assist_256_pnnx.py pnnxonnx=bench\graphs\u_b_p2assist_256.pnnx.onnx fp16=1
+12:55:13 | INFO    | xtx4.export.onnx_ncnn | Converted to ncnn -> bench\graphs\u_b_p2assist_256.ncnn.param (+ .bin, fp16=1): inputs=['in0'] outputs=['out0', 'out1'] layers={'BinaryOp': 10, 'Concat': 16, 'Convolution': 58, 'Input': 1, 'Interp': 2, 'Permute': 6, 'Pooling': 3, 'Reorg': 1, 'Reshape': 7, 'Slice': 8, 'Split': 23}
+12:55:13 | INFO    | xtx4.export_random | u_b_p2assist_256: N=1344 GMAC=0.501 params(deploy)=2.044M onnx diff=2.9e-06 ncnn=['fp16'] (14.7s)
+12:55:13 | INFO    | xtx4.models.xtx4 | Built XTX4-u_b: levels=P3P4P5 block=rep act=relu p2_assist=True params=2.615M
+12:55:13 | INFO    | xtx4.models.xtx4 | Fused XTX4-u_b for deployment (one2many head dropped)
+12:55:13 | INFO    | xtx4.export.onnx_ncnn | Exported ONNX -> bench\graphs\u_b_p2assist_320.onnx (opset 17, input 320)
+12:55:14 | INFO    | xtx4.export.onnx_ncnn | Simplified ONNX with onnxsim
+12:55:14 | INFO    | xtx4.export.onnx_ncnn | Verified ONNX vs PyTorch: max |diff| = 3.34e-06 (tolerance 1e-03)
+12:55:14 | INFO    | xtx4.export.onnx_ncnn | Running pnnx: C:\git\freesentry\xtx4\.venv\Scripts\pnnx.EXE bench\graphs\u_b_p2assist_320.onnx ncnnparam=bench\graphs\u_b_p2assist_320.ncnn.param ncnnbin=bench\graphs\u_b_p2assist_320.ncnn.bin ncnnpy=bench\graphs\u_b_p2assist_320_ncnn.py pnnxparam=bench\graphs\u_b_p2assist_320.pnnx.param pnnxbin=bench\graphs\u_b_p2assist_320.pnnx.bin pnnxpy=bench\graphs\u_b_p2assist_320_pnnx.py pnnxonnx=bench\graphs\u_b_p2assist_320.pnnx.onnx fp16=1
+12:55:27 | INFO    | xtx4.export.onnx_ncnn | Converted to ncnn -> bench\graphs\u_b_p2assist_320.ncnn.param (+ .bin, fp16=1): inputs=['in0'] outputs=['out0', 'out1'] layers={'BinaryOp': 10, 'Concat': 16, 'Convolution': 58, 'Input': 1, 'Interp': 2, 'Permute': 6, 'Pooling': 3, 'Reorg': 1, 'Reshape': 7, 'Slice': 8, 'Split': 23}
+12:55:27 | INFO    | xtx4.export_random | u_b_p2assist_320: N=2100 GMAC=0.783 params(deploy)=2.044M onnx diff=3.3e-06 ncnn=['fp16'] (14.5s)
+12:55:27 | INFO    | xtx4.models.xtx4 | Built XTX4-u_b: levels=P3P4P5 block=rep act=relu p2_assist=True params=2.615M
+12:55:28 | INFO    | xtx4.models.xtx4 | Fused XTX4-u_b for deployment (one2many head dropped)
+12:55:28 | INFO    | xtx4.export.onnx_ncnn | Exported ONNX -> bench\graphs\u_b_p2assist_384.onnx (opset 17, input 384)
+12:55:28 | INFO    | xtx4.export.onnx_ncnn | Simplified ONNX with onnxsim
+12:55:28 | INFO    | xtx4.export.onnx_ncnn | Verified ONNX vs PyTorch: max |diff| = 2.86e-06 (tolerance 1e-03)
+12:55:28 | INFO    | xtx4.export.onnx_ncnn | Running pnnx: C:\git\freesentry\xtx4\.venv\Scripts\pnnx.EXE bench\graphs\u_b_p2assist_384.onnx ncnnparam=bench\graphs\u_b_p2assist_384.ncnn.param ncnnbin=bench\graphs\u_b_p2assist_384.ncnn.bin ncnnpy=bench\graphs\u_b_p2assist_384_ncnn.py pnnxparam=bench\graphs\u_b_p2assist_384.pnnx.param pnnxbin=bench\graphs\u_b_p2assist_384.pnnx.bin pnnxpy=bench\graphs\u_b_p2assist_384_pnnx.py pnnxonnx=bench\graphs\u_b_p2assist_384.pnnx.onnx fp16=1
+12:55:42 | INFO    | xtx4.export.onnx_ncnn | Converted to ncnn -> bench\graphs\u_b_p2assist_384.ncnn.param (+ .bin, fp16=1): inputs=['in0'] outputs=['out0', 'out1'] layers={'BinaryOp': 10, 'Concat': 16, 'Convolution': 58, 'Input': 1, 'Interp': 2, 'Permute': 6, 'Pooling': 3, 'Reorg': 1, 'Reshape': 7, 'Slice': 8, 'Split': 23}
+12:55:42 | INFO    | xtx4.export_random | u_b_p2assist_384: N=3024 GMAC=1.127 params(deploy)=2.044M onnx diff=2.9e-06 ncnn=['fp16'] (14.6s)
+12:55:42 | INFO    | xtx4.export_random | Wrote bench\graphs\index.json with 27 graphs (0 failures)
+EXIT 0
