@@ -4,7 +4,8 @@ Implements the measurement protocol of ``implementation_plan_fable.md`` section 
 for the **network only** (``extractor.input`` + ``extract`` of every output):
 
 * every graph listed in ``bench/graphs/index.json`` (produced by
-  ``scripts/export_random.py``) or given explicitly via ``--param/--bin``;
+  ``scripts/export_random.py``; entries ``graphs[*].ncnn.fp16`` / ``.fp32``,
+  paths relative to ``bench/``) or given explicitly via ``--param/--bin``;
 * thread counts 1..4, FP16 arithmetic on/off (storage stays FP16 when the
   weights are FP16);
 * warm-up iterations, then ``--loops`` timed iterations on real frames (a
@@ -27,6 +28,7 @@ import csv
 import json
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -49,6 +51,28 @@ def _vcgencmd(arg: str) -> str:
         return subprocess.run([tool, arg], capture_output=True, text=True, timeout=5).stdout.strip()
     except Exception:  # noqa: BLE001 - diagnostics only
         return ""
+
+
+
+def _cpu_temp_c() -> float | None:
+    """Pi CPU temperature from ``vcgencmd measure_temp`` (``temp=54.3'C``); None when unavailable."""
+
+    text = _vcgencmd("measure_temp")
+    match = re.search(r"([0-9]+(?:\.[0-9]+)?)", text)
+    return float(match.group(1)) if match else None
+
+
+def wait_until_cool(threshold_c: float | None, max_wait_s: float = 180.0, poll_s: float = 5.0) -> None:
+    """Sleep until the SoC is below ``threshold_c`` so each config starts from a comparable thermal state."""
+
+    if threshold_c is None:
+        return
+    deadline = time.time() + max_wait_s
+    temp = _cpu_temp_c()
+    while temp is not None and temp > threshold_c and time.time() < deadline:
+        print(f"cooling: {temp:.1f} C > {threshold_c:.0f} C, waiting ...", file=sys.stderr)
+        time.sleep(poll_s)
+        temp = _cpu_temp_c()
 
 
 def _cpu_governor() -> str:
@@ -117,6 +141,42 @@ def _output_names(param_path: Path) -> list[str]:
         consumed.update(blobs[:num_in])
         produced.extend(blobs[num_in:])
     return [b for b in produced if b not in consumed]
+
+
+
+def _index_graph_files(entry: dict) -> list[tuple[str, str, str]]:
+    """Return ``(precision, param, bin)`` triples for one index entry.
+
+    Supports the ``export_random.py`` schema (``entry["ncnn"]["fp16"|"fp32"]``)
+    and the flat legacy form (``ncnn_param`` / ``ncnn_bin``).
+    """
+
+    out: list[tuple[str, str, str]] = []
+    ncnn_block = entry.get("ncnn")
+    if isinstance(ncnn_block, dict):
+        for precision in ("fp16", "fp32"):
+            block = ncnn_block.get(precision)
+            if isinstance(block, dict) and block.get("param") and block.get("bin"):
+                out.append((precision, str(block["param"]), str(block["bin"])))
+    if not out and entry.get("ncnn_param") and entry.get("ncnn_bin"):
+        out.append(("fp16", str(entry["ncnn_param"]), str(entry["ncnn_bin"])))
+    return out
+
+
+def _resolve_index_path(index_path: Path, rel: str) -> Path | None:
+    """Index paths are relative to ``bench/`` (the index lives in ``bench/graphs``);
+    fall back to the file name next to the index so a copied ``graphs/`` dir works too."""
+
+    rel = rel.replace("\\", "/")
+    candidates = [Path(rel)] if Path(rel).is_absolute() else [
+        index_path.parent.parent / rel,
+        index_path.parent / rel,
+        index_path.parent / Path(rel).name,
+    ]
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    return None
 
 
 def bench_graph(
@@ -200,28 +260,40 @@ def main() -> None:
     parser.add_argument("--warmup", type=int, default=50)
     parser.add_argument("--loops", type=int, default=300)
     parser.add_argument("--filter", default=None, help="Substring filter on graph names from the index")
+    parser.add_argument("--precision", choices=["fp16", "fp32", "all"], default="fp16",
+                        help="Which weight precision from the index to use (fp32 graphs only if exported)")
     parser.add_argument("--out", default="reports/pi_latency.csv")
+    parser.add_argument("--cool-below", type=float, default=None, metavar="C",
+                        help="Before each config wait until the SoC temperature (vcgencmd) is below C")
+    parser.add_argument("--cool-max-wait", type=float, default=180.0, help="Max seconds to wait for cooling")
     args = parser.parse_args()
 
     graphs: list[dict] = []
     if args.index:
-        index = json.loads(Path(args.index).read_text(encoding="utf-8"))
+        index_path = Path(args.index)
+        index = json.loads(index_path.read_text(encoding="utf-8"))
         entries = index["graphs"] if isinstance(index, dict) and "graphs" in index else index
         for entry in entries:
-            if args.filter and args.filter not in entry.get("name", ""):
+            name = entry.get("name") or entry.get("id", "")
+            if args.filter and args.filter not in name:
                 continue
-            if not entry.get("ncnn_param"):
-                continue
-            base = Path(args.index).parent
-            graphs.append(
-                {
-                    "name": entry["name"],
-                    "size": int(entry["size"]),
-                    "param": (base / entry["ncnn_param"]) if not Path(entry["ncnn_param"]).is_absolute() else Path(entry["ncnn_param"]),
-                    "bin": (base / entry["ncnn_bin"]) if not Path(entry["ncnn_bin"]).is_absolute() else Path(entry["ncnn_bin"]),
-                    "gmac": entry.get("gmac"),
-                }
-            )
+            for precision, param_rel, bin_rel in _index_graph_files(entry):
+                if args.precision != "all" and precision != args.precision:
+                    continue
+                param_path = _resolve_index_path(index_path, param_rel)
+                bin_path = _resolve_index_path(index_path, bin_rel)
+                if param_path is None or bin_path is None:
+                    print(f"skip {name} ({precision}): files not found ({param_rel})", file=sys.stderr)
+                    continue
+                graphs.append(
+                    {
+                        "name": f"{name}" if precision == "fp16" else f"{name}_{precision}w",
+                        "size": int(entry["size"]),
+                        "param": param_path,
+                        "bin": bin_path,
+                        "gmac": entry.get("gmac"),
+                    }
+                )
     if args.param:
         if not (args.bin and args.size):
             parser.error("--param requires --bin and --size")
@@ -248,6 +320,7 @@ def main() -> None:
             frames = _load_frames(images_dir, graph["size"], args.num_frames)
             for threads in args.threads:
                 for fp16 in args.fp16:
+                    wait_until_cool(args.cool_below, args.cool_max_wait)
                     result = bench_graph(
                         param=graph["param"], bin_path=graph["bin"], size=graph["size"], threads=threads,
                         fp16=(fp16 == "on"), frames=frames, warmup=args.warmup, loops=args.loops,

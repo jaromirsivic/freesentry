@@ -57,7 +57,7 @@ from .onnx_ncnn import (
 logger = get_logger(__name__)
 
 DEFAULT_SIZES: tuple[int, ...] = (256, 320, 384)
-DEFAULT_PARITY_IMAGES = Path("C:/git/freesentry/xtx3/.smoke_dataset/test")
+DEFAULT_PARITY_IMAGES = Path(__file__).resolve().parents[3] / "xtx3" / ".smoke_dataset" / "test"
 MIN_COMPARE_ANCHORS = 100
 
 TOLERANCES: dict[str, float] = {

@@ -44,7 +44,7 @@ from typing import Any, Callable, Iterator
 import numpy as np
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-XTX3_ROOT = Path("C:/git/freesentry/xtx3")
+XTX3_ROOT = REPO_ROOT.parent / "xtx3"  # sibling checkout of the XTX3 baseline
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 

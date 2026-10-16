@@ -16,6 +16,17 @@ are excluded), which is why ``updates`` is persisted separately.
 
 Saves are atomic (temp file + rename) so an interrupted write never leaves a
 truncated ``last.pt`` behind.
+
+Rolling per-epoch checkpoints (crash resilience): after every completed epoch
+the trainer also keeps the full checkpoint under ``<run>/epochs/epoch_NNNN.pt``.
+**Numbering convention**: ``NNNN`` is the 1-based number of the *completed*
+epoch exactly as the training log prints it (``Epoch 7/300 done`` ->
+``epoch_0007.pt``), i.e. ``NNNN == checkpoint["epoch"] + 1`` because the dict
+stores the 0-based epoch index. The content is byte-identical to ``last.pt``
+(``last.pt`` is produced by copying the epoch file), so ``--resume`` accepts any
+of them and continues with the next epoch. :func:`prune_epoch_checkpoints`
+keeps only the newest ``training.keep_epochs`` files **by modification time**,
+see its docstring for why not by epoch number.
 """
 
 from __future__ import annotations
@@ -23,6 +34,8 @@ from __future__ import annotations
 import hashlib
 import math
 import random
+import re
+import shutil
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
@@ -37,6 +50,8 @@ from ..utils.logging import get_logger
 logger = get_logger(__name__)
 
 CHECKPOINT_SCHEMA_VERSION = 2
+EPOCH_DIR = "epochs"
+EPOCH_FILE_RE = re.compile(r"^epoch_(\d{4,})\.pt$")
 
 
 class ModelEMA:
@@ -216,11 +231,85 @@ def sha256_of_file(path: Path | str, *, chunk: int = 1 << 20) -> str:
     return digest.hexdigest()
 
 
+def copy_checkpoint(src: Path | str, dst: Path | str) -> Path:
+    """Atomically duplicate an already written checkpoint (copy to ``dst.tmp`` + replace).
+
+    Used to derive ``last.pt`` / ``best.pt`` from the epoch file without a second
+    ``build_checkpoint`` + ``torch.save`` (a file copy is a fraction of the cost of
+    re-serialising the state dicts).
+    """
+
+    src, dst = Path(src), Path(dst)
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dst.with_suffix(dst.suffix + ".tmp")
+    shutil.copyfile(src, tmp)
+    tmp.replace(dst)
+    logger.info("Saved checkpoint -> %s (copy of %s)", dst, src.name)
+    return dst
+
+
+def epoch_checkpoint_path(run_dir: Path | str, epoch_index: int) -> Path:
+    """``<run>/epochs/epoch_NNNN.pt`` for the 0-based ``epoch_index`` (NNNN = index + 1, as logged)."""
+
+    return Path(run_dir) / EPOCH_DIR / f"epoch_{int(epoch_index) + 1:04d}.pt"
+
+
+def list_epoch_checkpoints(run_dir: Path | str) -> list[Path]:
+    """Epoch files of one run, newest (by mtime) first."""
+
+    epoch_dir = Path(run_dir) / EPOCH_DIR
+    if not epoch_dir.is_dir():
+        return []
+    files = [p for p in epoch_dir.iterdir() if p.is_file() and EPOCH_FILE_RE.match(p.name)]
+    return sorted(files, key=lambda p: (p.stat().st_mtime, p.name), reverse=True)
+
+
+def prune_epoch_checkpoints(run_dir: Path | str, keep: int, *, protect: Path | None = None) -> list[Path]:
+    """Delete all but the ``keep`` newest epoch files; returns the removed paths.
+
+    Pruning goes by **modification time**, not by the epoch number in the file
+    name: after ``--resume epochs/epoch_0098.pt`` while stale ``epoch_0099..0105``
+    still exist, the run re-creates ``epoch_0099.pt`` (fresh mtime) and the stale
+    higher-numbered files are the *oldest* ones, so they are the first to go.
+    Ordering by number would instead keep the stale files and delete the ones the
+    resumed run is actually producing. Call this only after the new file is
+    completely written (``protect`` is never removed, whatever its mtime).
+    """
+
+    if keep <= 0:
+        return []
+    files = list_epoch_checkpoints(run_dir)
+    protect = Path(protect).resolve() if protect is not None else None
+    removed: list[Path] = []
+    for path in files[keep:]:
+        if protect is not None and path.resolve() == protect:
+            continue
+        try:
+            path.unlink()
+            removed.append(path)
+        except OSError as exc:  # a locked file (antivirus, viewer) is not worth failing the run
+            logger.warning("Could not remove old epoch checkpoint %s: %s", path, exc)
+    if removed:
+        logger.info("Pruned %d old epoch checkpoint(s): %s", len(removed), ", ".join(p.name for p in removed))
+    return removed
+
+
+def run_dir_of_checkpoint(path: Path | str) -> Path:
+    """Run directory that owns a checkpoint (``<run>/last.pt`` or ``<run>/epochs/epoch_NNNN.pt``)."""
+
+    path = Path(path)
+    parent = path.parent
+    if parent.name == EPOCH_DIR and EPOCH_FILE_RE.match(path.name):
+        return parent.parent
+    return parent
+
+
 def discover_checkpoints(runs_dir: Path | str) -> list[Path]:
-    """Find resumable checkpoints (``runs/**/last.pt``, ``runs/**/best.pt``), newest first."""
+    """Find resumable checkpoints (``**/last.pt``, ``**/best.pt``, ``**/epochs/epoch_*.pt``), newest first."""
 
     runs_dir = Path(runs_dir)
     if not runs_dir.is_dir():
         return []
-    found = sorted(runs_dir.glob("**/last.pt")) + sorted(runs_dir.glob("**/best.pt"))
-    return sorted(set(found), key=lambda p: p.stat().st_mtime, reverse=True)
+    found = set(runs_dir.glob("**/last.pt")) | set(runs_dir.glob("**/best.pt"))
+    found |= {p for p in runs_dir.glob(f"**/{EPOCH_DIR}/epoch_*.pt") if EPOCH_FILE_RE.match(p.name)}
+    return sorted(found, key=lambda p: (p.stat().st_mtime, str(p)), reverse=True)

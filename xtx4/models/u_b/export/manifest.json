@@ -1,0 +1,173 @@
+{
+  "schema_version": 1,
+  "model_id": "xtx4-u_b",
+  "checkpoint_sha256": "c531022ef550a1b1213054200e5045e3fe6482714050d955906e1404955a66e6",
+  "data_manifest_sha1": "3ad5205006c5a39c27829fa2fe10ab8fc021f7f0",
+  "variant_spec": {
+    "name": "u_b",
+    "widths": [
+      16,
+      32,
+      64,
+      128,
+      192
+    ],
+    "depths": [
+      1,
+      2,
+      2,
+      1
+    ],
+    "head_hidden": 64,
+    "pose_hidden": 64,
+    "block": "rep",
+    "act": "relu",
+    "levels": "P3P4P5",
+    "p2_assist": false,
+    "default_size": 320,
+    "num_keypoints": 9
+  },
+  "keypoints": {
+    "names": [
+      "nose",
+      "left_eye",
+      "right_eye",
+      "left_ear",
+      "right_ear",
+      "left_shoulder",
+      "right_shoulder",
+      "left_hip",
+      "right_hip"
+    ],
+    "coco_indices": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      11,
+      12
+    ],
+    "flip_pairs": [
+      [
+        1,
+        2
+      ],
+      [
+        3,
+        4
+      ],
+      [
+        5,
+        6
+      ],
+      [
+        7,
+        8
+      ]
+    ],
+    "oks_sigmas": [
+      0.026000000536441803,
+      0.02500000037252903,
+      0.02500000037252903,
+      0.03500000014901161,
+      0.03500000014901161,
+      0.07900000363588333,
+      0.07900000363588333,
+      0.10700000077486038,
+      0.10700000077486038
+    ]
+  },
+  "input": {
+    "name": "in0",
+    "layout": "NCHW",
+    "color": "BGR",
+    "scale": "1/255",
+    "letterbox": "whole",
+    "sizes": [
+      256,
+      320,
+      384
+    ]
+  },
+  "strides": [
+    8,
+    16,
+    32
+  ],
+  "levels": "P3P4P5",
+  "anchor_order": "levels ascending stride, row-major (y outer, x inner); centre (i+0.5)*stride",
+  "outputs": [
+    {
+      "role": "person",
+      "shape": "[1, N, 1]",
+      "layout": "logit"
+    },
+    {
+      "role": "pose",
+      "shape": "[1, N, 45]",
+      "layout": "K*5 (dx, dy, log_sigma, present_logit, visible_logit)"
+    }
+  ],
+  "decode_version": 1,
+  "decode": {
+    "sigma_floor": 0.05,
+    "sigma_conf_coeff": 0.0,
+    "conf_threshold": 0.25,
+    "max_detections": 100
+  },
+  "precision": "fp16",
+  "exports": [
+    {
+      "size": 256,
+      "onnx": "xtx4-u_b-256.onnx",
+      "onnx_max_abs_diff": 3.4332275390625e-05,
+      "num_anchors": 1344,
+      "ncnn_param": "xtx4-u_b-256.ncnn.param",
+      "ncnn_bin": "xtx4-u_b-256.ncnn.bin",
+      "input_names": [
+        "in0"
+      ],
+      "output_names": [
+        "out0",
+        "out1"
+      ],
+      "fp16": true
+    },
+    {
+      "size": 320,
+      "onnx": "xtx4-u_b-320.onnx",
+      "onnx_max_abs_diff": 4.208087921142578e-05,
+      "num_anchors": 2100,
+      "ncnn_param": "xtx4-u_b-320.ncnn.param",
+      "ncnn_bin": "xtx4-u_b-320.ncnn.bin",
+      "input_names": [
+        "in0"
+      ],
+      "output_names": [
+        "out0",
+        "out1"
+      ],
+      "fp16": true
+    },
+    {
+      "size": 384,
+      "onnx": "xtx4-u_b-384.onnx",
+      "onnx_max_abs_diff": 4.947185516357422e-05,
+      "num_anchors": 3024,
+      "ncnn_param": "xtx4-u_b-384.ncnn.param",
+      "ncnn_bin": "xtx4-u_b-384.ncnn.bin",
+      "input_names": [
+        "in0"
+      ],
+      "output_names": [
+        "out0",
+        "out1"
+      ],
+      "fp16": true
+    }
+  ],
+  "torch_version": "2.14.1+cu130"
+}

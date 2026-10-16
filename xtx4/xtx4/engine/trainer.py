@@ -20,6 +20,18 @@ What the loop does and why:
 * **Checkpoints** follow CONTRACTS §11: ``last.pt`` every epoch and every
   ``checkpoint_interval_minutes``; a mid-epoch checkpoint stores the last
   *completed* epoch, so resuming restarts the interrupted epoch (§8.3).
+  After every completed epoch the full state is also kept as
+  ``epochs/epoch_NNNN.pt`` (``NNNN`` = the 1-based epoch number the log prints,
+  i.e. ``checkpoint["epoch"] + 1``); the dict is built once, written to the
+  epoch file and *copied* to ``last.pt`` / ``best.pt``. Only the newest
+  ``training.keep_epochs`` files survive (pruned by mtime, see
+  ``checkpoint.prune_epoch_checkpoints``), so a reboot mid-run costs at most one
+  epoch and a corrupted ``last.pt`` still leaves older full states.
+* **Thermal guard** (``training.thermal``, on by default): a sampling thread
+  (:mod:`xtx4.engine.thermal`) sets a flag when the GPU/CPU is too hot; the
+  train loop checks it once per step, synchronises CUDA and sleeps until the
+  sensors are back under the resume thresholds. Pause time is excluded from
+  img/s and ETA, logged per epoch and written to TensorBoard ``sys/*``.
 """
 
 from __future__ import annotations
@@ -49,12 +61,16 @@ from ..utils.logging import add_file_handler, get_logger
 from .checkpoint import (
     ModelEMA,
     build_checkpoint,
+    copy_checkpoint,
+    epoch_checkpoint_path,
     load_checkpoint,
+    prune_epoch_checkpoints,
     restore_rng_state,
     save_checkpoint,
     sha256_of_file,
 )
 from .optim import WarmupCosineSchedule, build_optimizer_from_config
+from .thermal import SensorFn, ThermalConfig, ThermalGuard
 
 logger = get_logger(__name__)
 
@@ -184,6 +200,7 @@ class Trainer:
         device: str | None = None,
         *,
         max_steps: int | None = None,
+        thermal_sensor: SensorFn | None = None,
     ) -> None:
         self.config = config
         data_cfg = config.setdefault("data", {})
@@ -215,6 +232,10 @@ class Trainer:
         self.channels_last = bool(train_cfg.get("channels_last", True)) and self.is_cuda
         self.num_workers = int(train_cfg.get("num_workers", 6))
         self.ckpt_interval_min = float(train_cfg.get("checkpoint_interval_minutes", 10))
+        self.keep_epochs = max(0, int(train_cfg.get("keep_epochs", 5)))
+        self.thermal_cfg = ThermalConfig.from_dict(train_cfg.get("thermal"))
+        self._thermal_sensor = thermal_sensor  # injected (tests); None = auto-detect in train()
+        self.thermal: ThermalGuard | None = None
         self.close_mosaic_epochs = int(train_cfg.get("close_mosaic_epochs", 15))
         self.val_images_per_epoch = int(train_cfg.get("val_images_per_epoch", 2000))
         self.full_val_every = int(train_cfg.get("full_val_every", 10))
@@ -544,9 +565,12 @@ class Trainer:
         if options.get("enabled", True):
             self.monitor = TrainingMonitor(self.output_dir, self.config, self.model, self.eval_size, self.global_step)
         (self.output_dir / "config.json").write_text(json.dumps(self.config, indent=2), encoding="utf-8")
+        self.thermal = ThermalGuard(self.thermal_cfg, sensor=self._thermal_sensor, is_cuda=self.is_cuda)
+        self.thermal.start()
         try:
             return self._train_loop()
         finally:
+            self.thermal.stop()  # also on exceptions / KeyboardInterrupt
             if self.monitor is not None:
                 self.monitor.close()
 
@@ -577,13 +601,17 @@ class Trainer:
                 if metrics.get("full_metrics"):
                     self.monitor.scalars("validation_full", {k: v for k, v in metrics["full_metrics"].items() if isinstance(v, (int, float))}, self.global_step)
                 self.monitor.writer.flush()
-            if ap > self.best_ap:
+            improved = ap > self.best_ap
+            if improved:
                 self.best_ap = ap
-                self._save("best.pt", epoch=epoch, metrics={"best_ap": self.best_ap, **metrics})
-            self._save("last.pt", epoch=epoch, metrics={"best_ap": self.best_ap, **metrics})
+            self._save_epoch(epoch, metrics={"best_ap": self.best_ap, **metrics}, improved=improved)
             last_ckpt_time = time.time()
 
-        summary: dict[str, Any] = {"best_ap": self.best_ap, "global_step": self.global_step, "throughput": self.throughput}
+        summary: dict[str, Any] = {
+            "best_ap": self.best_ap, "global_step": self.global_step, "throughput": self.throughput,
+            "thermal_pause_s": self.thermal.pause_seconds if self.thermal is not None else 0.0,
+            "thermal_pauses": self.thermal.pause_count if self.thermal is not None else 0,
+        }
         if stopped_early:
             logger.info("Stopped after %d optimizer steps (max_steps); final validation/export skipped", self.global_step)
             return summary
@@ -620,9 +648,19 @@ class Trainer:
         if self.is_cuda:
             torch.cuda.reset_peak_memory_stats()
 
+        pause_epoch = 0.0  # seconds spent in thermal pauses this epoch (excluded from img/s and ETA)
+        pause_window = 0.0
+        if self.thermal is not None:
+            self.thermal.reset_epoch_stats()
+
         iterator = iter(self.train_loader)
         t_prev_end = time.perf_counter()
         for step in range(num_batches):
+            paused = self._thermal_wait()  # cheap flag check; blocks only while the guard is hot
+            if paused:
+                pause_epoch += paused
+                pause_window += paused
+                t_prev_end = time.perf_counter()
             do_profile = profiling and len(prof_rows) < self.profile_steps
             batch = next(iterator)
             t_data = time.perf_counter()
@@ -698,22 +736,23 @@ class Trainer:
             if console or tb:
                 now = time.time()
                 logged = _losses_to_float(losses)
-                elapsed = max(now - epoch_start, 1e-6)
-                window = max(now - window_start, 1e-6)
+                elapsed = max(now - epoch_start - pause_epoch, 1e-6)
+                window = max(now - window_start - pause_window, 1e-6)
                 imgs_per_s = window_images / window if step > 0 else images_seen / elapsed
-                window_start, window_images = now, 0
+                window_start, window_images, pause_window = now, 0, 0.0
                 eta = (num_batches - step - 1) * elapsed / max(step + 1, 1)
                 gnorm = float(grad_norm)
                 if console:
+                    thermal_status = f" | {self.thermal.status()}" if self.thermal is not None and self.thermal.active else ""
                     logger.info(
                         "E%d/%d S%d/%d | total=%.3f person=%.3f kpt=%.3f present=%.3f visible=%.3f | "
-                        "cov=%.3f pos/gt=%.1f | w_o2m=%.2f w_o2o=%.2f | lr=%.5f | gn=%.2f | size=%d | %.1f img/s | ETA %s",
+                        "cov=%.3f pos/gt=%.1f | w_o2m=%.2f w_o2o=%.2f | lr=%.5f | gn=%.2f | size=%d | %.1f img/s | ETA %s%s",
                         epoch + 1, self.epochs, step + 1, num_batches,
                         logged["total"], logged.get("person", 0.0), logged.get("kpt", 0.0),
                         logged.get("present", 0.0), logged.get("visible", 0.0),
                         logged.get("coverage", 0.0), logged.get("pos_per_gt", 0.0),
                         logged.get("w_o2m", 0.0), logged.get("w_o2o", 0.0), lr, gnorm, image_size, imgs_per_s,
-                        _format_eta(eta),
+                        _format_eta(eta), thermal_status,
                     )
                 if tb:
                     self.monitor.scalars("loss", {k: v for k, v in logged.items() if not k.startswith(("o2m_", "o2o_"))}, self.global_step)
@@ -730,6 +769,8 @@ class Trainer:
                             "reserved_MiB": torch.cuda.memory_reserved() / 2**20,
                             "max_allocated_MiB": torch.cuda.max_memory_allocated() / 2**20,
                         }, self.global_step)
+                    if self.thermal is not None and self.thermal.active:
+                        self.monitor.scalars("sys", self.thermal.scalars(), self.global_step)
                 self.throughput = {
                     "images_per_second": imgs_per_s, "epoch_images_per_second": images_seen / elapsed,
                     "peak_vram_MiB": torch.cuda.max_memory_allocated() / 2**20 if self.is_cuda else 0.0,
@@ -748,13 +789,27 @@ class Trainer:
                 (self.output_dir / "throughput.json").write_text(json.dumps(self.throughput, indent=2), encoding="utf-8")
                 return last_ckpt_time, False
 
-        elapsed = time.time() - epoch_start
+        elapsed = time.time() - epoch_start - pause_epoch
+        thermal_note = ""
+        if self.thermal is not None and self.thermal.active:
+            peak = self.thermal.max_gpu_temp_epoch
+            thermal_note = ", gpu max %s, thermal pause %.0f s this epoch / %.0f s total" % (
+                f"{peak:.0f} C" if peak is not None else "n/a", pause_epoch, self.thermal.pause_seconds,
+            )
         logger.info(
-            "Epoch %d/%d done in %s: %.1f img/s avg, peak VRAM %.0f MiB, amp skips %d",
+            "Epoch %d/%d done in %s: %.1f img/s avg, peak VRAM %.0f MiB, amp skips %d%s",
             epoch + 1, self.epochs, _format_eta(elapsed), images_seen / max(elapsed, 1e-6),
-            torch.cuda.max_memory_allocated() / 2**20 if self.is_cuda else 0.0, self._amp_skips,
+            torch.cuda.max_memory_allocated() / 2**20 if self.is_cuda else 0.0, self._amp_skips, thermal_note,
         )
         return last_ckpt_time, True
+
+    def _thermal_wait(self) -> float:
+        """Block while the thermal guard is hot; returns the paused seconds (0 almost always)."""
+
+        guard = self.thermal
+        if guard is None or not guard.hot:
+            return 0.0
+        return guard.wait_until_cool(before_pause=self._sync)
 
     def _sync(self) -> None:
         if self.is_cuda:
@@ -807,6 +862,7 @@ class Trainer:
         paths = [self.val_paths[i] for i in indices]
         with ThreadPoolExecutor(max_workers=min(8, max(1, self.num_workers))) as pool:
             for start in range(0, len(paths), self.eval_batch):
+                self._thermal_wait()
                 chunk_paths = paths[start : start + self.eval_batch]
                 images = list(pool.map(read_image, chunk_paths))
                 valid = [img for img in images if img is not None]
@@ -919,8 +975,8 @@ class Trainer:
                     logger.info("  %-14s %s", name, " ".join(f"{k}={v:.4f}" for k, v in stats.items() if isinstance(v, (int, float))))
 
     # ------------------------------------------------------------------ io
-    def _save(self, filename: str, *, epoch: int, metrics: dict[str, Any]) -> Path:
-        checkpoint = build_checkpoint(
+    def _build_checkpoint(self, *, epoch: int, metrics: dict[str, Any]) -> dict[str, Any]:
+        return build_checkpoint(
             model=self.model,
             ema=self.ema,
             optimizer=self.optimizer,
@@ -933,7 +989,30 @@ class Trainer:
             data_manifest_sha1=self.data_manifest_sha1,
             parent_checkpoint_sha256=self.parent_checkpoint_sha256,
         )
-        return save_checkpoint(checkpoint, self.output_dir / filename)
+
+    def _save(self, filename: str, *, epoch: int, metrics: dict[str, Any]) -> Path:
+        return save_checkpoint(self._build_checkpoint(epoch=epoch, metrics=metrics), self.output_dir / filename)
+
+    def _save_epoch(self, epoch: int, *, metrics: dict[str, Any], improved: bool) -> Path:
+        """End-of-epoch persistence: one checkpoint dict -> ``epochs/epoch_NNNN.pt`` -> copies -> prune.
+
+        With ``keep_epochs == 0`` only ``last.pt`` (and ``best.pt`` when improved) is written, as before.
+        Order matters for crash safety: the epoch file is complete before ``last.pt`` is replaced,
+        and rotation runs last so an interrupted save never removes the only good state.
+        """
+
+        checkpoint = self._build_checkpoint(epoch=epoch, metrics=metrics)
+        if self.keep_epochs <= 0:
+            if improved:
+                save_checkpoint(checkpoint, self.output_dir / "best.pt")
+            return save_checkpoint(checkpoint, self.output_dir / "last.pt")
+        epoch_path = save_checkpoint(checkpoint, epoch_checkpoint_path(self.output_dir, epoch))
+        del checkpoint
+        if improved:
+            copy_checkpoint(epoch_path, self.output_dir / "best.pt")
+        last_path = copy_checkpoint(epoch_path, self.output_dir / "last.pt")
+        prune_epoch_checkpoints(self.output_dir, self.keep_epochs, protect=epoch_path)
+        return last_path
 
     # ------------------------------------------------------------------ export
     def _auto_export(self, best_path: Path) -> dict[str, Any] | None:

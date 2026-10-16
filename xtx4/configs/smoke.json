@@ -13,6 +13,17 @@
     "num_workers": 2,
     "close_mosaic_epochs": 1,
     "checkpoint_interval_minutes": 1,
+    "keep_epochs": 5,
+    "thermal": {
+      "enabled": true,
+      "interval_s": 10,
+      "gpu_pause_c": 85,
+      "gpu_resume_c": 75,
+      "cpu_pause_c": 95,
+      "cpu_resume_c": 85,
+      "pause_on_hw_slowdown": true,
+      "max_pause_min": 60
+    },
     "val_images_per_epoch": 40,
     "full_val_every": 1,
     "profile_steps": 5,

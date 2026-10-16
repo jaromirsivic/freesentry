@@ -37,7 +37,7 @@ from xtx4.data.sampler import MultiScaleBatchSampler
 from xtx4.utils import geometry
 from xtx4.utils.keypoints import NUM_KEYPOINTS
 
-SMOKE = Path("C:/git/freesentry/xtx3/.smoke_dataset")
+SMOKE = Path(__file__).resolve().parents[2] / "xtx3" / ".smoke_dataset"
 U_JSON = Path(__file__).resolve().parents[1] / "configs" / "u.json"
 
 pytestmark = pytest.mark.skipif(not SMOKE.is_dir(), reason="smoke dataset not available")

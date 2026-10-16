@@ -303,6 +303,22 @@ vectorised (numpy broadcasting). A single perfect detection must yield AP = AP50
 `configs/u.json` is the reference; every key there is honoured by exactly one module as listed in §4–§9.
 `load_config(path)` deep-merges a user JSON over `configs/u.json`. Checkpoints freeze the merged config.
 
+Crash-resilience keys under `training` (owner: `engine/trainer.py`, `engine/thermal.py`):
+
+- `keep_epochs` (int, default 5): number of rolling per-epoch checkpoints kept in `<run>/epochs/`
+  (§11); `0` disables them. CLI: `--keep-epochs N`.
+- `thermal` (object, default `{"enabled": true, "interval_s": 10, "gpu_pause_c": 85, "gpu_resume_c": 75,
+  "cpu_pause_c": 95, "cpu_resume_c": 85, "pause_on_hw_slowdown": true, "max_pause_min": 60}`):
+  `ThermalGuard` samples the GPU temperature / NVIDIA thermal-slowdown flags (pynvml if importable,
+  else `nvidia-smi`) and, best effort, the CPU temperature (`psutil.sensors_temperatures()` on Linux,
+  WMI `MSAcpi_ThermalZoneTemperature` on Windows) every `interval_s`. Training pauses (once per
+  optimizer step, after `torch.cuda.synchronize()`) when any pause threshold is reached or the HW
+  slowdown flag is active, and resumes only when every active sensor is at/below its resume threshold
+  (hysteresis). Longer pauses than `max_pause_min` only log a warning; the run is never aborted.
+  Pause time is excluded from img/s and ETA; TensorBoard `sys/gpu_temp_c`, `sys/cpu_temp_c`,
+  `sys/thermal_pause_s`. Inactive (never pauses) without a sensor or on a CPU device.
+  CLI: `--thermal-guard` / `--no-thermal-guard`.
+
 ---
 
 ## 11. Checkpoint format (`xtx4/engine/checkpoint.py`)
@@ -311,6 +327,28 @@ Dict with `variant_spec` (dict), `model_state`, `ema_state`, `optimizer_state`, 
 `criterion_state`, `epoch`, `global_step`, `ema_updates`, `rng_state` (python/numpy/torch/cuda),
 `config`, `metrics`, `keypoint_meta`, `data_manifest_sha1`, `parent_checkpoint_sha256` (for fine-tune).
 `load_model(path, device, fuse=True)` in `api.py` rebuilds from `config["model"]` and loads `ema_state`.
+
+Files written by the trainer into the run directory:
+
+- `last.pt` – state after the last *completed* epoch (`epoch` = its 0-based index), rewritten at
+  the end of every epoch and every `training.checkpoint_interval_minutes` mid-epoch (the mid-epoch
+  copy still stores the last completed epoch plus `metrics.partial_epoch`, so a resume restarts the
+  interrupted epoch).
+- `best.pt` – same format, written when the per-epoch subset AP improves.
+- `epochs/epoch_NNNN.pt` – rolling full-state checkpoint after every completed epoch, identical
+  content to `last.pt` (`last.pt`/`best.pt` are produced by an atomic file copy of it, the dict is built
+  once). **Numbering:** `NNNN` is the 1-based epoch number as printed by the log (`Epoch 7/300 done`
+  → `epoch_0007.pt`), i.e. `NNNN == checkpoint["epoch"] + 1`. **Rotation:** after the new file is
+  completely written, `prune_epoch_checkpoints` keeps only the newest `training.keep_epochs` files by
+  *modification time* (not by number): after `--resume epochs/epoch_0098.pt` with stale
+  `epoch_0099..0105.pt` still present, the resumed run rewrites `epoch_0099.pt` (fresh mtime) and the
+  stale higher-numbered files are the oldest, so they are pruned first. `keep_epochs = 0` disables
+  the epoch files.
+- Any of the three is a valid `--resume` target and behaves the same: training continues with
+  `checkpoint["epoch"] + 1`, `global_step`/EMA/optimizer/scaler/RNG are restored and `best_ap` is
+  taken from `metrics.best_ap`. `train.py` derives the run directory from an epoch file
+  (`run_dir_of_checkpoint`), and `discover_checkpoints` lists `**/last.pt`, `**/best.pt` and
+  `**/epochs/epoch_*.pt`, newest first.
 
 ---
 

@@ -50,7 +50,7 @@ from xtx4.runtime.pipeline import FramePacket
 
 REPO = Path(__file__).resolve().parents[1]
 GRAPHS = REPO / "bench" / "graphs"
-SMOKE_DIR = Path("C:/git/freesentry/xtx3/.smoke_dataset/test")
+SMOKE_DIR = REPO.parent / "xtx3" / ".smoke_dataset" / "test"
 K = 9
 S = 320
 STRIDES = (8, 16, 32)
