@@ -1,4 +1,7 @@
 .venv/
 .last_selection.json
+.last_settings.json
+user_presets.json
+recordings/
 screenshots/
 __pycache__/

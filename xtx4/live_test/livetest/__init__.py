@@ -1,4 +1,5 @@
-"""XTX4 live test: camera -> ncnn pose network -> 9-point skeleton overlay.
+"""XTX4 test app: camera / video / image -> XTX4 pose network -> 9-point skeleton overlay,
+with every model, decode, source and display option adjustable while it runs.
 
 Torch-free: preprocessing, decode and the threaded pipeline come from
 ``xtx4.runtime`` (one directory up, in the xtx4 repository); nothing is
@@ -12,7 +13,7 @@ import os
 import sys
 from pathlib import Path
 
-__version__ = "2.0.0"
+__version__ = "3.0.0"
 
 LIVE_TEST_DIR = Path(__file__).resolve().parent.parent
 XTX4_ROOT = Path(os.environ.get("XTX4_ROOT", LIVE_TEST_DIR.parent)).resolve()

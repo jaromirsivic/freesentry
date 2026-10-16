@@ -63,7 +63,7 @@ uv pip install --python "$VENV_PY" -r requirements.txt
 
 # ---- verification ------------------------------------------------------------
 echo "Verifying the installation..."
-if ! "$VENV_PY" -c "import ncnn, cv2, numpy, psutil; print('ncnn', ncnn.__version__, '| opencv', cv2.__version__, '| numpy', numpy.__version__)"; then
+if ! "$VENV_PY" -c "import ncnn, onnxruntime, cv2, numpy, psutil, PIL; print('ncnn', ncnn.__version__, '| opencv', cv2.__version__, '| numpy', numpy.__version__)"; then
     echo "ERROR: verification failed - see the message above." >&2
     if [[ "$(uname -s)" == "Linux" ]]; then
         echo "Hint: OpenCV needs libGL / glib on minimal systems, e.g.: sudo apt install libgl1 libglib2.0-0" >&2

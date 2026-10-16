@@ -40,7 +40,7 @@ from .decode import (
     select_candidates,
     to_frame_poses,
 )
-from .preprocess import PreparedViews, prepare_views
+from .preprocess import VIEW_MODES, PreparedViews, prepare_views
 
 logger = get_logger(__name__)
 
@@ -127,44 +127,44 @@ class DetectionResult:
     extras: dict[str, Any] = field(default_factory=dict)
 
 
-class NcnnPoseRunner:
-    """One exported XTX4 graph at one input size."""
+class PoseRunnerBase:
+    """Backend-independent part of a pose runner: the decode contract and :meth:`detect`.
 
-    def __init__(
+    Subclasses load one graph at one input size and implement :meth:`forward`
+    (letterboxed uint8 BGR view -> raw ``(person, pose)``). Decode / NMS settings are
+    plain attributes and may be changed between calls (the live test does that), and
+    so may ``mode`` (``whole`` | ``pyramid``): the views are prepared per call.
+    """
+
+    backend = "base"
+    fp16 = False
+    vulkan_active = False
+    num_threads = 1
+
+    def _init_decode(
         self,
-        param: Path | str,
-        bin: Path | str,  # noqa: A002 - mirrors the ncnn file pair naming
         *,
         size: int,
-        strides: Sequence[int] | None = None,
-        manifest: Mapping[str, Any] | Path | str | None = None,
-        num_threads: int = 4,
-        use_vulkan: bool = False,
-        fp16: bool = True,
-        input_blob: str = "in0",
-        output_blobs: Sequence[str] = ("out0", "out1"),
-        num_keypoints: int | None = None,
-        mode: str = "whole",
-        sigma_conf_coeff: float | None = None,
-        sigma_floor: float | None = None,
-        sigmas: Sequence[float] | None = None,
-        present_threshold: float | None = None,
-        visible_threshold: float | None = None,
-        oks_nms_threshold: float | None = None,
-        oks_nms_iou_threshold: float | None | str = FROM_MANIFEST,
-        oks_nms_scale_factor: float | None = None,
-    ) -> None:
-        import ncnn
+        mode: str,
+        manifest: Mapping[str, Any] | Path | str | None,
+        strides: Sequence[int] | None,
+        num_keypoints: int | None,
+        sigma_conf_coeff: float | None,
+        sigma_floor: float | None,
+        sigmas: Sequence[float] | None,
+        present_threshold: float | None,
+        visible_threshold: float | None,
+        oks_nms_threshold: float | None,
+        oks_nms_iou_threshold: float | None | str,
+        oks_nms_scale_factor: float | None,
+    ) -> tuple[int, ...] | None:
+        """Set size, mode, manifest and every decode attribute; returns the strides to validate."""
 
-        self._ncnn = ncnn
-        self.param_path = Path(param)
-        self.bin_path = Path(bin)
-        for path in (self.param_path, self.bin_path):
-            if not path.is_file():
-                raise RunnerError(f"Model file not found: {path}")
         self.size = int(size)
         if self.size % 32:
             raise RunnerError(f"Input size must be a multiple of 32, got {self.size}")
+        if mode not in VIEW_MODES:
+            raise RunnerError(f"Unknown view mode {mode!r}; expected one of {VIEW_MODES}")
         self.mode = mode
 
         if isinstance(manifest, (str, Path)):
@@ -178,11 +178,6 @@ class NcnnPoseRunner:
                 strides = self.manifest.get("strides")
             if num_keypoints is None:
                 num_keypoints = int(self.manifest.get("num_keypoints", NUM_KEYPOINTS))
-            ncnn_out = self.manifest.get("outputs", {}).get("ncnn", {})
-            blobs = ncnn_out.get("blobs")
-            if blobs:
-                output_blobs = (blobs["person"], blobs["pose"])
-            input_blob = ncnn_out.get("input", input_blob)
             if sigmas is None:
                 sigmas = self.manifest.get("keypoints", {}).get("sigmas")
         self.num_keypoints = int(num_keypoints or NUM_KEYPOINTS)
@@ -205,70 +200,7 @@ class NcnnPoseRunner:
         self.oks_nms_scale_factor = float(pick(oks_nms_scale_factor, "oks_nms_scale_factor", DEFAULT_NMS_SCALE_FACTOR))
         iou = decode_cfg.get("oks_nms_iou_threshold") if oks_nms_iou_threshold == FROM_MANIFEST else oks_nms_iou_threshold
         self.oks_nms_iou_threshold: float | None = None if iou is None else float(iou)
-
-        self.vulkan_active = bool(use_vulkan and vulkan_device_count() > 0)
-        if use_vulkan and not self.vulkan_active:
-            logger.warning("Vulkan requested but no Vulkan device is available; using CPU")
-        self.fp16 = bool(fp16)
-        self.num_threads = max(1, int(num_threads))
-
-        self.net = ncnn.Net()
-        opt = self.net.opt
-        opt.num_threads = self.num_threads
-        opt.use_vulkan_compute = self.vulkan_active
-        opt.use_fp16_packed = self.fp16
-        opt.use_fp16_storage = self.fp16
-        opt.use_fp16_arithmetic = self.fp16
-        opt.use_packing_layout = True
-        opt.lightmode = True
-        if self.net.load_param(str(self.param_path)) != 0:
-            raise RunnerError(f"ncnn failed to load param file {self.param_path}")
-        if self.net.load_model(str(self.bin_path)) != 0:
-            raise RunnerError(f"ncnn failed to load bin file {self.bin_path}")
-
-        self.input_blob, self.output_blobs = self._resolve_blobs(input_blob, tuple(output_blobs))
-        self.strides = self._validate_shapes(None if strides is None else tuple(int(s) for s in strides))
-        self.num_anchors = anchor_count(self.size, self.strides)
-        logger.info(
-            "Loaded %s @%d (strides %s, N=%d, %s, fp16=%s)", self.param_path.name, self.size, list(self.strides),
-            self.num_anchors, "Vulkan" if self.vulkan_active else f"CPU x{self.num_threads}", self.fp16,
-        )
-
-    # ------------------------------------------------------------ factories
-    @classmethod
-    def from_manifest(cls, manifest_path: Path | str, size: int, **kwargs: Any) -> "NcnnPoseRunner":
-        """Build a runner from ``<export>/manifest.json`` (graph files resolved next to it)."""
-
-        from ..export.manifest import load_manifest, ncnn_files
-
-        path = Path(manifest_path)
-        if path.is_dir():
-            path = path / "manifest.json"
-        manifest = load_manifest(path)
-        param, bin_path = ncnn_files(manifest, size, path.parent)
-        kwargs.setdefault("fp16", bool(manifest.get("outputs", {}).get("ncnn", {}).get("fp16_weights", True)))
-        return cls(param, bin_path, size=size, manifest=manifest, **kwargs)
-
-    # ---------------------------------------------------------------- setup
-    def _resolve_blobs(self, input_blob: str, output_blobs: tuple[str, ...]) -> tuple[str, tuple[str, str]]:
-        inputs, outputs = parse_param_blobs(self.param_path)
-        if input_blob not in inputs:
-            if len(inputs) == 1:
-                logger.warning("Input blob %r not in %s; using %r", input_blob, self.param_path.name, inputs[0])
-                input_blob = inputs[0]
-            else:
-                raise RunnerError(f"Input blob {input_blob!r} not found; graph inputs: {inputs}")
-        if len(output_blobs) != 2:
-            raise RunnerError(f"Expected two output blobs (person, pose), got {output_blobs}")
-        if all(b in outputs for b in output_blobs):
-            return input_blob, (output_blobs[0], output_blobs[1])
-        if len(outputs) == 2:
-            logger.warning(
-                "Output blobs %s not in %s; using graph outputs %s (person, pose)",
-                list(output_blobs), self.param_path.name, outputs,
-            )
-            return input_blob, (outputs[0], outputs[1])
-        raise RunnerError(f"Output blobs {list(output_blobs)} not found; graph outputs: {outputs}")
+        return None if strides is None else tuple(int(s) for s in strides)
 
     def _validate_shapes(self, strides: tuple[int, ...] | None) -> tuple[int, ...]:
         person, pose = self.forward(np.zeros((self.size, self.size, 3), dtype=np.uint8))
@@ -294,35 +226,10 @@ class NcnnPoseRunner:
         return guessed
 
     # ------------------------------------------------------------ inference
-    def _run(self, mat: Any) -> tuple[np.ndarray, np.ndarray]:
-        if self.net is None:
-            raise RunnerError("runner is closed")
-        with self.net.create_extractor() as extractor:
-            extractor.input(self.input_blob, mat)
-            outputs = []
-            for name in self.output_blobs:
-                ret, out = extractor.extract(name)
-                if ret != 0:
-                    raise RunnerError(f"ncnn extract of blob {name!r} failed ({ret})")
-                outputs.append(np.array(out, dtype=np.float32, copy=True))
-        return outputs[0], outputs[1]
-
     def forward(self, view_bgr: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """Raw outputs ``(person (N, 1), pose (N, K*5))`` for one letterboxed uint8 BGR view."""
 
-        ncnn = self._ncnn
-        view = np.ascontiguousarray(view_bgr, dtype=np.uint8)
-        mat = ncnn.Mat.from_pixels(view, ncnn.Mat.PixelType.PIXEL_BGR, view.shape[1], view.shape[0])
-        mat.substract_mean_normalize([], _NORM)
-        return self._run(mat)
-
-    def forward_blob(self, blob: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        """Raw outputs for an already normalised ``(1, 3, S, S)`` / ``(3, S, S)`` float32 tensor."""
-
-        arr = np.asarray(blob, dtype=np.float32)
-        if arr.ndim == 4:
-            arr = arr[0]
-        return self._run(self._ncnn.Mat(np.ascontiguousarray(arr)))
+        raise NotImplementedError
 
     def detect(
         self,
@@ -391,16 +298,171 @@ class NcnnPoseRunner:
 
     # ------------------------------------------------------------- lifetime
     def close(self) -> None:
-        net = getattr(self, "net", None)
-        if net is not None:
-            net.clear()
-            self.net = None
+        """Release the graph (implemented by the backends)."""
 
-    def __enter__(self) -> "NcnnPoseRunner":
+    def __enter__(self) -> "PoseRunnerBase":
         return self
 
     def __exit__(self, *exc: object) -> None:
         self.close()
+
+    def describe(self) -> str:
+        return f"{self.backend} @{self.size} {self.mode}"
+
+
+class NcnnPoseRunner(PoseRunnerBase):
+    """One exported XTX4 graph at one input size."""
+
+    backend = "ncnn"
+
+    def __init__(
+        self,
+        param: Path | str,
+        bin: Path | str,  # noqa: A002 - mirrors the ncnn file pair naming
+        *,
+        size: int,
+        strides: Sequence[int] | None = None,
+        manifest: Mapping[str, Any] | Path | str | None = None,
+        num_threads: int = 4,
+        use_vulkan: bool = False,
+        fp16: bool = True,
+        input_blob: str = "in0",
+        output_blobs: Sequence[str] = ("out0", "out1"),
+        num_keypoints: int | None = None,
+        mode: str = "whole",
+        sigma_conf_coeff: float | None = None,
+        sigma_floor: float | None = None,
+        sigmas: Sequence[float] | None = None,
+        present_threshold: float | None = None,
+        visible_threshold: float | None = None,
+        oks_nms_threshold: float | None = None,
+        oks_nms_iou_threshold: float | None | str = FROM_MANIFEST,
+        oks_nms_scale_factor: float | None = None,
+    ) -> None:
+        import ncnn
+
+        self._ncnn = ncnn
+        self.net = None
+        self.param_path = Path(param)
+        self.bin_path = Path(bin)
+        for path in (self.param_path, self.bin_path):
+            if not path.is_file():
+                raise RunnerError(f"Model file not found: {path}")
+        strides = self._init_decode(
+            size=size, mode=mode, manifest=manifest, strides=strides, num_keypoints=num_keypoints,
+            sigma_conf_coeff=sigma_conf_coeff, sigma_floor=sigma_floor, sigmas=sigmas,
+            present_threshold=present_threshold, visible_threshold=visible_threshold,
+            oks_nms_threshold=oks_nms_threshold, oks_nms_iou_threshold=oks_nms_iou_threshold,
+            oks_nms_scale_factor=oks_nms_scale_factor,
+        )
+        if self.manifest is not None:
+            ncnn_out = self.manifest.get("outputs", {}).get("ncnn", {})
+            blobs = ncnn_out.get("blobs")
+            if blobs:
+                output_blobs = (blobs["person"], blobs["pose"])
+            input_blob = ncnn_out.get("input", input_blob)
+
+        self.vulkan_active = bool(use_vulkan and vulkan_device_count() > 0)
+        if use_vulkan and not self.vulkan_active:
+            logger.warning("Vulkan requested but no Vulkan device is available; using CPU")
+        self.fp16 = bool(fp16)
+        self.num_threads = max(1, int(num_threads))
+
+        self.net = ncnn.Net()
+        opt = self.net.opt
+        opt.num_threads = self.num_threads
+        opt.use_vulkan_compute = self.vulkan_active
+        opt.use_fp16_packed = self.fp16
+        opt.use_fp16_storage = self.fp16
+        opt.use_fp16_arithmetic = self.fp16
+        opt.use_packing_layout = True
+        opt.lightmode = True
+        if self.net.load_param(str(self.param_path)) != 0:
+            raise RunnerError(f"ncnn failed to load param file {self.param_path}")
+        if self.net.load_model(str(self.bin_path)) != 0:
+            raise RunnerError(f"ncnn failed to load bin file {self.bin_path}")
+
+        self.input_blob, self.output_blobs = self._resolve_blobs(input_blob, tuple(output_blobs))
+        self.strides = self._validate_shapes(strides)
+        self.num_anchors = anchor_count(self.size, self.strides)
+        logger.info(
+            "Loaded %s @%d (strides %s, N=%d, %s, fp16=%s)", self.param_path.name, self.size, list(self.strides),
+            self.num_anchors, "Vulkan" if self.vulkan_active else f"CPU x{self.num_threads}", self.fp16,
+        )
+
+    # ------------------------------------------------------------ factories
+    @classmethod
+    def from_manifest(cls, manifest_path: Path | str, size: int, **kwargs: Any) -> "NcnnPoseRunner":
+        """Build a runner from ``<export>/manifest.json`` (graph files resolved next to it)."""
+
+        from ..export.manifest import load_manifest, ncnn_files
+
+        path = Path(manifest_path)
+        if path.is_dir():
+            path = path / "manifest.json"
+        manifest = load_manifest(path)
+        param, bin_path = ncnn_files(manifest, size, path.parent)
+        kwargs.setdefault("fp16", bool(manifest.get("outputs", {}).get("ncnn", {}).get("fp16_weights", True)))
+        return cls(param, bin_path, size=size, manifest=manifest, **kwargs)
+
+    # ---------------------------------------------------------------- setup
+    def _resolve_blobs(self, input_blob: str, output_blobs: tuple[str, ...]) -> tuple[str, tuple[str, str]]:
+        inputs, outputs = parse_param_blobs(self.param_path)
+        if input_blob not in inputs:
+            if len(inputs) == 1:
+                logger.warning("Input blob %r not in %s; using %r", input_blob, self.param_path.name, inputs[0])
+                input_blob = inputs[0]
+            else:
+                raise RunnerError(f"Input blob {input_blob!r} not found; graph inputs: {inputs}")
+        if len(output_blobs) != 2:
+            raise RunnerError(f"Expected two output blobs (person, pose), got {output_blobs}")
+        if all(b in outputs for b in output_blobs):
+            return input_blob, (output_blobs[0], output_blobs[1])
+        if len(outputs) == 2:
+            logger.warning(
+                "Output blobs %s not in %s; using graph outputs %s (person, pose)",
+                list(output_blobs), self.param_path.name, outputs,
+            )
+            return input_blob, (outputs[0], outputs[1])
+        raise RunnerError(f"Output blobs {list(output_blobs)} not found; graph outputs: {outputs}")
+
+    # ------------------------------------------------------------ inference
+    def _run(self, mat: Any) -> tuple[np.ndarray, np.ndarray]:
+        if self.net is None:
+            raise RunnerError("runner is closed")
+        with self.net.create_extractor() as extractor:
+            extractor.input(self.input_blob, mat)
+            outputs = []
+            for name in self.output_blobs:
+                ret, out = extractor.extract(name)
+                if ret != 0:
+                    raise RunnerError(f"ncnn extract of blob {name!r} failed ({ret})")
+                outputs.append(np.array(out, dtype=np.float32, copy=True))
+        return outputs[0], outputs[1]
+
+    def forward(self, view_bgr: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Raw outputs ``(person (N, 1), pose (N, K*5))`` for one letterboxed uint8 BGR view."""
+
+        ncnn = self._ncnn
+        view = np.ascontiguousarray(view_bgr, dtype=np.uint8)
+        mat = ncnn.Mat.from_pixels(view, ncnn.Mat.PixelType.PIXEL_BGR, view.shape[1], view.shape[0])
+        mat.substract_mean_normalize([], _NORM)
+        return self._run(mat)
+
+    def forward_blob(self, blob: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Raw outputs for an already normalised ``(1, 3, S, S)`` / ``(3, S, S)`` float32 tensor."""
+
+        arr = np.asarray(blob, dtype=np.float32)
+        if arr.ndim == 4:
+            arr = arr[0]
+        return self._run(self._ncnn.Mat(np.ascontiguousarray(arr)))
+
+    # ------------------------------------------------------------- lifetime
+    def close(self) -> None:
+        net = getattr(self, "net", None)
+        if net is not None:
+            net.clear()
+            self.net = None
 
     def describe(self) -> str:
         backend = "Vulkan" if self.vulkan_active else f"CPU x{self.num_threads}"

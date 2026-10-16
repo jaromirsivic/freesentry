@@ -3,7 +3,8 @@
 Nothing under ``xtx4.runtime`` may import torch (checked by
 ``tests/test_runtime.py`` in a clean subprocess); the Raspberry Pi deployment
 needs only ``numpy``, ``opencv-python`` and ``ncnn``. ``ncnn`` itself is imported
-lazily by :class:`NcnnPoseRunner`, so decode/preprocess work without it.
+lazily by :class:`NcnnPoseRunner` (and ``onnxruntime`` by the FP32 reference
+:class:`OnnxPoseRunner`), so decode/preprocess work without them.
 """
 
 from __future__ import annotations
@@ -30,7 +31,8 @@ from .decode import (
     select_candidates,
     to_frame_poses,
 )
-from .ncnn_runner import DetectionResult, NcnnPoseRunner, RunnerError, Timings, shutdown_gpu
+from .ncnn_runner import DetectionResult, NcnnPoseRunner, PoseRunnerBase, RunnerError, Timings, shutdown_gpu
+from .onnx_runner import OnnxPoseRunner
 from .pipeline import InferencePipeline, LatestFrameQueue, PipelineResult, PipelineStats, run_headless
 from .preprocess import PreparedViews, letterbox, prepare_views, to_blob
 
@@ -57,6 +59,8 @@ __all__ = [
     "to_frame_poses",
     "DetectionResult",
     "NcnnPoseRunner",
+    "OnnxPoseRunner",
+    "PoseRunnerBase",
     "RunnerError",
     "Timings",
     "shutdown_gpu",

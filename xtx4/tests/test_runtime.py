@@ -445,6 +445,25 @@ def test_deploy_export_model_writes_graphs_manifest_and_parity(artefact_dir: Pat
         assert runner.strides == (8, 16, 32)
         res = runner.detect(_smoke_image(), conf_threshold=0.0, max_detections=5)
         assert len(res.poses) == 5
+        runner.mode = "pyramid"  # view mode is a plain attribute: no reload needed
+        pyramid = runner.detect(_smoke_image(), conf_threshold=0.0, max_detections=5)
+        assert sorted(pyramid.prepared.views) == [1, 2, 3] and pyramid.raw_candidates == 3 * runner.num_anchors
+
+    # The FP32 ONNX reference runs the same decode path as ncnn.
+    pytest.importorskip("onnxruntime")
+    from xtx4.runtime import OnnxPoseRunner
+
+    with OnnxPoseRunner.from_manifest(artefact_dir / "manifest.json", 256, num_threads=2) as onnx_runner:
+        assert onnx_runner.strides == (8, 16, 32) and onnx_runner.num_anchors == res.raw_candidates
+        ref = onnx_runner.detect(_smoke_image(), conf_threshold=0.0, max_detections=5)
+    assert len(ref.poses) == 5
+    by_anchor = {p.anchor_index: p for p in ref.poses}
+    common = [p for p in res.poses if p.anchor_index in by_anchor]
+    assert len(common) >= 3
+    for pose in common:
+        other = by_anchor[pose.anchor_index]
+        assert abs(pose.score - other.score) < 0.01
+        assert np.abs(pose.keypoints[:, :2] - other.keypoints[:, :2]).max() < 2.0
 
 
 # -------------------------------------------------------------- torch-free

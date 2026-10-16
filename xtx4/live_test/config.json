@@ -1,14 +1,37 @@
 {
   "networks": [
     {
-      "id": "xtx4-u",
-      "label": "XTX4-u (trained run D:/xtx4_runs/xtx4-u, whole-frame)",
-      "manifest": "D:/xtx4_runs/xtx4-u/export/manifest.json",
+      "id": "u_b",
+      "label": "XTX4 u_b  (2.0 M params, ncnn FP16 weights)",
+      "description": "Raspberry Pi 5 network. 300 epochs, full test AP 0.582 / 0.625 / 0.647 @256 / 320 / 384. Pi 5 @320 (3 threads, FP16): 11.7 ms network.",
+      "manifest": "../models/u_b/deploy/manifest.json",
+      "default_size": 320
+    },
+    {
+      "id": "u_c",
+      "label": "XTX4 u_c  (3.9 M params, ncnn FP16 weights)",
+      "description": "Larger and more accurate variant. 300 epochs, full test AP 0.640 / 0.679 / 0.700 @256 / 320 / 384. Pi 5 @320 (3 threads, FP16): 19.9 ms network.",
+      "manifest": "../models/u_c/deploy/manifest.json",
+      "default_size": 320
+    },
+    {
+      "id": "u_b-fp32w",
+      "label": "XTX4 u_b  (ncnn FP32 weights - precision reference)",
+      "description": "Same u_b checkpoint exported with FP32 ncnn weights. Turn FP16 off for a pure FP32 ncnn run; compare with the FP16 export and with ONNX Runtime.",
+      "manifest": "../models/u_b/deploy_fp32/manifest.json",
+      "default_size": 320
+    },
+    {
+      "id": "u_c-fp32w",
+      "label": "XTX4 u_c  (ncnn FP32 weights - precision reference)",
+      "description": "Same u_c checkpoint exported with FP32 ncnn weights.",
+      "manifest": "../models/u_c/deploy_fp32/manifest.json",
       "default_size": 320
     },
     {
       "id": "u_b-random",
       "label": "u_b random weights (bench graph, latency only)",
+      "description": "Untrained graph from bench/graphs - only for latency tests, the poses are noise.",
       "param": "../bench/graphs/u_b_{size}.ncnn.param",
       "bin": "../bench/graphs/u_b_{size}.ncnn.bin",
       "sizes": [256, 320, 384],
@@ -16,6 +39,79 @@
       "strides": [8, 16, 32],
       "input_blob": "in0",
       "output_blobs": { "person": "out0", "pose": "out1" }
+    }
+  ],
+  "presets": [
+    {
+      "name": "Pi 5 deployment (u_b @320, ncnn FP16, 3 threads, NMS)",
+      "description": "What runs on the Raspberry Pi: u_b @320, ncnn FP16 on 3 CPU threads, detection threshold 0.15 + OKS-NMS 0.5, visibility thresholds 0.5 / 0.8.",
+      "settings": {
+        "network_id": "u_b", "size": 320, "backend": "ncnn", "mode": "whole", "num_threads": 3, "fp16": true,
+        "use_vulkan": false, "conf_threshold": 0.15, "max_detections": 50, "oks_nms": true, "oks_nms_threshold": 0.5,
+        "oks_nms_scale_factor": 1.5, "oks_nms_iou": false, "present_threshold": 0.5, "visible_threshold": 0.8,
+        "sigma_conf_coeff": 0.0, "sigma_floor": 0.05
+      }
+    },
+    {
+      "name": "Best accuracy (u_c @384, NMS)",
+      "description": "The most accurate combination (full test AP 0.700): u_c @384, threshold 0.15 + OKS-NMS.",
+      "settings": {
+        "network_id": "u_c", "size": 384, "backend": "ncnn", "mode": "whole", "fp16": true, "conf_threshold": 0.15,
+        "oks_nms": true, "oks_nms_threshold": 0.5, "present_threshold": 0.5, "visible_threshold": 0.8
+      }
+    },
+    {
+      "name": "Fastest (u_b @256)",
+      "description": "Smallest network at the smallest input: lowest latency, weakest on small / distant people.",
+      "settings": {
+        "network_id": "u_b", "size": 256, "backend": "ncnn", "mode": "whole", "fp16": true, "conf_threshold": 0.15,
+        "oks_nms": true
+      }
+    },
+    {
+      "name": "Raw network output (manifest decode, no NMS)",
+      "description": "Exactly what the one-to-one head emits with the manifest's decode values (threshold 0.25, visibility 0.5 / 0.5, no OKS-NMS). Keeps network, size and backend.",
+      "settings": { "decode": "manifest", "oks_nms": false }
+    },
+    {
+      "name": "FP32 reference (ONNX Runtime)",
+      "description": "Same network and size through the exported FP32 ONNX graph on ONNX Runtime - compare with ncnn FP16 by switching the backend (key b).",
+      "settings": { "backend": "onnxruntime" }
+    },
+    {
+      "name": "ncnn pure FP32 (u_b FP32 weights, FP16 off)",
+      "description": "ncnn with FP32 weights and FP32 arithmetic: matches PyTorch to ~0.001 px. Shows what the FP16 deployment costs in precision and gains in speed.",
+      "settings": { "network_id": "u_b-fp32w", "backend": "ncnn", "fp16": false }
+    },
+    {
+      "name": "Crowd / small people (u_c @384, low threshold, NMS + IoU)",
+      "description": "More recall for small or distant people: u_c @384, threshold 0.10, up to 100 people, OKS-NMS with a larger scale factor plus extent-box IoU 0.5 against duplicates.",
+      "settings": {
+        "network_id": "u_c", "size": 384, "backend": "ncnn", "mode": "whole", "conf_threshold": 0.10,
+        "max_detections": 100, "oks_nms": true, "oks_nms_threshold": 0.5, "oks_nms_scale_factor": 2.0,
+        "oks_nms_iou": true, "oks_nms_iou_threshold": 0.5
+      }
+    },
+    {
+      "name": "Pyramid mode (3 views, XTX3 ablation)",
+      "description": "Three passes per frame (whole canvas + centre zooms 2x and 4x) merged by view priority, as XTX3 n/m/l did. About 3x slower; for comparison only.",
+      "settings": { "mode": "pyramid", "conf_threshold": 0.15 }
+    },
+    {
+      "name": "Debug overlay (sigma, NMS extents, labels, network input)",
+      "description": "Shows everything the network outputs: sigma circles, the extent boxes OKS-NMS uses, person numbers, keypoint names and the letterboxed network input.",
+      "settings": {
+        "show_sigma": true, "show_extent": true, "show_ids": true, "show_labels": true, "show_debug_view": true,
+        "show_occluded": true, "kpt_threshold": 0.0
+      }
+    },
+    {
+      "name": "Clean overlay",
+      "description": "Only skeletons and visible keypoints, no texts.",
+      "settings": {
+        "show_sigma": false, "show_extent": false, "show_ids": false, "show_labels": false, "show_debug_view": false,
+        "show_scores": false, "show_occluded": false, "show_hud": false, "kpt_threshold": 0.3
+      }
     }
   ],
   "camera": {
@@ -42,7 +138,7 @@
     "visible_threshold": "manifest"
   },
   "display": {
-    "window_title": "XTX4 live test",
+    "window_title": "XTX4 test app",
     "show_scores": true,
     "show_labels": false,
     "show_hud": true,

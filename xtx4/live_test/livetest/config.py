@@ -2,8 +2,11 @@
 
 Paths are resolved relative to the config file. A network entry points either
 to an export folder's ``manifest.json`` (preferred: sizes, strides, blob names,
-decode parameters and keypoint metadata come from it) and/or to explicit
-``param``/``bin`` templates containing ``{size}``.
+decode parameters, keypoint metadata and the ONNX graphs come from it) and/or to
+explicit ``param``/``bin`` templates containing ``{size}``.
+
+Besides ``networks`` the file holds the start-up defaults (``camera``,
+``inference``, ``display``) and the built-in ``presets`` of the test app.
 """
 
 from __future__ import annotations
@@ -72,6 +75,7 @@ class NetworkConfig:
     skeleton: SkeletonPreset
     conf_threshold: float | None
     base_dir: Path
+    description: str = ""
     manifest_data: dict[str, Any] | None = None
     manifest_error: str | None = None
 
@@ -93,20 +97,43 @@ class NetworkConfig:
             return ncnn_files(self.manifest_data, size, self.manifest_path.parent)[1]
         raise ConfigError(f"network '{self.id}': no bin template and no manifest")
 
-    def size_available(self, size: int) -> bool:
+    def onnx_path(self, size: int) -> Path:
+        """FP32 ONNX graph listed in the manifest (ONNX Runtime backend)."""
+
+        files = (self.manifest_data or {}).get("outputs", {}).get("onnx", {}).get("files", {})
+        entry = files.get(str(int(size)))
+        if not entry or self.manifest_path is None:
+            raise ConfigError(f"network '{self.id}': no ONNX graph for size {size} in the manifest")
+        return (self.manifest_path.parent / entry["path"]).resolve()
+
+    def size_available(self, size: int, backend: str = "ncnn") -> bool:
         try:
+            if backend == "onnxruntime":
+                return self.onnx_path(size).is_file()
             return self.param_path(size).is_file() and self.bin_path(size).is_file()
-        except (ConfigError, ManifestError):
+        except (ConfigError, ManifestError, KeyError):
             return False
 
-    def available_sizes(self) -> list[int]:
-        return [s for s in self.sizes if self.size_available(s)]
+    def available_sizes(self, backend: str = "ncnn") -> list[int]:
+        return [s for s in self.sizes if self.size_available(s, backend)]
 
-    def preferred_size(self) -> int | None:
-        available = self.available_sizes()
+    def preferred_size(self, backend: str = "ncnn") -> int | None:
+        available = self.available_sizes(backend)
         if not available:
             return None
         return self.default_size if self.default_size in available else available[0]
+
+    @property
+    def fp16_weights(self) -> bool | None:
+        """Whether the ncnn ``.bin`` stores FP16 weights (None when unknown)."""
+
+        ncnn_meta = (self.manifest_data or {}).get("outputs", {}).get("ncnn", {})
+        return bool(ncnn_meta["fp16_weights"]) if "fp16_weights" in ncnn_meta else None
+
+    def decode_defaults(self) -> dict[str, Any]:
+        """The manifest ``decode`` block (empty without a manifest)."""
+
+        return dict((self.manifest_data or {}).get("decode", {}))
 
 
 @dataclass(slots=True)
@@ -153,12 +180,20 @@ class InferenceConfig:
 
 @dataclass(slots=True)
 class DisplayConfig:
-    window_title: str = "XTX4 live test"
-    show_scores: bool = True
-    show_labels: bool = False
-    show_hud: bool = True
-    point_radius: int = 4
-    line_thickness: int = 2
+    window_title: str = "XTX4 test app"
+    # Start-up values of the display options (keys = livetest.settings.Settings fields).
+    defaults: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class Preset:
+    """Named partial settings (keys = ``Settings`` fields; ``"decode": "manifest"`` first
+    resets every decode / NMS value to the network's manifest defaults)."""
+
+    name: str
+    settings: dict[str, Any]
+    description: str = ""
+    builtin: bool = True
 
 
 @dataclass(slots=True)
@@ -168,6 +203,7 @@ class AppConfig:
     camera: CameraConfig
     inference: InferenceConfig
     display: DisplayConfig = field(default_factory=DisplayConfig)
+    presets: list[Preset] = field(default_factory=list)
 
     def network(self, network_id: str) -> NetworkConfig:
         for net in self.networks:
@@ -175,6 +211,9 @@ class AppConfig:
                 return net
         known = ", ".join(n.id for n in self.networks)
         raise ConfigError(f"Unknown network {network_id!r}; configured: {known}")
+
+    def has_network(self, network_id: str) -> bool:
+        return any(n.id == network_id for n in self.networks)
 
 
 def _require(data: dict[str, Any], key: str, where: str) -> Any:
@@ -235,9 +274,18 @@ def _parse_network(data: dict[str, Any], base_dir: Path) -> NetworkConfig:
         skeleton=skeleton,
         conf_threshold=float(conf) if conf is not None else None,
         base_dir=base_dir,
+        description=str(data.get("description", "")),
         manifest_data=manifest_data,
         manifest_error=manifest_error,
     )
+
+
+def _parse_preset(data: dict[str, Any]) -> Preset:
+    name = str(_require(data, "name", "presets[]"))
+    settings = data.get("settings", {})
+    if not isinstance(settings, dict):
+        raise ConfigError(f"preset '{name}': 'settings' must be an object")
+    return Preset(name=name, settings=dict(settings), description=str(data.get("description", "")))
 
 
 def _dataclass_from(cls: type, data: dict[str, Any]) -> Any:
@@ -262,10 +310,14 @@ def load_config(path: str | Path | None = None) -> AppConfig:
     ids = [n.id for n in networks]
     if len(ids) != len(set(ids)):
         raise ConfigError(f"Duplicate network ids in config.json: {ids}")
+    display_raw = dict(raw.get("display", {}))
+    display = DisplayConfig(window_title=str(display_raw.pop("window_title", DisplayConfig.window_title)),
+                            defaults=display_raw)
     return AppConfig(
         path=cfg_path,
         networks=networks,
         camera=_dataclass_from(CameraConfig, raw.get("camera", {})),
         inference=_dataclass_from(InferenceConfig, raw.get("inference", {})),
-        display=_dataclass_from(DisplayConfig, raw.get("display", {})),
+        display=display,
+        presets=[_parse_preset(p) for p in raw.get("presets", [])],
     )

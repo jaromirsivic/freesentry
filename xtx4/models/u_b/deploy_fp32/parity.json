@@ -1,0 +1,388 @@
+{
+  "tolerances": {
+    "onnx_raw_max_abs": 0.001,
+    "onnx_xy_max_px": 0.05,
+    "onnx_score_max_abs": 0.0001,
+    "ncnn_xy_p95_px": 0.25,
+    "ncnn_xy_p99_px": 1.0
+  },
+  "conf_threshold": 0.25,
+  "sizes": {
+    "256": {
+      "onnx_verify_max_abs": 3.4332275390625e-05,
+      "inputs": {
+        "image:000000000625.jpg": {
+          "onnx": {
+            "person_raw_max_abs": 5.817413330078125e-05,
+            "pose_raw_max_abs": 6.842613220214844e-05,
+            "raw_max_abs": 6.842613220214844e-05,
+            "score_max_abs": 2.384185791015625e-06,
+            "selected_score_max_abs": 2.384185791015625e-06,
+            "compared_anchors": 100,
+            "selection": "top100",
+            "xy_err_max_px": 5.5542830523336306e-05,
+            "xy_err_p95_px": 1.7059845049516298e-05,
+            "xy_err_p99_px": 3.0517578125e-05,
+            "kpt_conf_max_abs": 1.9073486328125e-06,
+            "visibility_agreement": 1.0,
+            "detections_ref": 3,
+            "detections_test": 3,
+            "detection_jaccard": 1.0
+          },
+          "ncnn": {
+            "person_raw_max_abs": 8.7738037109375e-05,
+            "pose_raw_max_abs": 7.2479248046875e-05,
+            "raw_max_abs": 8.7738037109375e-05,
+            "score_max_abs": 1.9371509552001953e-06,
+            "selected_score_max_abs": 1.9371509552001953e-06,
+            "compared_anchors": 100,
+            "selection": "top100",
+            "xy_err_max_px": 0.0001258271950064227,
+            "xy_err_p95_px": 3.0517578125e-05,
+            "xy_err_p99_px": 4.8385103582404554e-05,
+            "kpt_conf_max_abs": 4.6193599700927734e-06,
+            "visibility_agreement": 1.0,
+            "detections_ref": 3,
+            "detections_test": 3,
+            "detection_jaccard": 1.0
+          }
+        },
+        "constant": {
+          "onnx": {
+            "person_raw_max_abs": 0.0001163482666015625,
+            "pose_raw_max_abs": 0.0001461505889892578,
+            "raw_max_abs": 0.0001461505889892578,
+            "score_max_abs": 4.627509042620659e-09,
+            "selected_score_max_abs": 4.627509042620659e-09,
+            "compared_anchors": 100,
+            "selection": "top100",
+            "xy_err_max_px": 0.0004393365525174886,
+            "xy_err_p95_px": 0.00019569711002986878,
+            "xy_err_p99_px": 0.0002665660867933184,
+            "kpt_conf_max_abs": 5.066394805908203e-06,
+            "visibility_agreement": 1.0,
+            "detections_ref": 0,
+            "detections_test": 0,
+            "detection_jaccard": 1.0
+          },
+          "ncnn": {
+            "person_raw_max_abs": 8.296966552734375e-05,
+            "pose_raw_max_abs": 9.965896606445312e-05,
+            "raw_max_abs": 9.965896606445312e-05,
+            "score_max_abs": 4.46016201749444e-09,
+            "selected_score_max_abs": 4.46016201749444e-09,
+            "compared_anchors": 100,
+            "selection": "top100",
+            "xy_err_max_px": 0.00031861287425272167,
+            "xy_err_p95_px": 0.0001983642578125,
+            "xy_err_p99_px": 0.0002460405812598765,
+            "kpt_conf_max_abs": 5.543231964111328e-06,
+            "visibility_agreement": 1.0,
+            "detections_ref": 0,
+            "detections_test": 0,
+            "detection_jaccard": 1.0
+          }
+        },
+        "random": {
+          "onnx": {
+            "person_raw_max_abs": 7.62939453125e-06,
+            "pose_raw_max_abs": 3.4332275390625e-05,
+            "raw_max_abs": 3.4332275390625e-05,
+            "score_max_abs": 2.5029294192790985e-09,
+            "selected_score_max_abs": 2.5029294192790985e-09,
+            "compared_anchors": 100,
+            "selection": "top100",
+            "xy_err_max_px": 0.00019895026343874633,
+            "xy_err_p95_px": 5.50163458683528e-05,
+            "xy_err_p99_px": 9.281559323426336e-05,
+            "kpt_conf_max_abs": 3.904104232788086e-06,
+            "visibility_agreement": 1.0,
+            "detections_ref": 0,
+            "detections_test": 0,
+            "detection_jaccard": 1.0
+          },
+          "ncnn": {
+            "person_raw_max_abs": 1.621246337890625e-05,
+            "pose_raw_max_abs": 6.532669067382812e-05,
+            "raw_max_abs": 6.532669067382812e-05,
+            "score_max_abs": 2.9685907065868378e-09,
+            "selected_score_max_abs": 2.9685907065868378e-09,
+            "compared_anchors": 100,
+            "selection": "top100",
+            "xy_err_max_px": 0.000213623046875,
+            "xy_err_p95_px": 7.519847713410854e-05,
+            "xy_err_p99_px": 0.00013817421859130263,
+            "kpt_conf_max_abs": 4.06801700592041e-06,
+            "visibility_agreement": 1.0,
+            "detections_ref": 0,
+            "detections_test": 0,
+            "detection_jaccard": 1.0
+          }
+        }
+      },
+      "summary": {
+        "onnx_raw_max_abs": 0.0001461505889892578,
+        "onnx_xy_max_px": 0.0004393365525174886,
+        "onnx_score_max_abs": 2.384185791015625e-06,
+        "ncnn_raw_max_abs": 9.965896606445312e-05,
+        "ncnn_score_max_abs": 1.9371509552001953e-06,
+        "ncnn_xy_p95_px": 0.0001983642578125,
+        "ncnn_xy_p99_px": 0.0002460405812598765,
+        "ncnn_xy_max_px": 0.00031861287425272167,
+        "pass": true,
+        "failures": []
+      }
+    },
+    "320": {
+      "onnx_verify_max_abs": 4.208087921142578e-05,
+      "inputs": {
+        "image:000000000625.jpg": {
+          "onnx": {
+            "person_raw_max_abs": 6.4849853515625e-05,
+            "pose_raw_max_abs": 6.771087646484375e-05,
+            "raw_max_abs": 6.771087646484375e-05,
+            "score_max_abs": 1.043081283569336e-06,
+            "selected_score_max_abs": 1.043081283569336e-06,
+            "compared_anchors": 100,
+            "selection": "top100",
+            "xy_err_max_px": 3.4119690099032596e-05,
+            "xy_err_p95_px": 2.15791860682657e-05,
+            "xy_err_p99_px": 3.0517578125e-05,
+            "kpt_conf_max_abs": 1.6987323760986328e-06,
+            "visibility_agreement": 1.0,
+            "detections_ref": 3,
+            "detections_test": 3,
+            "detection_jaccard": 1.0
+          },
+          "ncnn": {
+            "person_raw_max_abs": 0.00022125244140625,
+            "pose_raw_max_abs": 0.00011777877807617188,
+            "raw_max_abs": 0.00022125244140625,
+            "score_max_abs": 1.6689300537109375e-06,
+            "selected_score_max_abs": 1.6689300537109375e-06,
+            "compared_anchors": 100,
+            "selection": "top100",
+            "xy_err_max_px": 0.0001068115234375,
+            "xy_err_p95_px": 3.0517578125e-05,
+            "xy_err_p99_px": 4.830406032851897e-05,
+            "kpt_conf_max_abs": 1.9669532775878906e-06,
+            "visibility_agreement": 1.0,
+            "detections_ref": 3,
+            "detections_test": 3,
+            "detection_jaccard": 1.0
+          }
+        },
+        "constant": {
+          "onnx": {
+            "person_raw_max_abs": 0.00015544891357421875,
+            "pose_raw_max_abs": 0.00019359588623046875,
+            "raw_max_abs": 0.00019359588623046875,
+            "score_max_abs": 1.8189894035458565e-09,
+            "selected_score_max_abs": 1.6370904631912708e-09,
+            "compared_anchors": 100,
+            "selection": "top100",
+            "xy_err_max_px": 0.0003993607242591679,
+            "xy_err_p95_px": 0.0001258271950064227,
+            "xy_err_p99_px": 0.00030517959385178983,
+            "kpt_conf_max_abs": 7.152557373046875e-06,
+            "visibility_agreement": 1.0,
+            "detections_ref": 0,
+            "detections_test": 0,
+            "detection_jaccard": 1.0
+          },
+          "ncnn": {
+            "person_raw_max_abs": 0.0001220703125,
+            "pose_raw_max_abs": 0.00013399124145507812,
+            "raw_max_abs": 0.00013399124145507812,
+            "score_max_abs": 9.076757123693824e-10,
+            "selected_score_max_abs": 7.34871719032526e-10,
+            "compared_anchors": 100,
+            "selection": "top100",
+            "xy_err_max_px": 0.0002460405812598765,
+            "xy_err_p95_px": 7.62939453125e-05,
+            "xy_err_p99_px": 0.000152587890625,
+            "kpt_conf_max_abs": 5.066394805908203e-06,
+            "visibility_agreement": 1.0,
+            "detections_ref": 0,
+            "detections_test": 0,
+            "detection_jaccard": 1.0
+          }
+        },
+        "random": {
+          "onnx": {
+            "person_raw_max_abs": 1.049041748046875e-05,
+            "pose_raw_max_abs": 4.208087921142578e-05,
+            "raw_max_abs": 4.208087921142578e-05,
+            "score_max_abs": 1.6880221664905548e-09,
+            "selected_score_max_abs": 1.6880221664905548e-09,
+            "compared_anchors": 100,
+            "selection": "top100",
+            "xy_err_max_px": 0.00012302029062993824,
+            "xy_err_p95_px": 5.965986201772466e-05,
+            "xy_err_p99_px": 8.897326188161969e-05,
+            "kpt_conf_max_abs": 1.5497207641601562e-06,
+            "visibility_agreement": 1.0,
+            "detections_ref": 0,
+            "detections_test": 0,
+            "detection_jaccard": 1.0
+          },
+          "ncnn": {
+            "person_raw_max_abs": 1.621246337890625e-05,
+            "pose_raw_max_abs": 7.796287536621094e-05,
+            "raw_max_abs": 7.796287536621094e-05,
+            "score_max_abs": 4.71482053399086e-09,
+            "selected_score_max_abs": 4.71482053399086e-09,
+            "compared_anchors": 100,
+            "selection": "top100",
+            "xy_err_max_px": 0.0002460405812598765,
+            "xy_err_p95_px": 9.281559323426336e-05,
+            "xy_err_p99_px": 0.000153371540363878,
+            "kpt_conf_max_abs": 2.4139881134033203e-06,
+            "visibility_agreement": 1.0,
+            "detections_ref": 0,
+            "detections_test": 0,
+            "detection_jaccard": 1.0
+          }
+        }
+      },
+      "summary": {
+        "onnx_raw_max_abs": 0.00019359588623046875,
+        "onnx_xy_max_px": 0.0003993607242591679,
+        "onnx_score_max_abs": 1.043081283569336e-06,
+        "ncnn_raw_max_abs": 0.00022125244140625,
+        "ncnn_score_max_abs": 1.6689300537109375e-06,
+        "ncnn_xy_p95_px": 9.281559323426336e-05,
+        "ncnn_xy_p99_px": 0.000153371540363878,
+        "ncnn_xy_max_px": 0.0002460405812598765,
+        "pass": true,
+        "failures": []
+      }
+    },
+    "384": {
+      "onnx_verify_max_abs": 4.947185516357422e-05,
+      "inputs": {
+        "image:000000000625.jpg": {
+          "onnx": {
+            "person_raw_max_abs": 0.000156402587890625,
+            "pose_raw_max_abs": 0.00023698806762695312,
+            "raw_max_abs": 0.00023698806762695312,
+            "score_max_abs": 1.1026859283447266e-06,
+            "selected_score_max_abs": 1.1026859283447266e-06,
+            "compared_anchors": 100,
+            "selection": "top100",
+            "xy_err_max_px": 0.00021383581042755395,
+            "xy_err_p95_px": 3.051762541872449e-05,
+            "xy_err_p99_px": 4.751888263854198e-05,
+            "kpt_conf_max_abs": 2.0265579223632812e-06,
+            "visibility_agreement": 1.0,
+            "detections_ref": 4,
+            "detections_test": 4,
+            "detection_jaccard": 1.0
+          },
+          "ncnn": {
+            "person_raw_max_abs": 9.1552734375e-05,
+            "pose_raw_max_abs": 0.00019931793212890625,
+            "raw_max_abs": 0.00019931793212890625,
+            "score_max_abs": 2.2351741790771484e-06,
+            "selected_score_max_abs": 2.2351741790771484e-06,
+            "compared_anchors": 100,
+            "selection": "top100",
+            "xy_err_max_px": 0.0001536599884275347,
+            "xy_err_p95_px": 3.4119690099032596e-05,
+            "xy_err_p99_px": 8.907998562790453e-05,
+            "kpt_conf_max_abs": 3.0100345611572266e-06,
+            "visibility_agreement": 1.0,
+            "detections_ref": 4,
+            "detections_test": 4,
+            "detection_jaccard": 1.0
+          }
+        },
+        "constant": {
+          "onnx": {
+            "person_raw_max_abs": 0.00017547607421875,
+            "pose_raw_max_abs": 0.00027060508728027344,
+            "raw_max_abs": 0.00027060508728027344,
+            "score_max_abs": 2.240994945168495e-09,
+            "selected_score_max_abs": 2.240994945168495e-09,
+            "compared_anchors": 100,
+            "selection": "top100",
+            "xy_err_max_px": 0.0003571990819182247,
+            "xy_err_p95_px": 0.0001100326917367056,
+            "xy_err_p99_px": 0.00021585565991699696,
+            "kpt_conf_max_abs": 8.791685104370117e-06,
+            "visibility_agreement": 1.0,
+            "detections_ref": 0,
+            "detections_test": 0,
+            "detection_jaccard": 1.0
+          },
+          "ncnn": {
+            "person_raw_max_abs": 0.00016021728515625,
+            "pose_raw_max_abs": 0.00021576881408691406,
+            "raw_max_abs": 0.00021576881408691406,
+            "score_max_abs": 1.6916601452976465e-09,
+            "selected_score_max_abs": 1.6916601452976465e-09,
+            "compared_anchors": 100,
+            "selection": "top100",
+            "xy_err_max_px": 0.0002516543900128454,
+            "xy_err_p95_px": 8.217109279939905e-05,
+            "xy_err_p99_px": 0.00015569705283269286,
+            "kpt_conf_max_abs": 7.510185241699219e-06,
+            "visibility_agreement": 1.0,
+            "detections_ref": 0,
+            "detections_test": 0,
+            "detection_jaccard": 1.0
+          }
+        },
+        "random": {
+          "onnx": {
+            "person_raw_max_abs": 2.0503997802734375e-05,
+            "pose_raw_max_abs": 4.947185516357422e-05,
+            "raw_max_abs": 4.947185516357422e-05,
+            "score_max_abs": 8.381903171539307e-09,
+            "selected_score_max_abs": 8.381903171539307e-09,
+            "compared_anchors": 100,
+            "selection": "top100",
+            "xy_err_max_px": 0.0001678466796875,
+            "xy_err_p95_px": 6.103515625e-05,
+            "xy_err_p99_px": 9.156082523986697e-05,
+            "kpt_conf_max_abs": 2.5033950805664062e-06,
+            "visibility_agreement": 1.0,
+            "detections_ref": 0,
+            "detections_test": 0,
+            "detection_jaccard": 1.0
+          },
+          "ncnn": {
+            "person_raw_max_abs": 2.002716064453125e-05,
+            "pose_raw_max_abs": 0.00010383129119873047,
+            "raw_max_abs": 0.00010383129119873047,
+            "score_max_abs": 5.413312464952469e-09,
+            "selected_score_max_abs": 5.413312464952469e-09,
+            "compared_anchors": 100,
+            "selection": "top100",
+            "xy_err_max_px": 0.00020069803576916456,
+            "xy_err_p95_px": 7.62939453125e-05,
+            "xy_err_p99_px": 0.00012302264804020524,
+            "kpt_conf_max_abs": 2.473592758178711e-06,
+            "visibility_agreement": 1.0,
+            "detections_ref": 0,
+            "detections_test": 0,
+            "detection_jaccard": 1.0
+          }
+        }
+      },
+      "summary": {
+        "onnx_raw_max_abs": 0.00027060508728027344,
+        "onnx_xy_max_px": 0.0003571990819182247,
+        "onnx_score_max_abs": 1.1026859283447266e-06,
+        "ncnn_raw_max_abs": 0.00021576881408691406,
+        "ncnn_score_max_abs": 2.2351741790771484e-06,
+        "ncnn_xy_p95_px": 8.217109279939905e-05,
+        "ncnn_xy_p99_px": 0.00015569705283269286,
+        "ncnn_xy_max_px": 0.0002516543900128454,
+        "pass": true,
+        "failures": []
+      }
+    }
+  },
+  "pass": true
+}

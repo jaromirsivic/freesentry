@@ -1,0 +1,460 @@
+{
+  "schema_version": 1,
+  "model_id": "xtx4-u-u_c-b242bbe8",
+  "created": "2026-10-16T07:27:17+00:00",
+  "checkpoint_sha256": "b242bbe88a78fd5d2ec615520103c57c4dfb520bb1177266c92657f6a5098f5a",
+  "config_sha256": "a21396ae9be40d9a5838be01c2aafa1e4b815519a077bf279cc631fc8e823259",
+  "variant_spec": {
+    "name": "u_c",
+    "widths": [
+      24,
+      48,
+      96,
+      192,
+      256
+    ],
+    "depths": [
+      1,
+      2,
+      2,
+      1
+    ],
+    "head_hidden": 64,
+    "pose_hidden": 96,
+    "block": "rep",
+    "act": "relu",
+    "levels": "P3P4P5",
+    "p2_assist": false,
+    "default_size": 320,
+    "num_keypoints": 9
+  },
+  "num_keypoints": 9,
+  "keypoints": {
+    "count": 9,
+    "names": [
+      "nose",
+      "left_eye",
+      "right_eye",
+      "left_ear",
+      "right_ear",
+      "left_shoulder",
+      "right_shoulder",
+      "left_hip",
+      "right_hip"
+    ],
+    "coco_indices": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      11,
+      12
+    ],
+    "flip_pairs": [
+      [
+        1,
+        2
+      ],
+      [
+        3,
+        4
+      ],
+      [
+        5,
+        6
+      ],
+      [
+        7,
+        8
+      ]
+    ],
+    "sigmas": [
+      0.026000000536441803,
+      0.02500000037252903,
+      0.02500000037252903,
+      0.03500000014901161,
+      0.03500000014901161,
+      0.07900000363588333,
+      0.07900000363588333,
+      0.10700000077486038,
+      0.10700000077486038
+    ],
+    "skeleton_edges": [
+      [
+        0,
+        1
+      ],
+      [
+        0,
+        2
+      ],
+      [
+        1,
+        3
+      ],
+      [
+        2,
+        4
+      ],
+      [
+        5,
+        6
+      ],
+      [
+        5,
+        7
+      ],
+      [
+        6,
+        8
+      ],
+      [
+        7,
+        8
+      ]
+    ]
+  },
+  "input": {
+    "name": "in0",
+    "layout": "NCHW",
+    "dtype": "float32",
+    "color": "BGR",
+    "scale": "1/255",
+    "mean": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "sizes": [
+      256,
+      320,
+      384
+    ],
+    "letterbox": {
+      "mode": "whole",
+      "aspect": "preserved",
+      "upscale": false,
+      "placement": "centred",
+      "pad_value": 0,
+      "offset_align": 4,
+      "interpolation": "INTER_AREA when downscaling (single resize from the source frame)",
+      "transform": "2x3 affine, network px -> frame px (pure scale + translation)",
+      "reference": "xtx4.data.preprocess (whole) == xtx4.runtime.preprocess"
+    }
+  },
+  "strides": [
+    8,
+    16,
+    32
+  ],
+  "levels": "P3P4P5",
+  "anchor_order": {
+    "levels": "ascending stride",
+    "within_level": "row-major (y outer, x inner)",
+    "centre": "(i + 0.5) * stride",
+    "per_level": {
+      "256": [
+        1024,
+        256,
+        64
+      ],
+      "320": [
+        1600,
+        400,
+        100
+      ],
+      "384": [
+        2304,
+        576,
+        144
+      ]
+    },
+    "N": {
+      "256": 1344,
+      "320": 2100,
+      "384": 3024
+    }
+  },
+  "outputs": {
+    "layout": {
+      "person": "[1, N, 1] raw person logit",
+      "pose": "[1, N, K*5] raw, keypoint-major (dx, dy, log_sigma, present_logit, visible_logit), K=9",
+      "channels_per_keypoint": [
+        "dx",
+        "dy",
+        "log_sigma",
+        "present_logit",
+        "visible_logit"
+      ]
+    },
+    "onnx": {
+      "input": "in0",
+      "names": {
+        "person": "person",
+        "pose": "pose"
+      },
+      "opset": 17,
+      "files": {
+        "256": {
+          "path": "xtx4-u_c_256.onnx",
+          "sha256": "0ea8ee295dda10417eb6ab3b99069178f468ace10a47b40575ff8b9e14491957",
+          "input_shape": [
+            1,
+            3,
+            256,
+            256
+          ],
+          "shapes": {
+            "person": [
+              1,
+              1344,
+              1
+            ],
+            "pose": [
+              1,
+              1344,
+              45
+            ]
+          }
+        },
+        "320": {
+          "path": "xtx4-u_c_320.onnx",
+          "sha256": "d84f35e972e1b356f355786daca11a6447c76089b0fdb689db508e585775e39e",
+          "input_shape": [
+            1,
+            3,
+            320,
+            320
+          ],
+          "shapes": {
+            "person": [
+              1,
+              2100,
+              1
+            ],
+            "pose": [
+              1,
+              2100,
+              45
+            ]
+          }
+        },
+        "384": {
+          "path": "xtx4-u_c_384.onnx",
+          "sha256": "b42e5bcf2ec8a218a0fad1624b736f17608d5fe92bd6878f59dccc566f7b3337",
+          "input_shape": [
+            1,
+            3,
+            384,
+            384
+          ],
+          "shapes": {
+            "person": [
+              1,
+              3024,
+              1
+            ],
+            "pose": [
+              1,
+              3024,
+              45
+            ]
+          }
+        }
+      }
+    },
+    "ncnn": {
+      "input": "in0",
+      "blobs": {
+        "person": "out0",
+        "pose": "out1"
+      },
+      "converter": "pnnx",
+      "fp16_weights": false,
+      "files": {
+        "256": {
+          "param": "xtx4-u_c_256.ncnn.param",
+          "bin": "xtx4-u_c_256.ncnn.bin",
+          "sha256_param": "74110c4eeb76766e51e2d7815f424d4eacc881325206423d76bb99dcc05a3178",
+          "sha256_bin": "a9e29ce7a5723e82c46fdd67639c94c7dc4fb121f30f4ddd30ac148ae8b349bf",
+          "fp16": false,
+          "layers": {
+            "BinaryOp": 10,
+            "Concat": 15,
+            "Convolution": 57,
+            "Input": 1,
+            "Interp": 2,
+            "Permute": 6,
+            "Pooling": 3,
+            "Reshape": 7,
+            "Slice": 8,
+            "Split": 22
+          },
+          "input_shape": [
+            3,
+            256,
+            256
+          ],
+          "shapes": {
+            "person": [
+              1344,
+              1
+            ],
+            "pose": [
+              1344,
+              45
+            ]
+          }
+        },
+        "320": {
+          "param": "xtx4-u_c_320.ncnn.param",
+          "bin": "xtx4-u_c_320.ncnn.bin",
+          "sha256_param": "e08d99e9600446f6f42f842643bc78db8972c1ad2cb5032071eb46675333ba81",
+          "sha256_bin": "a9e29ce7a5723e82c46fdd67639c94c7dc4fb121f30f4ddd30ac148ae8b349bf",
+          "fp16": false,
+          "layers": {
+            "BinaryOp": 10,
+            "Concat": 15,
+            "Convolution": 57,
+            "Input": 1,
+            "Interp": 2,
+            "Permute": 6,
+            "Pooling": 3,
+            "Reshape": 7,
+            "Slice": 8,
+            "Split": 22
+          },
+          "input_shape": [
+            3,
+            320,
+            320
+          ],
+          "shapes": {
+            "person": [
+              2100,
+              1
+            ],
+            "pose": [
+              2100,
+              45
+            ]
+          }
+        },
+        "384": {
+          "param": "xtx4-u_c_384.ncnn.param",
+          "bin": "xtx4-u_c_384.ncnn.bin",
+          "sha256_param": "09aa220046eb561d4ecb3d9ab1fecf7e264c59e4aa3b282f6e02029af42e0b8a",
+          "sha256_bin": "a9e29ce7a5723e82c46fdd67639c94c7dc4fb121f30f4ddd30ac148ae8b349bf",
+          "fp16": false,
+          "layers": {
+            "BinaryOp": 10,
+            "Concat": 15,
+            "Convolution": 57,
+            "Input": 1,
+            "Interp": 2,
+            "Permute": 6,
+            "Pooling": 3,
+            "Reshape": 7,
+            "Slice": 8,
+            "Split": 22
+          },
+          "input_shape": [
+            3,
+            384,
+            384
+          ],
+          "shapes": {
+            "person": [
+              3024,
+              1
+            ],
+            "pose": [
+              3024,
+              45
+            ]
+          }
+        }
+      }
+    }
+  },
+  "decode_version": 1,
+  "decode": {
+    "sigma_floor": 0.05,
+    "sigma_conf_coeff": 0.0,
+    "conf_threshold": 0.25,
+    "max_detections": 100,
+    "oks_nms": false,
+    "oks_nms_threshold": 0.5,
+    "oks_nms_iou_threshold": null,
+    "oks_nms_scale_factor": 1.5,
+    "present_threshold": 0.5,
+    "visible_threshold": 0.5,
+    "xy": "anchor + (dx, dy) * stride",
+    "sigma": "sigma_units = softplus(log_sigma) + sigma_floor; sigma_px = sigma_units * stride",
+    "conf": "sigmoid(present) * exp(-sigma_conf_coeff * sigma_units)",
+    "visibility": "0 if sigmoid(present) < present_threshold else (2 if sigmoid(visible) >= visible_threshold else 1)",
+    "oks_nms_rule": "greedy by score; drop j if OKS(kept, j) >= oks_nms_threshold with s^2 = max((f w)(f h), 16^2) of j's confident-point extent (f = oks_nms_scale_factor), or expanded-box IoU >= oks_nms_iou_threshold (null = off)",
+    "score_filter": "sigmoid(person) >= conf_threshold before keypoint decode; top max_detections by score"
+  },
+  "precision": {
+    "onnx": "fp32",
+    "ncnn_weights": "fp32",
+    "ncnn_runtime_default": "fp32"
+  },
+  "tools": {
+    "python": "3.12.13",
+    "torch": "2.14.1+cu130",
+    "onnx": "1.23.2",
+    "onnxsim": "0.8.1",
+    "onnxruntime": "1.31.0",
+    "pnnx": "20260526",
+    "ncnn": "1.0.20260526",
+    "numpy": "2.5.4",
+    "opencv-python": "5.0.0.93"
+  },
+  "parity": {
+    "pass": true,
+    "file": "parity.json",
+    "per_size": {
+      "256": {
+        "onnx_raw_max_abs": 8.106231689453125e-05,
+        "onnx_xy_max_px": 0.00029311177786439657,
+        "onnx_score_max_abs": 8.381903171539307e-07,
+        "ncnn_raw_max_abs": 8.702278137207031e-05,
+        "ncnn_score_max_abs": 1.519918441772461e-06,
+        "ncnn_xy_p95_px": 9.770392352947965e-05,
+        "ncnn_xy_p99_px": 0.00023733224952593446,
+        "ncnn_xy_max_px": 0.0007078499183990061,
+        "pass": true,
+        "failures": []
+      },
+      "320": {
+        "onnx_raw_max_abs": 0.0001850128173828125,
+        "onnx_xy_max_px": 0.0004239637346472591,
+        "onnx_score_max_abs": 1.0281801223754883e-06,
+        "ncnn_raw_max_abs": 7.450580596923828e-05,
+        "ncnn_score_max_abs": 2.175569534301758e-06,
+        "ncnn_xy_p95_px": 0.00013051467249169946,
+        "ncnn_xy_p99_px": 0.0002157918643206358,
+        "ncnn_xy_max_px": 0.00029627210460603237,
+        "pass": true,
+        "failures": []
+      },
+      "384": {
+        "onnx_raw_max_abs": 0.00041961669921875,
+        "onnx_xy_max_px": 0.0008861928363330662,
+        "onnx_score_max_abs": 2.5331974029541016e-07,
+        "ncnn_raw_max_abs": 0.00014495849609375,
+        "ncnn_score_max_abs": 1.4901161193847656e-06,
+        "ncnn_xy_p95_px": 0.00023849554418120533,
+        "ncnn_xy_p99_px": 0.0006480902666226029,
+        "ncnn_xy_max_px": 0.0009558385936543345,
+        "pass": true,
+        "failures": []
+      }
+    }
+  }
+}

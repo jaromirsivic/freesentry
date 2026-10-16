@@ -53,7 +53,7 @@ if errorlevel 1 (
 
 rem ---- verification -------------------------------------------------------------
 echo Verifying the installation...
-".venv\Scripts\python.exe" -c "import ncnn, cv2, numpy, psutil, tkinter; print('ncnn', ncnn.__version__, '| opencv', cv2.__version__, '| numpy', numpy.__version__)"
+".venv\Scripts\python.exe" -c "import ncnn, onnxruntime, cv2, numpy, psutil, PIL, tkinter; print('ncnn', ncnn.__version__, '| onnxruntime', onnxruntime.__version__, '| opencv', cv2.__version__, '| numpy', numpy.__version__)"
 if errorlevel 1 (
     echo ERROR: verification failed - see the message above.
     goto :fail
@@ -66,7 +66,7 @@ if errorlevel 1 (
 ".venv\Scripts\python.exe" -c "import ncnn; n = ncnn.get_gpu_count(); print('Vulkan GPUs usable by ncnn:', n); ncnn.destroy_gpu_instance()" 2>nul
 
 echo --------------------------------
-echo Environment ready. Run start.bat to launch the live test.
+echo Environment ready. Run start.bat to launch the XTX4 test app.
 echo --------------------------------
 if "%AUTO%"=="0" pause
 endlocal & exit /b 0
