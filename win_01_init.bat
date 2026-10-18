@@ -1,4 +1,4 @@
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex" && set Path=C:\Users\User\.local\bin;%Path%
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex" && set Path=%USERPROFILE%\.local\bin;%Path%
 uv init
 rem git init
 IF NOT EXIST .venv\Scripts\activate (uv venv)

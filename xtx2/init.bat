@@ -10,7 +10,7 @@ del pyproject.toml
 del .python-version
 
 echo Downloading uv
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex" && set Path=C:\Users\User\.local\bin;%Path%
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex" && set Path=%USERPROFILE%\.local\bin;%Path%
 echo Initializing python environment
 uv init
 uv venv

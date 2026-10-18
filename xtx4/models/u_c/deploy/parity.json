@@ -4,7 +4,10 @@
     "onnx_xy_max_px": 0.05,
     "onnx_score_max_abs": 0.0001,
     "ncnn_xy_p95_px": 0.25,
-    "ncnn_xy_p99_px": 1.0
+    "ncnn_xy_p99_px": 1.0,
+    "host_organs_max_px": 0.01,
+    "onnx_organs_max_px": 0.05,
+    "ncnn_organs_p99_px": 1.0
   },
   "conf_threshold": 0.25,
   "sizes": {
@@ -13,6 +16,12 @@
       "inputs": {
         "image:000000000625.jpg": {
           "onnx": {
+            "organs_err_max_px": 2.4425980882369913e-05,
+            "organs_err_p99_px": 2.15791860682657e-05,
+            "organs_conf_max_abs": 1.7881393432617188e-06,
+            "organs_host_err_max_px": 1.52587890625e-05,
+            "organs_host_conf_max_abs": 1.1920928955078125e-07,
+            "organs_gate_ramp_rows": 0,
             "person_raw_max_abs": 6.198883056640625e-05,
             "pose_raw_max_abs": 8.106231689453125e-05,
             "raw_max_abs": 8.106231689453125e-05,
@@ -30,6 +39,12 @@
             "detection_jaccard": 1.0
           },
           "ncnn": {
+            "organs_err_max_px": 0.12129157781600952,
+            "organs_err_p99_px": 0.0648772194981575,
+            "organs_conf_max_abs": 0.002305150032043457,
+            "organs_host_err_max_px": 1.52587890625e-05,
+            "organs_host_conf_max_abs": 1.1920928955078125e-07,
+            "organs_gate_ramp_rows": 0,
             "person_raw_max_abs": 0.08618545532226562,
             "pose_raw_max_abs": 0.1293315887451172,
             "raw_max_abs": 0.1293315887451172,
@@ -49,6 +64,12 @@
         },
         "constant": {
           "onnx": {
+            "organs_err_max_px": 0.00015334892668761313,
+            "organs_err_p99_px": 0.00013132175081409514,
+            "organs_conf_max_abs": 2.2351741790771484e-06,
+            "organs_host_err_max_px": 1.52587890625e-05,
+            "organs_host_conf_max_abs": 1.1920928955078125e-07,
+            "organs_gate_ramp_rows": 0,
             "person_raw_max_abs": 5.626678466796875e-05,
             "pose_raw_max_abs": 7.987022399902344e-05,
             "raw_max_abs": 7.987022399902344e-05,
@@ -66,6 +87,12 @@
             "detection_jaccard": 1.0
           },
           "ncnn": {
+            "organs_err_max_px": 0.27178704738616943,
+            "organs_err_p99_px": 0.24440419673919678,
+            "organs_conf_max_abs": 0.0036213696002960205,
+            "organs_host_err_max_px": 1.52587890625e-05,
+            "organs_host_conf_max_abs": 1.1920928955078125e-07,
+            "organs_gate_ramp_rows": 0,
             "person_raw_max_abs": 0.1827545166015625,
             "pose_raw_max_abs": 0.14359134435653687,
             "raw_max_abs": 0.1827545166015625,
@@ -85,6 +112,12 @@
         },
         "random": {
           "onnx": {
+            "organs_err_max_px": 8.0108642578125e-05,
+            "organs_err_p99_px": 4.318455103202723e-05,
+            "organs_conf_max_abs": 2.0265579223632812e-06,
+            "organs_host_err_max_px": 1.52587890625e-05,
+            "organs_host_conf_max_abs": 1.7881393432617188e-07,
+            "organs_gate_ramp_rows": 0,
             "person_raw_max_abs": 1.3828277587890625e-05,
             "pose_raw_max_abs": 4.8041343688964844e-05,
             "raw_max_abs": 4.8041343688964844e-05,
@@ -102,6 +135,12 @@
             "detection_jaccard": 1.0
           },
           "ncnn": {
+            "organs_err_max_px": 0.22732162475585938,
+            "organs_err_p99_px": 0.20208494365215302,
+            "organs_conf_max_abs": 0.0036972761154174805,
+            "organs_host_err_max_px": 1.52587890625e-05,
+            "organs_host_conf_max_abs": 1.7881393432617188e-07,
+            "organs_gate_ramp_rows": 0,
             "person_raw_max_abs": 0.0417780876159668,
             "pose_raw_max_abs": 0.10456180572509766,
             "raw_max_abs": 0.10456180572509766,
@@ -129,6 +168,11 @@
         "ncnn_xy_p95_px": 0.2604929208755493,
         "ncnn_xy_p99_px": 0.3777548372745514,
         "ncnn_xy_max_px": 0.563959538936615,
+        "host_organs_max_px": 1.52587890625e-05,
+        "onnx_organs_max_px": 0.00015334892668761313,
+        "ncnn_organs_p99_px": 0.24440419673919678,
+        "ncnn_organs_max_px": 0.27178704738616943,
+        "ncnn_organs_conf_max_abs": 0.0036972761154174805,
         "pass": false,
         "failures": [
           "ncnn_xy_p95_px"
@@ -140,6 +184,12 @@
       "inputs": {
         "image:000000000625.jpg": {
           "onnx": {
+            "organs_err_max_px": 0.00017059844685718417,
+            "organs_err_p99_px": 9.690479055279866e-05,
+            "organs_conf_max_abs": 1.4007091522216797e-06,
+            "organs_host_err_max_px": 1.52587890625e-05,
+            "organs_host_conf_max_abs": 1.1920928955078125e-07,
+            "organs_gate_ramp_rows": 0,
             "person_raw_max_abs": 0.00016021728515625,
             "pose_raw_max_abs": 0.0001850128173828125,
             "raw_max_abs": 0.0001850128173828125,
@@ -157,6 +207,12 @@
             "detection_jaccard": 1.0
           },
           "ncnn": {
+            "organs_err_max_px": 0.19614316523075104,
+            "organs_err_p99_px": 0.14296701550483704,
+            "organs_conf_max_abs": 0.0032265186309814453,
+            "organs_host_err_max_px": 1.52587890625e-05,
+            "organs_host_conf_max_abs": 1.1920928955078125e-07,
+            "organs_gate_ramp_rows": 0,
             "person_raw_max_abs": 0.28307628631591797,
             "pose_raw_max_abs": 0.2745547294616699,
             "raw_max_abs": 0.28307628631591797,
@@ -176,6 +232,12 @@
         },
         "constant": {
           "onnx": {
+            "organs_err_max_px": 0.0001258271950064227,
+            "organs_err_p99_px": 0.00011483148409752175,
+            "organs_conf_max_abs": 3.0994415283203125e-06,
+            "organs_host_err_max_px": 3.0517578125e-05,
+            "organs_host_conf_max_abs": 1.1920928955078125e-07,
+            "organs_gate_ramp_rows": 0,
             "person_raw_max_abs": 7.05718994140625e-05,
             "pose_raw_max_abs": 9.298324584960938e-05,
             "raw_max_abs": 9.298324584960938e-05,
@@ -193,6 +255,12 @@
             "detection_jaccard": 1.0
           },
           "ncnn": {
+            "organs_err_max_px": 0.3209857940673828,
+            "organs_err_p99_px": 0.27521252632141113,
+            "organs_conf_max_abs": 0.0037188082933425903,
+            "organs_host_err_max_px": 3.0517578125e-05,
+            "organs_host_conf_max_abs": 1.1920928955078125e-07,
+            "organs_gate_ramp_rows": 0,
             "person_raw_max_abs": 0.39798831939697266,
             "pose_raw_max_abs": 0.20217931270599365,
             "raw_max_abs": 0.39798831939697266,
@@ -212,6 +280,12 @@
         },
         "random": {
           "onnx": {
+            "organs_err_max_px": 7.780486339470372e-05,
+            "organs_err_p99_px": 3.4261018299730495e-05,
+            "organs_conf_max_abs": 1.0728836059570312e-06,
+            "organs_host_err_max_px": 1.52587890625e-05,
+            "organs_host_conf_max_abs": 1.7881393432617188e-07,
+            "organs_gate_ramp_rows": 0,
             "person_raw_max_abs": 1.1444091796875e-05,
             "pose_raw_max_abs": 4.9591064453125e-05,
             "raw_max_abs": 4.9591064453125e-05,
@@ -229,6 +303,12 @@
             "detection_jaccard": 1.0
           },
           "ncnn": {
+            "organs_err_max_px": 4.8162994384765625,
+            "organs_err_p99_px": 0.14886197447776794,
+            "organs_conf_max_abs": 0.02042853832244873,
+            "organs_host_err_max_px": 1.52587890625e-05,
+            "organs_host_conf_max_abs": 1.7881393432617188e-07,
+            "organs_gate_ramp_rows": 0,
             "person_raw_max_abs": 0.031676292419433594,
             "pose_raw_max_abs": 0.22849929332733154,
             "raw_max_abs": 0.22849929332733154,
@@ -256,6 +336,11 @@
         "ncnn_xy_p95_px": 0.24460360407829285,
         "ncnn_xy_p99_px": 0.4539605677127838,
         "ncnn_xy_max_px": 0.8957896828651428,
+        "host_organs_max_px": 3.0517578125e-05,
+        "onnx_organs_max_px": 0.00017059844685718417,
+        "ncnn_organs_p99_px": 0.27521252632141113,
+        "ncnn_organs_max_px": 4.8162994384765625,
+        "ncnn_organs_conf_max_abs": 0.02042853832244873,
         "pass": true,
         "failures": []
       }
@@ -265,6 +350,12 @@
       "inputs": {
         "image:000000000625.jpg": {
           "onnx": {
+            "organs_err_max_px": 3.814697265625e-05,
+            "organs_err_p99_px": 3.057953290408477e-05,
+            "organs_conf_max_abs": 1.0132789611816406e-06,
+            "organs_host_err_max_px": 1.52587890625e-05,
+            "organs_host_conf_max_abs": 1.1920928955078125e-07,
+            "organs_gate_ramp_rows": 0,
             "person_raw_max_abs": 0.00022602081298828125,
             "pose_raw_max_abs": 0.00041961669921875,
             "raw_max_abs": 0.00041961669921875,
@@ -282,6 +373,12 @@
             "detection_jaccard": 1.0
           },
           "ncnn": {
+            "organs_err_max_px": 0.05751054361462593,
+            "organs_err_p99_px": 0.04431967809796333,
+            "organs_conf_max_abs": 0.003308922052383423,
+            "organs_host_err_max_px": 1.52587890625e-05,
+            "organs_host_conf_max_abs": 1.1920928955078125e-07,
+            "organs_gate_ramp_rows": 0,
             "person_raw_max_abs": 0.34046173095703125,
             "pose_raw_max_abs": 0.56935054063797,
             "raw_max_abs": 0.56935054063797,
@@ -301,6 +398,12 @@
         },
         "constant": {
           "onnx": {
+            "organs_err_max_px": 0.00038420650525949895,
+            "organs_err_p99_px": 0.00029054059996269643,
+            "organs_conf_max_abs": 1.0251998901367188e-05,
+            "organs_host_err_max_px": 1.52587890625e-05,
+            "organs_host_conf_max_abs": 1.1920928955078125e-07,
+            "organs_gate_ramp_rows": 0,
             "person_raw_max_abs": 0.00010204315185546875,
             "pose_raw_max_abs": 0.00013637542724609375,
             "raw_max_abs": 0.00013637542724609375,
@@ -318,6 +421,12 @@
             "detection_jaccard": 1.0
           },
           "ncnn": {
+            "organs_err_max_px": 0.717281699180603,
+            "organs_err_p99_px": 0.6569910645484924,
+            "organs_conf_max_abs": 0.016208767890930176,
+            "organs_host_err_max_px": 1.52587890625e-05,
+            "organs_host_conf_max_abs": 1.1920928955078125e-07,
+            "organs_gate_ramp_rows": 0,
             "person_raw_max_abs": 0.2518959045410156,
             "pose_raw_max_abs": 0.4337468147277832,
             "raw_max_abs": 0.4337468147277832,
@@ -337,6 +446,12 @@
         },
         "random": {
           "onnx": {
+            "organs_err_max_px": 6.823938019806519e-05,
+            "organs_err_p99_px": 5.509531911229715e-05,
+            "organs_conf_max_abs": 5.960464477539062e-07,
+            "organs_host_err_max_px": 1.52587890625e-05,
+            "organs_host_conf_max_abs": 1.1920928955078125e-07,
+            "organs_gate_ramp_rows": 0,
             "person_raw_max_abs": 1.430511474609375e-05,
             "pose_raw_max_abs": 4.9591064453125e-05,
             "raw_max_abs": 4.9591064453125e-05,
@@ -354,6 +469,12 @@
             "detection_jaccard": 1.0
           },
           "ncnn": {
+            "organs_err_max_px": 0.13015177845954895,
+            "organs_err_p99_px": 0.10122356563806534,
+            "organs_conf_max_abs": 0.0021032094955444336,
+            "organs_host_err_max_px": 1.52587890625e-05,
+            "organs_host_conf_max_abs": 1.1920928955078125e-07,
+            "organs_gate_ramp_rows": 0,
             "person_raw_max_abs": 0.04975318908691406,
             "pose_raw_max_abs": 0.12543249130249023,
             "raw_max_abs": 0.12543249130249023,
@@ -381,6 +502,11 @@
         "ncnn_xy_p95_px": 0.6649624109268188,
         "ncnn_xy_p99_px": 1.9302377700805664,
         "ncnn_xy_max_px": 2.395404815673828,
+        "host_organs_max_px": 1.52587890625e-05,
+        "onnx_organs_max_px": 0.00038420650525949895,
+        "ncnn_organs_p99_px": 0.6569910645484924,
+        "ncnn_organs_max_px": 0.717281699180603,
+        "ncnn_organs_conf_max_abs": 0.016208767890930176,
         "pass": false,
         "failures": [
           "ncnn_xy_p95_px",

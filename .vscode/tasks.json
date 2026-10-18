@@ -4,7 +4,7 @@
         {
             "label": "compile",
             "type": "shell",
-            "command": "c:\\git\\freesentry\\win_00_compile.bat",
+            "command": "${workspaceFolder}\\win_00_compile.bat",
             "presentation": {
                 "reveal": "always"
             },

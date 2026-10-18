@@ -32,6 +32,7 @@ USER_PRESETS_PATH = APP_DIR / "user_presets.json"
 BACKENDS = ("ncnn", "onnxruntime")
 SOURCE_KINDS = ("camera", "video", "image")
 COLOR_MODES = ("side", "person")
+OVERLAY_MODES = ("keypoints", "organs", "both")
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,6 +85,16 @@ class Settings:
     line_thickness: int = 2
     show_hud: bool = True
     show_debug_view: bool = False
+    # ---- organ overlay (brain, chest; FreeSentry ai_setup.organs semantics, extradetection.md)
+    overlay_mode: str = "organs"  # "keypoints" | "organs" | "both"
+    brain_enabled: bool = True
+    brain_size_multiplier: float = 1.0
+    brain_conf_threshold: float = 0.25
+    brain_min_radius: int = 1
+    chest_enabled: bool = True
+    chest_size_multiplier: float = 1.0
+    chest_conf_threshold: float = 0.143  # server 0.20 * 5/7 (chest confidence divided by 7)
+    chest_min_radius: int = 1
 
     # ------------------------------------------------------------------ helpers
     def updated(self, **changes: Any) -> "Settings":
@@ -131,11 +142,13 @@ MANIFEST_DECODE_KEYS = ("conf_threshold", "present_threshold", "visible_threshol
                         "oks_nms", "oks_nms_threshold", "oks_nms_scale_factor")
 
 _CHOICES = {"backend": BACKENDS, "mode": ("whole", "pyramid"), "source_kind": SOURCE_KINDS,
-            "color_mode": COLOR_MODES, "windows_backend": ("msmf", "dshow")}
+            "color_mode": COLOR_MODES, "windows_backend": ("msmf", "dshow"), "overlay_mode": OVERLAY_MODES}
 _RANGES = {
     "size": (32, 4096), "num_threads": (1, 256), "max_detections": (1, 1000), "width": (16, 8192),
     "height": (16, 8192), "camera_fps": (1, 240), "point_radius": (1, 30), "line_thickness": (1, 20),
     "camera_index": (0, 100000),
+    "brain_size_multiplier": (0.1, 5.0), "chest_size_multiplier": (0.1, 5.0),
+    "brain_min_radius": (0, 200), "chest_min_radius": (0, 200),
 }
 
 
@@ -161,7 +174,8 @@ def coerce(settings: Settings) -> Settings:
         if not lo <= value <= hi:
             changes[key] = min(hi, max(lo, value))
     for key in ("conf_threshold", "present_threshold", "visible_threshold", "oks_nms_threshold",
-                "oks_nms_iou_threshold", "nms_kpt_threshold", "kpt_threshold"):
+                "oks_nms_iou_threshold", "nms_kpt_threshold", "kpt_threshold", "brain_conf_threshold",
+                "chest_conf_threshold"):
         value = getattr(settings, key)
         if not 0.0 <= value <= 1.0:
             changes[key] = min(1.0, max(0.0, value))

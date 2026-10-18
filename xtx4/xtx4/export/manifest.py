@@ -29,8 +29,17 @@ from ..utils.keypoints import (
     OKS_SIGMAS,
     SKELETON_EDGES,
 )
+from ..utils.organs import (
+    ORGAN_CHANNELS,
+    ORGAN_CHANNELS_PER_ORGAN,
+    ORGAN_NAMES,
+    ORGAN_SOURCE,
+    ORGAN_VERSION,
+    organ_constants,
+)
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2  # 2: optional third output ``organs`` + ``organs`` block (extradetection.md)
+SUPPORTED_SCHEMA_VERSIONS: tuple[int, ...] = (1, 2)
 DECODE_VERSION = 1  # == xtx4.runtime.decode.DECODE_VERSION
 MANIFEST_NAME = "manifest.json"
 PARITY_NAME = "parity.json"
@@ -135,7 +144,7 @@ def build_manifest(
     ncnn_files: Mapping[int, Mapping[str, Any]] | None = None,
     onnx_opset: int = 17,
     input_name: str = "in0",
-    onnx_output_names: Sequence[str] = ("person", "pose"),
+    onnx_output_names: Sequence[str] = ("person", "pose", "organs"),
     ncnn_blobs: Mapping[str, str] | None = None,
     converter: str = "pnnx",
     fp16: bool = True,
@@ -149,7 +158,8 @@ def build_manifest(
     ``onnx_files[S] = {"path": "<file name relative to the manifest>"}`` and
     ``ncnn_files[S] = {"param": ..., "bin": ...}``; shapes are filled in from
     ``N(S)``. ``decode`` overrides :data:`DEFAULT_DECODE` (typically
-    ``config["decode"]``).
+    ``config["decode"]``). A third ONNX output name (``organs``) declares the organ
+    output of graphs exported with the organ layer.
     """
 
     sizes = [int(s) for s in sizes]
@@ -160,12 +170,29 @@ def build_manifest(
     decode_params = dict(DEFAULT_DECODE)
     if decode:
         decode_params.update({k: decode[k] for k in DEFAULT_DECODE if k in decode})
-    blobs = dict(ncnn_blobs or {"input": input_name, "person": "out0", "pose": "out1"})
+    with_organs = len(onnx_output_names) >= 3
+    organ_channels = len(ORGAN_NAMES) * ORGAN_CHANNELS_PER_ORGAN
+    default_blobs = {"input": input_name, "person": "out0", "pose": "out1"}
+    if with_organs:
+        default_blobs["organs"] = "out2"
+    blobs = dict(ncnn_blobs or default_blobs)
+    if with_organs and "organs" not in blobs:
+        raise ManifestError("ncnn_blobs must name the 'organs' blob of a graph with the organ output")
+
+    def shapes(n: int, batch: bool) -> dict[str, list[int]]:
+        lead = [1, n] if batch else [n]
+        out = {"person": lead + [1], "pose": lead + [channels]}
+        if with_organs:
+            out["organs"] = lead + [organ_channels]
+        return out
 
     n_per_size = {str(s): sum(anchor_counts(s, strides)) for s in sizes}
+    names = {"person": onnx_output_names[0], "pose": onnx_output_names[1]}
+    if with_organs:
+        names["organs"] = onnx_output_names[2]
     onnx_section: dict[str, Any] = {
         "input": input_name,
-        "names": {"person": onnx_output_names[0], "pose": onnx_output_names[1]},
+        "names": names,
         "opset": int(onnx_opset),
         "files": {},
     }
@@ -174,11 +201,11 @@ def build_manifest(
         onnx_section["files"][str(s)] = {
             **dict(info),
             "input_shape": [1, 3, int(s), int(s)],
-            "shapes": {"person": [1, n, 1], "pose": [1, n, channels]},
+            "shapes": shapes(n, True),
         }
     ncnn_section: dict[str, Any] = {
         "input": blobs.get("input", input_name),
-        "blobs": {"person": blobs["person"], "pose": blobs["pose"]},
+        "blobs": {k: blobs[k] for k in names},
         "converter": converter,
         "fp16_weights": bool(fp16),
         "files": {},
@@ -188,8 +215,19 @@ def build_manifest(
         ncnn_section["files"][str(s)] = {
             **dict(info),
             "input_shape": [3, int(s), int(s)],
-            "shapes": {"person": [n, 1], "pose": [n, channels]},
+            "shapes": shapes(n, False),
         }
+    layout: dict[str, Any] = {
+        "person": "[1, N, 1] raw person logit",
+        "pose": f"[1, N, K*5] raw, keypoint-major (dx, dy, log_sigma, present_logit, visible_logit), K={num_keypoints}",
+        "channels_per_keypoint": ["dx", "dy", "log_sigma", "present_logit", "visible_logit"],
+    }
+    if with_organs:
+        layout["organs"] = (
+            f"[1, N, {organ_channels}] organ-major ({', '.join(ORGAN_NAMES)}), per organ "
+            f"({', '.join(ORGAN_CHANNELS)}); dx, dy, r in stride units, conf a probability in [0, 1]"
+        )
+        layout["channels_per_organ"] = list(ORGAN_CHANNELS)
 
     manifest: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
@@ -220,11 +258,7 @@ def build_manifest(
             "N": n_per_size,
         },
         "outputs": {
-            "layout": {
-                "person": "[1, N, 1] raw person logit",
-                "pose": f"[1, N, K*5] raw, keypoint-major (dx, dy, log_sigma, present_logit, visible_logit), K={num_keypoints}",
-                "channels_per_keypoint": ["dx", "dy", "log_sigma", "present_logit", "visible_logit"],
-            },
+            "layout": layout,
             "onnx": onnx_section,
             "ncnn": ncnn_section,
         },
@@ -248,17 +282,36 @@ def build_manifest(
         },
         "tools": dict(tools) if tools is not None else tool_versions(),
     }
+    if with_organs:
+        manifest["organs"] = {
+            "version": ORGAN_VERSION,
+            "names": list(ORGAN_NAMES),
+            "channels": list(ORGAN_CHANNELS),
+            "units": {"dx": "stride", "dy": "stride", "r_units": "stride", "conf": "probability [0, 1]"},
+            "decode": "x = ax + dx * stride, y = ay + dy * stride, r_px = r_units * stride",
+            "source": ORGAN_SOURCE,
+            "reference": "xtx4.utils.organs.compute_organs (chest conf / 7 instead of the server's / 5)",
+            "constants": organ_constants(),
+        }
     if parity is not None:
         manifest["parity"] = dict(parity)
     return manifest
+
+
+def manifest_has_organs(manifest: Mapping[str, Any]) -> bool:
+    """True when the exported graphs carry the ``organs`` output (schema 2 with the organ layer)."""
+
+    return "organs" in manifest.get("outputs", {}).get("ncnn", {}).get("blobs", {})
 
 
 def validate_manifest(manifest: Mapping[str, Any], *, source: str = "manifest") -> None:
     missing = [k for k in REQUIRED_KEYS if k not in manifest]
     if missing:
         raise ManifestError(f"{source}: missing keys {missing}")
-    if int(manifest["schema_version"]) != SCHEMA_VERSION:
-        raise ManifestError(f"{source}: schema_version {manifest['schema_version']} != supported {SCHEMA_VERSION}")
+    if int(manifest["schema_version"]) not in SUPPORTED_SCHEMA_VERSIONS:
+        raise ManifestError(
+            f"{source}: schema_version {manifest['schema_version']} not in supported {SUPPORTED_SCHEMA_VERSIONS}"
+        )
     if int(manifest["decode_version"]) != DECODE_VERSION:
         raise ManifestError(
             f"{source}: decode_version {manifest['decode_version']} is not implemented by this runtime "

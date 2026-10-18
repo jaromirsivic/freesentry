@@ -5,17 +5,20 @@ Pipeline (no ultralytics):
 1. ``model.fuse()`` (Conv+BN fold, RepConv reparameterise, drop one2many).
 2. :class:`ExportModel` returns the **raw** one2one tensors ``person [1, N, 1]``
    and ``pose [1, N, K*5]`` (keypoint-major: all five values of keypoint 0, then
-   keypoint 1, ...). Decoding happens on the host (``xtx4.runtime.decode``), so
-   the graph stays static and ncnn-friendly: Conv / activation / Concat /
-   Interp / Pooling / Reshape / Permute only.
+   keypoint 1, ...) plus, by default, ``organs [1, N, 8]`` from the parameter-free
+   :class:`~xtx4.models.organs.OrganLayer` (brain, chest: ``dx, dy, r_units, conf``).
+   Decoding happens on the host (``xtx4.runtime.decode``), so the graph stays
+   static and ncnn-friendly: Conv / activation / Concat / Interp / Pooling /
+   Reshape / Permute, plus MatMul / BinaryOp / UnaryOp / Reduction / Clip for the
+   organ layer.
 3. ONNX export at a fixed ``[1, 3, S, S]`` with the TorchScript exporter
    (``dynamo=False``), then ``onnxsim`` and ``onnx.checker``.
 4. :func:`verify_onnx`: onnxruntime vs PyTorch on a deterministic input
    (max abs diff, tolerance 1e-3 on raw outputs).
 5. :func:`convert_onnx_to_ncnn`: ``pnnx`` (``fp16=1`` for deployment, ``fp16=0``
    for the FP32 reference) -> ``<prefix>.ncnn.param`` / ``.bin``. pnnx renames
-   blobs: the input is ``in0`` and the outputs are ``out0`` (person) and ``out1``
-   (pose). The real names are parsed from the ``.ncnn.param`` file and returned
+   blobs: the input is ``in0`` and the outputs are ``out0`` (person), ``out1``
+   (pose) and ``out2`` (organs). The real names are parsed from the ``.ncnn.param`` file and returned
    in :class:`NcnnConversion` so the deployment manifest can record them.
 """
 
@@ -34,32 +37,44 @@ import torch.nn as nn
 
 from ..models.head_types import KPT_CHANNELS_PER_POINT, flatten_level_outputs
 from ..models.xtx4 import XTX4Model
+from ..utils.organs import gate_ramp_rows
 from ..utils.logging import get_logger
 
 logger = get_logger(__name__)
 
 INPUT_NAME = "in0"
-OUTPUT_NAMES: tuple[str, str] = ("person", "pose")
+OUTPUT_NAMES: tuple[str, ...] = ("person", "pose", "organs")
+POSE_OUTPUT_NAMES: tuple[str, str] = ("person", "pose")  # graphs exported with ``with_organs=False``
 VERIFY_TOLERANCE = 1e-3  # max abs difference between PyTorch and ONNX Runtime (raw outputs)
 DEFAULT_OPSET = 17
 
 
-class ExportModel(nn.Module):
-    """ONNX-friendly wrapper around a fused model: ``(person [1,N,1], pose [1,N,K*5])``."""
+def output_names(with_organs: bool) -> tuple[str, ...]:
+    return OUTPUT_NAMES if with_organs else POSE_OUTPUT_NAMES
 
-    def __init__(self, model: XTX4Model) -> None:
+
+class ExportModel(nn.Module):
+    """ONNX-friendly wrapper around a fused model: ``(person [1,N,1], pose [1,N,K*5])`` and, with
+    ``with_organs`` (default), ``organs [1,N,8]`` -- the organ layer is the last layer of the graph."""
+
+    def __init__(self, model: XTX4Model, *, with_organs: bool = True) -> None:
         super().__init__()
         if not model.fused:
             model.fuse()
+        if with_organs and model.organs is None:
+            raise ValueError("with_organs needs the nine XTX4 landmarks (model.organs is None)")
         self.model = model
         self.num_keypoints = model.num_keypoints
+        self.with_organs = with_organs
 
-    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, ...]:
         pyramid, assist = self.model.forward_features(x)
         persons, poses = self.model.head.one2one(pyramid, assist)
         person, kpt, _ = flatten_level_outputs(persons, poses, self.num_keypoints)
         pose = kpt.reshape(kpt.shape[0], kpt.shape[1], self.num_keypoints * KPT_CHANNELS_PER_POINT)
-        return person, pose
+        if not self.with_organs:
+            return person, pose
+        return person, pose, self.model.organs(pose)
 
 
 def deterministic_input(input_size: int, *, seed: int = 0) -> np.ndarray:
@@ -77,6 +92,7 @@ def export_onnx(
     opset: int = DEFAULT_OPSET,
     simplify: bool = True,
     check: bool = True,
+    with_organs: bool = True,
 ) -> Path:
     """Export the fused one2one graph to ONNX (static shape), simplify and check it."""
 
@@ -84,7 +100,7 @@ def export_onnx(
     path.parent.mkdir(parents=True, exist_ok=True)
     if input_size % 32:
         raise ValueError(f"input_size must be a multiple of 32, got {input_size}")
-    export_model = ExportModel(model).eval()
+    export_model = ExportModel(model, with_organs=with_organs).eval()
     dummy = torch.zeros(1, 3, input_size, input_size)
     with torch.no_grad():
         torch.onnx.export(
@@ -92,7 +108,7 @@ def export_onnx(
             (dummy,),
             str(path),
             input_names=[INPUT_NAME],
-            output_names=list(OUTPUT_NAMES),
+            output_names=list(output_names(with_organs)),
             opset_version=opset,
             dynamic_axes=None,
             dynamo=False,
@@ -139,7 +155,12 @@ def verify_onnx(
     tolerance: float = VERIFY_TOLERANCE,
     seed: int = 0,
 ) -> float:
-    """Max abs diff between onnxruntime and PyTorch on a deterministic input (raises > tolerance)."""
+    """Max abs diff between onnxruntime and PyTorch on a deterministic input (raises > tolerance).
+
+    All outputs are compared. For ``organs`` the anchors whose face confidence lies in the brain
+    gate's ramp are left out (:func:`xtx4.utils.organs.gate_ramp_rows`: the gate's slope turns
+    float32 rounding into a ~1e-3 branch blend there).
+    """
 
     try:
         import onnxruntime as ort
@@ -148,16 +169,27 @@ def verify_onnx(
         return float("nan")
 
     inputs = deterministic_input(input_size, seed=seed)
-    export_model = ExportModel(model).eval()
+    session = ort.InferenceSession(str(path), providers=["CPUExecutionProvider"])
+    with_organs = "organs" in {o.name for o in session.get_outputs()}
+    names = output_names(with_organs)
+    export_model = ExportModel(model, with_organs=with_organs).eval()
     with torch.no_grad():
         torch_outputs = [t.cpu().numpy() for t in export_model(torch.from_numpy(inputs))]
 
-    session = ort.InferenceSession(str(path), providers=["CPUExecutionProvider"])
-    ort_outputs = session.run(list(OUTPUT_NAMES), {INPUT_NAME: inputs})
-    for name, a, b in zip(OUTPUT_NAMES, torch_outputs, ort_outputs):
+    ort_outputs = session.run(list(names), {INPUT_NAME: inputs})
+    for name, a, b in zip(names, torch_outputs, ort_outputs):
         if tuple(a.shape) != tuple(b.shape):
             raise RuntimeError(f"ONNX output {name!r} shape {b.shape} != PyTorch {a.shape}")
-    max_diff = max(float(np.abs(a - b).max()) for a, b in zip(torch_outputs, ort_outputs))
+    diffs = [np.abs(a - b) for a, b in zip(torch_outputs, ort_outputs)]
+    skipped = 0
+    if with_organs:
+        pose = torch_outputs[1].reshape(-1, model.num_keypoints, KPT_CHANNELS_PER_POINT)
+        ramp = gate_ramp_rows(1.0 / (1.0 + np.exp(-pose[..., 3].astype(np.float64))))
+        skipped = int(ramp.sum())
+        diffs[2] = diffs[2].reshape(ramp.shape[0], -1)[~ramp]
+    max_diff = max(float(d.max()) if d.size else 0.0 for d in diffs)
+    if skipped:
+        logger.info("ONNX organs check: %d anchor(s) in the brain gate ramp left out", skipped)
     if max_diff > tolerance:
         raise RuntimeError(
             f"ONNX verification failed for {path}: max |diff| = {max_diff:.2e} > tolerance {tolerance:.2e}"
@@ -171,7 +203,7 @@ class NcnnConversion:
     """Result of :func:`convert_onnx_to_ncnn`.
 
     ``output_names`` are the blob names pnnx produced, in graph order (person
-    first, pose second for XTX4 graphs: normally ``["out0", "out1"]``).
+    first, pose second, organs third for XTX4 graphs: normally ``["out0", "out1", "out2"]``).
     """
 
     param_path: Path
@@ -286,6 +318,9 @@ def convert_onnx_to_ncnn(
     if not param_path.exists() or not bin_path.exists():
         raise RuntimeError(f"Conversion did not produce expected files: {param_path}, {bin_path}")
     inputs, outputs, types = parse_ncnn_param(param_path)
+    unconverted = sorted(t for t in types if "." in t)  # pnnx.* / F.* fallbacks ncnn cannot execute
+    if unconverted:
+        raise RuntimeError(f"pnnx left operators ncnn cannot run in {param_path.name}: {unconverted}")
     logger.info(
         "Converted to ncnn -> %s (+ .bin, fp16=%d): inputs=%s outputs=%s layers=%s",
         param_path, int(fp16), inputs, outputs, dict(sorted(types.items())),
@@ -307,15 +342,19 @@ def verify_ncnn(
     """Compare the ncnn graph with PyTorch on the deterministic input (needs the ``ncnn`` package).
 
     Returns ``{"person_max_abs", "pose_max_abs", "pose_xy_max_abs"}`` (raw units;
-    xy in stride units). Raises ImportError when ncnn is not installed.
+    xy in stride units) and, for a graph with the organ output, ``organs_max_abs``,
+    ``organs_xyr_max_abs`` (stride units) and ``organs_conf_max_abs``. Raises ImportError
+    when ncnn is not installed.
     """
 
     import ncnn
 
     inputs = deterministic_input(input_size, seed=seed)
-    export_model = ExportModel(model).eval()
+    with_organs = len(conversion.output_names) >= 3
+    export_model = ExportModel(model, with_organs=with_organs).eval()
     with torch.no_grad():
-        person_t, pose_t = (t.cpu().numpy() for t in export_model(torch.from_numpy(inputs)))
+        torch_outs = [t.cpu().numpy() for t in export_model(torch.from_numpy(inputs))]
+    person_t, pose_t = torch_outs[0], torch_outs[1]
 
     net = ncnn.Net()
     net.opt.num_threads = num_threads
@@ -341,8 +380,20 @@ def verify_ncnn(
     num_keypoints = model.num_keypoints
     pose_t4 = pose_t.reshape(1, -1, num_keypoints, KPT_CHANNELS_PER_POINT)
     pose_n4 = pose_n.reshape(1, -1, num_keypoints, KPT_CHANNELS_PER_POINT)
-    return {
+    result = {
         "person_max_abs": float(np.abs(person_t - person_n).max()),
         "pose_max_abs": float(np.abs(pose_t - pose_n).max()),
         "pose_xy_max_abs": float(np.abs(pose_t4[..., :2] - pose_n4[..., :2]).max()),
     }
+    if with_organs:
+        organs_t = torch_outs[2]
+        if outs[2].size != organs_t.size:
+            raise RuntimeError(f"ncnn organs output size {outs[2].shape} does not match PyTorch {organs_t.shape}")
+        organs_t4 = organs_t.reshape(1, -1, 2, 4)
+        organs_n4 = outs[2].reshape(organs_t4.shape)
+        result.update({
+            "organs_max_abs": float(np.abs(organs_t4 - organs_n4).max()),
+            "organs_xyr_max_abs": float(np.abs(organs_t4[..., :3] - organs_n4[..., :3]).max()),
+            "organs_conf_max_abs": float(np.abs(organs_t4[..., 3] - organs_n4[..., 3]).max()),
+        })
+    return result

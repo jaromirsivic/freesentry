@@ -1,7 +1,7 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "model_id": "xtx4-u-u_b-c531022e",
-  "created": "2026-10-16T07:25:59+00:00",
+  "created": "2026-10-17T14:09:56+00:00",
   "checkpoint_sha256": "c531022ef550a1b1213054200e5045e3fe6482714050d955906e1404955a66e6",
   "config_sha256": "fc1a76255790ef8d6aa7b5ff293d1d84067894e7400a409f5ceca03480c1a846",
   "variant_spec": {
@@ -188,19 +188,27 @@
         "log_sigma",
         "present_logit",
         "visible_logit"
+      ],
+      "organs": "[1, N, 8] organ-major (brain, chest), per organ (dx, dy, r_units, conf); dx, dy, r in stride units, conf a probability in [0, 1]",
+      "channels_per_organ": [
+        "dx",
+        "dy",
+        "r_units",
+        "conf"
       ]
     },
     "onnx": {
       "input": "in0",
       "names": {
         "person": "person",
-        "pose": "pose"
+        "pose": "pose",
+        "organs": "organs"
       },
       "opset": 17,
       "files": {
         "256": {
           "path": "xtx4-u_b_256.onnx",
-          "sha256": "c806a15e7a8d4a10eb77eb53a46263731f9d471b5b47e959ba8b27c0a87a168e",
+          "sha256": "1e399c4f21e94771b5061b9e46cf593d776685b5263cb6a07169503558404bfc",
           "input_shape": [
             1,
             3,
@@ -217,12 +225,17 @@
               1,
               1344,
               45
+            ],
+            "organs": [
+              1,
+              1344,
+              8
             ]
           }
         },
         "320": {
           "path": "xtx4-u_b_320.onnx",
-          "sha256": "b669491616a570a5c8fa21594414fdb951928688fa8ac2a27703a331df6241e9",
+          "sha256": "603a4dc8dbeb965a93e48a80bc29a6d9a7af7f1a672875aedf1fe7573e8dade7",
           "input_shape": [
             1,
             3,
@@ -239,12 +252,17 @@
               1,
               2100,
               45
+            ],
+            "organs": [
+              1,
+              2100,
+              8
             ]
           }
         },
         "384": {
           "path": "xtx4-u_b_384.onnx",
-          "sha256": "123bfc814781e9f429ea3611865eed9ecde3901222cf37c5bf54e95d17dbd1b0",
+          "sha256": "dace8bb3563f68d4276c429258d992e0a54377af16dea441c311aa34137ff793",
           "input_shape": [
             1,
             3,
@@ -261,6 +279,11 @@
               1,
               3024,
               45
+            ],
+            "organs": [
+              1,
+              3024,
+              8
             ]
           }
         }
@@ -270,7 +293,8 @@
       "input": "in0",
       "blobs": {
         "person": "out0",
-        "pose": "out1"
+        "pose": "out1",
+        "organs": "out2"
       },
       "converter": "pnnx",
       "fp16_weights": false,
@@ -278,20 +302,28 @@
         "256": {
           "param": "xtx4-u_b_256.ncnn.param",
           "bin": "xtx4-u_b_256.ncnn.bin",
-          "sha256_param": "f4ca863011e14b9fe24f695fc4b7757336dcd76da3815dfa1aed23433ab85505",
-          "sha256_bin": "a37ac069413bb303de7e8f76f7ab6bae12d504b39cffba883ca761ffd0f9228d",
+          "sha256_param": "8b9e62d740ff25465d170f10f599c29f3051c15f21a15446c184a8c596bbc1f2",
+          "sha256_bin": "05af33a3424fb6b30357360480012f9f4fe2080840f86b84dd236cc415606d77",
           "fp16": false,
           "layers": {
-            "BinaryOp": 10,
-            "Concat": 15,
+            "BinaryOp": 43,
+            "Clip": 3,
+            "Concat": 16,
             "Convolution": 57,
+            "Crop": 7,
+            "Eltwise": 5,
+            "Gemm": 2,
             "Input": 1,
             "Interp": 2,
             "Permute": 6,
             "Pooling": 3,
+            "Reduction": 4,
             "Reshape": 7,
-            "Slice": 8,
-            "Split": 22
+            "Sigmoid": 1,
+            "Slice": 15,
+            "Split": 30,
+            "Squeeze": 3,
+            "UnaryOp": 1
           },
           "input_shape": [
             3,
@@ -306,26 +338,38 @@
             "pose": [
               1344,
               45
+            ],
+            "organs": [
+              1344,
+              8
             ]
           }
         },
         "320": {
           "param": "xtx4-u_b_320.ncnn.param",
           "bin": "xtx4-u_b_320.ncnn.bin",
-          "sha256_param": "4f92fe2ca7fad3e598aa32a4a3ad0d6d2577bba4f52cb636bec16fc509e178f7",
-          "sha256_bin": "a37ac069413bb303de7e8f76f7ab6bae12d504b39cffba883ca761ffd0f9228d",
+          "sha256_param": "a60efafbb72e376f8eea16bb5d0551c8fcd9f6dbbb4fe6b79e53f3dce64a9b27",
+          "sha256_bin": "05af33a3424fb6b30357360480012f9f4fe2080840f86b84dd236cc415606d77",
           "fp16": false,
           "layers": {
-            "BinaryOp": 10,
-            "Concat": 15,
+            "BinaryOp": 43,
+            "Clip": 3,
+            "Concat": 16,
             "Convolution": 57,
+            "Crop": 7,
+            "Eltwise": 5,
+            "Gemm": 2,
             "Input": 1,
             "Interp": 2,
             "Permute": 6,
             "Pooling": 3,
+            "Reduction": 4,
             "Reshape": 7,
-            "Slice": 8,
-            "Split": 22
+            "Sigmoid": 1,
+            "Slice": 15,
+            "Split": 30,
+            "Squeeze": 3,
+            "UnaryOp": 1
           },
           "input_shape": [
             3,
@@ -340,26 +384,38 @@
             "pose": [
               2100,
               45
+            ],
+            "organs": [
+              2100,
+              8
             ]
           }
         },
         "384": {
           "param": "xtx4-u_b_384.ncnn.param",
           "bin": "xtx4-u_b_384.ncnn.bin",
-          "sha256_param": "a596639138b778d48e0365cf070db11ab9d552ab8fb146ddc8fe6e873212fb76",
-          "sha256_bin": "a37ac069413bb303de7e8f76f7ab6bae12d504b39cffba883ca761ffd0f9228d",
+          "sha256_param": "463cf84300c6c778e462174401ef56731fe11409071320c52a21c73046b339ab",
+          "sha256_bin": "05af33a3424fb6b30357360480012f9f4fe2080840f86b84dd236cc415606d77",
           "fp16": false,
           "layers": {
-            "BinaryOp": 10,
-            "Concat": 15,
+            "BinaryOp": 43,
+            "Clip": 3,
+            "Concat": 16,
             "Convolution": 57,
+            "Crop": 7,
+            "Eltwise": 5,
+            "Gemm": 2,
             "Input": 1,
             "Interp": 2,
             "Permute": 6,
             "Pooling": 3,
+            "Reduction": 4,
             "Reshape": 7,
-            "Slice": 8,
-            "Split": 22
+            "Sigmoid": 1,
+            "Slice": 15,
+            "Split": 30,
+            "Squeeze": 3,
+            "UnaryOp": 1
           },
           "input_shape": [
             3,
@@ -374,6 +430,10 @@
             "pose": [
               3024,
               45
+            ],
+            "organs": [
+              3024,
+              8
             ]
           }
         }
@@ -415,6 +475,77 @@
     "numpy": "2.5.4",
     "opencv-python": "5.0.0.93"
   },
+  "organs": {
+    "version": 1,
+    "names": [
+      "brain",
+      "chest"
+    ],
+    "channels": [
+      "dx",
+      "dy",
+      "r_units",
+      "conf"
+    ],
+    "units": {
+      "dx": "stride",
+      "dy": "stride",
+      "r_units": "stride",
+      "conf": "probability [0, 1]"
+    },
+    "decode": "x = ax + dx * stride, y = ay + dy * stride, r_px = r_units * stride",
+    "source": "server/cameraai.py (_get_brain_position, _get_chest_and_abdomen_position)",
+    "reference": "xtx4.utils.organs.compute_organs (chest conf / 7 instead of the server's / 5)",
+    "constants": {
+      "brain_full_weights": [
+        -0.75,
+        0.5,
+        0.5,
+        0.375,
+        0.375,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "brain_ear_weights": [
+        0.0,
+        0.0,
+        0.0,
+        0.5,
+        0.5,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "chest_weights": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.4,
+        0.4,
+        0.1,
+        0.1
+      ],
+      "brain_radius_factor": 0.59,
+      "brain_ear_threshold": 0.01,
+      "brain_conf_min_weight": 0.2,
+      "chest_radius_lr": 0.21,
+      "chest_radius_tb": 0.1,
+      "chest_conf_weights": [
+        2.0,
+        2.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "chest_conf_divisor": 7.0,
+      "gate_gain": 10000.0
+    }
+  },
   "parity": {
     "pass": true,
     "file": "parity.json",
@@ -428,6 +559,11 @@
         "ncnn_xy_p95_px": 0.0001983642578125,
         "ncnn_xy_p99_px": 0.0002460405812598765,
         "ncnn_xy_max_px": 0.00031861287425272167,
+        "host_organs_max_px": 1.52587890625e-05,
+        "onnx_organs_max_px": 0.00015709885337855667,
+        "ncnn_organs_p99_px": 0.00011016256758011878,
+        "ncnn_organs_max_px": 0.00013037114695180207,
+        "ncnn_organs_conf_max_abs": 2.6226043701171875e-06,
         "pass": true,
         "failures": []
       },
@@ -440,6 +576,11 @@
         "ncnn_xy_p95_px": 9.281559323426336e-05,
         "ncnn_xy_p99_px": 0.000153371540363878,
         "ncnn_xy_max_px": 0.0002460405812598765,
+        "host_organs_max_px": 2.15791860682657e-05,
+        "onnx_organs_max_px": 0.00017794652376323938,
+        "ncnn_organs_p99_px": 9.318218508269638e-05,
+        "ncnn_organs_max_px": 0.00016220315592363477,
+        "ncnn_organs_conf_max_abs": 2.8014183044433594e-06,
         "pass": true,
         "failures": []
       },
@@ -452,6 +593,11 @@
         "ncnn_xy_p95_px": 8.217109279939905e-05,
         "ncnn_xy_p99_px": 0.00015569705283269286,
         "ncnn_xy_max_px": 0.0002516543900128454,
+        "host_organs_max_px": 3.0517578125e-05,
+        "onnx_organs_max_px": 0.00013647876039613038,
+        "ncnn_organs_p99_px": 0.00010235906665911898,
+        "ncnn_organs_max_px": 0.0001258271950064227,
+        "ncnn_organs_conf_max_abs": 3.427267074584961e-06,
         "pass": true,
         "failures": []
       }

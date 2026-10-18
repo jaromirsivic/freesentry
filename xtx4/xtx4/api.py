@@ -14,6 +14,9 @@ Output contract (per :class:`Pose`):
 * ``keypoints_norm`` -- same with x/y divided by image width/height.
 * ``visibility`` -- ``(9,)`` int class: 0 absent/outside, 1 occluded, 2 visible.
 * ``sigma_px`` -- ``(9,)`` RLE scale per landmark in original-image pixels.
+* ``organs`` -- ``(2, 4)`` brain and chest ``[x, y, radius, conf]`` in original-image pixels
+  (the parameter-free organ layer, ``extradetection.md``); ``to_dict`` adds them in the
+  FreeSentry server shape.
 
 ``poses_to_array`` flattens to ``(D, 28) = [score, 9 * (x, y, conf)]``.
 """
@@ -33,6 +36,7 @@ from .models.head_types import decode_detections
 from .runtime.decode import DEFAULT_NMS_SCALE_FACTOR, oks_nms_indices
 from .utils import geometry
 from .utils.keypoints import NUM_KEYPOINTS, OKS_SIGMAS
+from .utils.organs import organs_to_dict
 from .utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -63,6 +67,7 @@ class Pose:
     keypoints_norm: np.ndarray  # (9, 3): [x_norm, y_norm, confidence]
     visibility: np.ndarray  # (9,) int in {0, 1, 2}
     sigma_px: np.ndarray  # (9,) float32 RLE scale in original-image pixels
+    organs: np.ndarray | None = None  # (2, 4) brain, chest: [x_px, y_px, radius_px, conf]
 
     def to_array(self) -> np.ndarray:
         """Flatten to ``(28,)`` = ``[score, 9 * (x, y, conf)]``."""
@@ -78,6 +83,7 @@ class Pose:
             "keypoints_norm": self.keypoints_norm.tolist(),
             "visibility": self.visibility.tolist(),
             "sigma_px": self.sigma_px.tolist(),
+            **({"organs": organs_to_dict(self.organs)} if self.organs is not None else {}),
         }
 
 
@@ -250,7 +256,8 @@ def _views_to_batch(views: list[np.ndarray], *, device: str, channels_last: bool
 
 
 def _raw_detections(model: XTX4Model, batch: torch.Tensor, params: dict[str, Any]):
-    """``(dets, vis, sigma)`` lists via ``model.predict`` (all decode parameters passed through)."""
+    """``(dets, vis, sigma, organs | None)`` lists via ``model.predict`` (all decode parameters passed
+    through); ``organs`` is ``None`` for models without the organ layer."""
 
     kwargs = dict(
         conf_threshold=params["conf_threshold"],
@@ -261,7 +268,9 @@ def _raw_detections(model: XTX4Model, batch: torch.Tensor, params: dict[str, Any
         visible_threshold=params.get("visible_threshold", 0.5),
     )
     if hasattr(model, "predict"):
-        return model.predict(batch, **kwargs)
+        if getattr(model, "organs", None) is not None:
+            return model.predict(batch, **kwargs, with_organs=True)
+        return (*model.predict(batch, **kwargs), None)
     was_training = model.training
     model.eval()
     try:
@@ -270,7 +279,7 @@ def _raw_detections(model: XTX4Model, batch: torch.Tensor, params: dict[str, Any
     finally:
         if was_training:
             model.train()
-    return decode_detections(output.one2one, **kwargs)
+    return (*decode_detections(output.one2one, **kwargs), None)
 
 
 def _to_poses(
@@ -281,6 +290,7 @@ def _to_poses(
     transform: np.ndarray,
     orig_size: tuple[int, int],
     params: dict[str, Any],
+    organs: np.ndarray | None = None,
 ) -> list[Pose]:
     if det.shape[0] == 0:
         return []
@@ -291,6 +301,12 @@ def _to_poses(
     # Letterbox is a pure scale + translation; sigma scales with the (isotropic) factor.
     scale = float(abs(transform[0, 0]))
     sigma_px = (sigma * scale).astype(np.float32)
+    organs_px = None
+    if organs is not None:
+        organs_px = np.asarray(organs, dtype=np.float64).copy()
+        organs_px[..., :2] = organs_px[..., :2] @ np.asarray(transform)[:, :2].T + np.asarray(transform)[:, 2]
+        organs_px[..., 2] *= scale
+        organs_px = organs_px.astype(np.float32)
     keep = np.arange(det.shape[0])
     if params["oks_nms"] and det.shape[0] > 1:
         keep = oks_nms(
@@ -311,6 +327,7 @@ def _to_poses(
                 keypoints_norm=norm,
                 visibility=vis[i].astype(np.int64),
                 sigma_px=sigma_px[i],
+                organs=organs_px[i] if organs_px is not None else None,
             )
         )
     return poses
@@ -335,7 +352,7 @@ def detect_poses_batch(
     results = [preprocess_image(img, mode="whole", network_size=size) for img in images]
     channels_last = bool(getattr(model, "channels_last", False))
     batch = _views_to_batch([r.views[_WHOLE_VIEW] for r in results], device=params["device"], channels_last=channels_last)
-    dets, vis, sigma = _raw_detections(model, batch, params)
+    dets, vis, sigma, organs = _raw_detections(model, batch, params)
     outputs: list[list[Pose]] = []
     for idx, result in enumerate(results):
         outputs.append(
@@ -346,6 +363,7 @@ def detect_poses_batch(
                 transform=result.transforms[_WHOLE_VIEW],
                 orig_size=result.orig_size,
                 params=params,
+                organs=organs[idx].cpu().numpy() if organs is not None else None,
             )
         )
     return outputs

@@ -1,15 +1,22 @@
-"""Overlay rendering: 9-point skeleton, person score, RLE sigma, NMS extent, HUD and debug views (no boxes
-from the network -- XTX4 is box-free; the optional extent box is the one OKS-NMS derives from the points)."""
+"""Overlay rendering: 9-point skeleton, organ circles (brain, chest), person score, RLE sigma, NMS extent, HUD
+and debug views (no boxes from the network -- XTX4 is box-free; the optional extent box is the one OKS-NMS
+derives from the points).
+
+The organ circles are drawn exactly like FreeSentry ``server/aidraw.py`` (``draw_aicircle``): white rim plus a
+colour ring whose colour encodes the confidence, a filled dot for small circles and a thin ring below the
+confidence threshold. ``DrawOptions.overlay_mode`` switches between keypoints, organs and both.
+"""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 
 import cv2
 import numpy as np
 
 from xtx4.runtime import Pose
 from xtx4.runtime.decode import DEFAULT_NMS_MIN_SIDE_PX
+from xtx4.utils.organs import ORGAN_NAMES
 
 from .config import SkeletonPreset
 
@@ -23,6 +30,7 @@ VIEW_COLORS = {0: (255, 200, 0), 1: (255, 200, 0), 2: (255, 120, 200), 3: (200, 
 HIGHLIGHT = (255, 255, 255)
 TEXT_COLOR = (240, 240, 240)
 FONT = cv2.FONT_HERSHEY_SIMPLEX
+OVERLAY_MODES = ("keypoints", "organs", "both")
 
 
 @dataclass(slots=True)
@@ -42,6 +50,44 @@ class DrawOptions:
     point_radius: int = 4
     line_thickness: int = 2
     highlight: int | None = None  # index into ``poses`` drawn emphasised
+    overlay_mode: str = "organs"  # "keypoints" | "organs" | "both" (extradetection.md, decision O3)
+    # organ settings, as FreeSentry ``ai_setup.organs`` (enabled / sizeMultiplier / confidenceThreshold /
+    # minimumRadius); the chest threshold is the server's 0.20 * 5/7 (chest confidence divided by 7)
+    brain_enabled: bool = True
+    brain_size_multiplier: float = 1.0
+    brain_conf_threshold: float = 0.25
+    brain_min_radius: int = 1
+    chest_enabled: bool = True
+    chest_size_multiplier: float = 1.0
+    chest_conf_threshold: float = 0.143
+    chest_min_radius: int = 1
+
+    @property
+    def show_keypoints(self) -> bool:
+        return self.overlay_mode in ("keypoints", "both")
+
+    @property
+    def show_organs(self) -> bool:
+        return self.overlay_mode in ("organs", "both")
+
+    def organ_params(self) -> list[tuple[int, bool, float, float, int]]:
+        """``(row, enabled, size_multiplier, confidence_threshold, minimum_radius)`` per organ."""
+
+        return [
+            (i, bool(getattr(self, f"{name}_enabled")), float(getattr(self, f"{name}_size_multiplier")),
+             float(getattr(self, f"{name}_conf_threshold")), int(getattr(self, f"{name}_min_radius")))
+            for i, name in enumerate(ORGAN_NAMES)
+        ]
+
+
+def options_from_settings(settings, *, highlight: int | None = None) -> DrawOptions:
+    """``DrawOptions`` from a ``livetest.settings.Settings`` (same field names; the extent box follows
+    the OKS-NMS keypoint threshold and scale factor)."""
+
+    values = {f.name: getattr(settings, f.name) for f in fields(DrawOptions) if hasattr(settings, f.name)}
+    values.update(extent_kpt_threshold=settings.nms_kpt_threshold, extent_scale=settings.oks_nms_scale_factor,
+                  highlight=highlight)
+    return DrawOptions(**values)
 
 
 def _scale_for(frame: np.ndarray) -> float:
@@ -64,8 +110,78 @@ def extent_box(pose: Pose, kpt_threshold: float, scale: float,
     return (int(round(cx - w / 2)), int(round(cy - h / 2)), int(round(cx + w / 2)), int(round(cy + h / 2)))
 
 
+def draw_aicircle(
+    image: np.ndarray,
+    *,
+    cx: int,
+    cy: int,
+    radius: int,
+    confidence: float,
+    confidence_achieved: bool,
+    size_multiplier: float,
+    minimum_radius: int,
+) -> None:
+    """Port of FreeSentry ``server/aidraw.py::draw_aicircle`` (1:1, including the ``radius * outline``
+    of the small-circle branches, decision O4)."""
+
+    resolution_max = max(image.shape[1], image.shape[0])
+    circle_outline_size = max(min(int(resolution_max / 640), 20), 1)
+    p = (cx, cy)
+    radius_eff = int(radius * size_multiplier)
+    cb = 1 - (abs(confidence - 0.5) * 2)
+    color = (int(cb * 255), 0, int(confidence * 255))
+
+    if confidence_achieved and radius_eff > minimum_radius:
+        white = (255, 255, 255)
+        if radius_eff > (8 * circle_outline_size):
+            cv2.circle(image, p, max(radius_eff - 3 * circle_outline_size, 0), white, 8 * circle_outline_size)
+            cv2.circle(image, p, max(radius_eff - 4 * circle_outline_size, 0), color, 3 * circle_outline_size)
+        else:
+            cv2.circle(image, p, max(radius_eff * circle_outline_size, 0), white, -1)
+            cv2.circle(image, p, max(radius_eff * circle_outline_size, 0), color, 4 * circle_outline_size)
+    else:
+        cv2.circle(image, p, max(radius_eff * circle_outline_size, 0), color, 2 * circle_outline_size)
+
+
+def draw_pose_organs(frame: np.ndarray, pose: Pose, opts: DrawOptions, *, emphasised: bool = False) -> None:
+    """Brain and chest circles of one pose (FreeSentry style); a selected pose gets a thin white halo."""
+
+    if pose.organs is None:
+        return
+    outline = max(min(int(max(frame.shape[:2]) / 640), 20), 1)
+    for row, enabled, size_multiplier, threshold, minimum_radius in opts.organ_params():
+        if not enabled:
+            continue
+        x, y, radius, conf = (float(v) for v in pose.organs[row])
+        if not np.isfinite([x, y, radius, conf]).all():
+            continue
+        cx, cy = int(x), int(y)
+        draw_aicircle(frame, cx=cx, cy=cy, radius=int(radius), confidence=conf,
+                      confidence_achieved=conf >= threshold, size_multiplier=size_multiplier,
+                      minimum_radius=minimum_radius)
+        if emphasised:
+            cv2.circle(frame, (cx, cy), int(radius * size_multiplier) + 2 * outline, HIGHLIGHT, 1, cv2.LINE_AA)
+
+
+def _organ_label_anchor(pose: Pose, opts: DrawOptions) -> tuple[int, int] | None:
+    """Top-left of the enabled organ circles (where the score goes when keypoints are hidden)."""
+
+    if pose.organs is None:
+        return None
+    tops = []
+    for row, enabled, mult, _threshold, _minimum in opts.organ_params():
+        if enabled:
+            x, y, r = (float(v) for v in pose.organs[row, :3])
+            tops.append((x - r * mult, y - r * mult))
+    tops = [t for t in tops if np.isfinite(t).all()]
+    if not tops:
+        return None
+    return int(round(min(t[0] for t in tops))), int(round(min(t[1] for t in tops)))
+
+
 def draw_poses(frame: np.ndarray, poses: list[Pose], skeleton: SkeletonPreset, opts: DrawOptions) -> None:
-    """Draw all poses in place: filled dot = visible, hollow ring = occluded; score above the person."""
+    """Draw all poses in place: organ circles (``overlay_mode`` organs / both) first, then the keypoints
+    (keypoints / both: filled dot = visible, hollow ring = occluded); score above the person."""
 
     scale = _scale_for(frame)
     thickness = max(1, int(round(opts.line_thickness * scale)))
@@ -89,6 +205,12 @@ def draw_poses(frame: np.ndarray, poses: list[Pose], skeleton: SkeletonPreset, o
         if opts.show_extent:
             x0, y0, x1, y1 = extent_box(pose, opts.extent_kpt_threshold, opts.extent_scale)
             cv2.rectangle(frame, (x0, y0), (x1, y1), HIGHLIGHT if emphasised else (180, 180, 180), 1, cv2.LINE_AA)
+
+        # organs below the keypoints, so the white rims never hide a point in "both"
+        if opts.show_organs:
+            draw_pose_organs(frame, pose, opts, emphasised=emphasised)
+        if not opts.show_keypoints:
+            shown = np.zeros_like(shown)
 
         if opts.show_sigma:
             for k in np.flatnonzero(shown):
@@ -125,10 +247,14 @@ def draw_poses(frame: np.ndarray, poses: list[Pose], skeleton: SkeletonPreset, o
                 _text(frame, skeleton.keypoints[k], (center[0] + radius + 2, center[1] - radius),
                       font_scale * 0.85, color)
 
-        if (opts.show_scores or opts.show_ids) and shown.any():
+        anchor = None
+        if shown.any():
             xy = kpts[shown, :2]
-            x = int(round(float(xy[:, 0].min())))
-            y = int(round(float(xy[:, 1].min()))) - radius - int(8 * scale)
+            anchor = (int(round(float(xy[:, 0].min()))), int(round(float(xy[:, 1].min()))))
+        elif opts.show_organs:
+            anchor = _organ_label_anchor(pose, opts)
+        if (opts.show_scores or opts.show_ids) and anchor is not None:
+            x, y = anchor[0], anchor[1] - radius - int(8 * scale)
             parts = []
             if opts.show_ids:
                 parts.append(f"#{index}")

@@ -26,7 +26,7 @@ from .blit import make_blitter
 from .backends import BACKEND_LABELS, RunnerError, backend_installed, vulkan_devices
 from .camera import CameraSource, list_cameras
 from .config import AppConfig, ConfigError, Preset
-from .draw import DrawOptions, draw_debug_views, draw_panel, draw_poses
+from .draw import OVERLAY_MODES, DrawOptions, draw_debug_views, draw_panel, draw_poses, options_from_settings
 from .engine import LiveEngine
 from .settings import (
     APP_DIR,
@@ -53,7 +53,11 @@ PANEL_WIDTH = 440  # at 96 dpi; scaled with the display DPI
 VIS_TEXT = {0: "absent", 1: "occluded", 2: "visible"}
 # Keys that only change the drawing: no detection re-run needed while paused.
 DISPLAY_KEYS = ("kpt_threshold", "show_skeleton", "show_points", "show_occluded", "show_scores", "show_labels",
-                "show_ids", "show_sigma", "show_extent", "color_mode", "point_radius", "line_thickness", "show_hud")
+                "show_ids", "show_sigma", "show_extent", "color_mode", "point_radius", "line_thickness", "show_hud",
+                "overlay_mode", "brain_enabled", "brain_size_multiplier", "brain_conf_threshold", "brain_min_radius",
+                "chest_enabled", "chest_size_multiplier", "chest_conf_threshold", "chest_min_radius")
+ORGAN_ROWS = ("brain", "chest")
+OVERLAY_TEXT = {"keypoints": "Keypoints", "organs": "Organs", "both": "Keypoints + organs"}
 
 SHORTCUTS = [
     ("Space", "pause / resume"),
@@ -67,6 +71,7 @@ SHORTCUTS = [
     ("m", "mirror"),
     ("d", "network input view (debug)"),
     ("e / g / l / c", "NMS extent boxes / sigma circles / labels / scores"),
+    ("o", "overlay: keypoints -> organs -> both"),
     ("i", "info overlay (HUD)"),
     ("s", "screenshot (PNG + JSON with poses and settings)"),
     ("r", "start / stop recording (MP4)"),
@@ -163,6 +168,11 @@ def pose_to_dict(pose, names: list[str]) -> dict[str, Any]:
              "sigma_px": round(float(pose.sigma_px[k]), 2)}
             for k in range(pose.keypoints.shape[0])
         ],
+        **({"organs": [
+            {"name": name, "x": round(float(pose.organs[i, 0]), 2), "y": round(float(pose.organs[i, 1]), 2),
+             "radius": round(float(pose.organs[i, 2]), 2), "conf": round(float(pose.organs[i, 3]), 4)}
+            for i, name in enumerate(ORGAN_ROWS)
+        ]} if getattr(pose, "organs", None) is not None else {}),
     }
 
 
@@ -513,6 +523,23 @@ class TestApp:
 
     def _build_display_tab(self) -> None:
         tab = self._tab("Display")
+        g = self._group(tab, "Show")
+        radios = self._radios(g, "overlay_mode", [(m, OVERLAY_TEXT[m]) for m in OVERLAY_MODES],
+                              tip="Keypoints (skeleton + points), the organ circles (brain, chest) in the FreeSentry "
+                                  "style, or both. Key o cycles.")
+        next(iter(radios.values())).master.grid(row=0, column=0, columnspan=3, sticky="w")
+        g = self._group(tab, "Organs (FreeSentry style)")
+        for i, organ in enumerate(ORGAN_ROWS):
+            base = i * 4
+            self._check(g, f"{organ.capitalize()} circle", f"{organ}_enabled", row=base,
+                        tip="Draw this organ (FreeSentry ai_setup.organs.<organ>.enabled).")
+            self._slider(g, base + 1, "  size multiplier", f"{organ}_size_multiplier", 0.1, 3.0,
+                         tip="Radius multiplier (sizeMultiplier).")
+            self._slider(g, base + 2, "  confidence threshold", f"{organ}_conf_threshold", 0.0, 1.0,
+                         tip="Below it the circle is drawn thin (confidenceThreshold). The chest default 0.143 is "
+                             "the server's 0.20 * 5/7: XTX4 divides the chest confidence by 7, not 5.")
+            self._spin(g, base + 3, "  minimum radius", f"{organ}_min_radius", 0, 200,
+                       tip="Smaller circles are drawn thin (minimumRadius, frame pixels).")
         g = self._group(tab, "Overlay")
         self._check(g, "Skeleton lines", "show_skeleton", row=0)
         self._check(g, "Keypoints (filled = visible, ring = occluded)", "show_points", row=1)
@@ -551,8 +578,8 @@ class TestApp:
         self.pose_tree.bind("<<TreeviewSelect>>", self._on_pose_selected)
         ttk.Label(tab, text="Keypoints of the selected person:", style="Small.TLabel").pack(anchor="w", pady=(8, 0))
         cols = ("name", "x", "y", "conf", "vis", "sigma")
-        self.kpt_tree = ttk.Treeview(tab, columns=cols, show="headings", height=9, selectmode="none")
-        for col, text, width in zip(cols, ("keypoint", "x", "y", "conf", "visibility", "sigma px"),
+        self.kpt_tree = ttk.Treeview(tab, columns=cols, show="headings", height=11, selectmode="none")
+        for col, text, width in zip(cols, ("keypoint / organ", "x", "y", "conf", "visibility", "sigma / r px"),
                                     (95, 55, 55, 50, 65, 60)):
             self.kpt_tree.heading(col, text=text)
             self.kpt_tree.column(col, width=width, anchor="center")
@@ -964,15 +991,7 @@ class TestApp:
             self._update_stats()
 
     def _draw_options(self, settings: Settings) -> DrawOptions:
-        return DrawOptions(
-            kpt_threshold=settings.kpt_threshold, show_skeleton=settings.show_skeleton,
-            show_points=settings.show_points, show_occluded=settings.show_occluded,
-            show_scores=settings.show_scores, show_labels=settings.show_labels, show_ids=settings.show_ids,
-            show_sigma=settings.show_sigma, show_extent=settings.show_extent,
-            extent_kpt_threshold=settings.nms_kpt_threshold, extent_scale=settings.oks_nms_scale_factor,
-            color_mode=settings.color_mode, point_radius=settings.point_radius,
-            line_thickness=settings.line_thickness, highlight=self.selected_pose,
-        )
+        return options_from_settings(settings, highlight=self.selected_pose)
 
     def _display_settings(self) -> Settings:
         """Engine settings with the display fields straight from the widgets (no engine round trip)."""
@@ -1048,6 +1067,8 @@ class TestApp:
             f"age {self.age_ms.text()} ms",
             f"people {people} (cand {candidates}) | conf >= {settings.conf_threshold:.2f} | "
             f"NMS {'on' if settings.oks_nms else 'off'}",
+            f"show {OVERLAY_TEXT.get(settings.overlay_mode, settings.overlay_mode).lower()} | "
+            f"organs from {getattr(runner, 'organ_source', 'host')}",
         ]
         if self.engine.paused:
             lines.append("PAUSED")
@@ -1123,6 +1144,11 @@ class TestApp:
                 self.kpt_tree.insert("", "end", values=(
                     network.skeleton.keypoints[k], f"{x:.1f}", f"{y:.1f}", f"{conf:.3f}",
                     VIS_TEXT.get(int(pose.visibility[k]), "?"), f"{pose.sigma_px[k]:.1f}"))
+            if pose.organs is not None:
+                for i, organ in enumerate(ORGAN_ROWS):
+                    x, y, radius, conf = pose.organs[i]
+                    self.kpt_tree.insert("", "end", values=(
+                        organ, f"{x:.1f}", f"{y:.1f}", f"{conf:.3f}", "organ", f"r {radius:.1f}"))
         if result is not None:
             self.pose_summary.configure(
                 text=f"{len(poses)} persons shown, {result.raw_candidates} anchors above the detection threshold "
@@ -1144,6 +1170,8 @@ class TestApp:
         best, best_d = None, 40.0 / max(scale, 1e-6)
         for index, pose in enumerate(self._result.poses):
             pts = pose.keypoints[pose.visibility > 0, :2]
+            if pose.organs is not None:  # the organ centres are clickable too (organs-only overlay)
+                pts = np.concatenate([pts, pose.organs[:, :2]], axis=0)
             if pts.size == 0:
                 continue
             d = float(np.min(np.hypot(pts[:, 0] - fx, pts[:, 1] - fy)))
@@ -1328,6 +1356,12 @@ class TestApp:
             self._toggle("show_labels", "Keypoint names")
         elif ch == "c":
             self._toggle("show_scores", "Scores")
+        elif ch == "o":
+            current = str(self.vars["overlay_mode"].get())
+            nxt = OVERLAY_MODES[(OVERLAY_MODES.index(current) + 1) % len(OVERLAY_MODES)] \
+                if current in OVERLAY_MODES else OVERLAY_MODES[0]
+            self.vars["overlay_mode"].set(nxt)
+            self.flash(f"Show {OVERLAY_TEXT[nxt].lower()}")
         elif ch == "i":
             self._toggle("show_hud", "HUD")
         elif ch == "s":

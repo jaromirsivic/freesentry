@@ -61,6 +61,82 @@ def test_from_dict_coerces_clamps_and_ignores_unknown_keys() -> None:
     assert out.mode == "whole" and out.num_threads == 1
 
 
+def test_organ_display_settings_from_config(config) -> None:
+    from livetest.config import flatten_organs
+
+    settings = st.config_defaults(config)
+    assert settings.overlay_mode == "organs"  # decision O3: the live view starts with the organ circles
+    assert settings.brain_conf_threshold == 0.25 and settings.chest_conf_threshold == 0.143
+    assert settings.brain_enabled and settings.chest_enabled and settings.chest_min_radius == 1
+    flat = flatten_organs({"brain": {"enabled": False, "sizeMultiplier": 2, "confidenceThreshold": 0.3,
+                                     "minimumRadius": 5, "bogus": 1}, "heart": {"enabled": True}})
+    assert flat == {"brain_enabled": False, "brain_size_multiplier": 2, "brain_conf_threshold": 0.3,
+                    "brain_min_radius": 5}
+    out = st.from_dict({"overlay_mode": "bogus", "chest_conf_threshold": 1.5, "brain_size_multiplier": 50}, settings)
+    assert out.overlay_mode == "organs" and out.chest_conf_threshold == 1.0 and out.brain_size_multiplier == 5.0
+    by_name = {p.name: p for p in config.presets}
+    assert st.apply_preset(settings, by_name["Keypoints only"], config).overlay_mode == "keypoints"
+    assert st.apply_preset(settings, by_name["Clean overlay"], config).overlay_mode == "keypoints"
+    assert st.apply_preset(settings, by_name["Debug overlay (sigma, NMS extents, labels, network input)"],
+                           config).overlay_mode == "both"
+
+
+def _organ_pose():
+    import numpy as np
+
+    from xtx4.runtime import Pose
+
+    kp = np.array([[300, 150], [290, 140], [310, 140], [275, 145], [325, 145],
+                   [250, 230], [350, 230], [265, 380], [335, 380]], dtype=np.float32)
+    kp = np.concatenate([kp, np.full((9, 1), 0.9, np.float32)], axis=1)
+    organs = np.array([[300, 120, 40, 0.9], [300, 260, 70, 0.05]], dtype=np.float32)  # chest below threshold
+    return Pose(score=0.9, keypoints=kp, visibility=np.full(9, 2, np.int64), sigma_px=np.ones(9, np.float32),
+                organs=organs)
+
+
+def test_draw_organs_freesentry_style_and_overlay_modes(config) -> None:
+    import numpy as np
+
+    sys.path.insert(0, str(LIVE))
+    try:
+        from livetest.draw import SIDE_COLORS, DrawOptions, draw_aicircle, draw_poses
+    finally:
+        sys.path.pop(0)
+    skeleton = config.network("u_b").skeleton
+
+    # draw_aicircle: large circle = white rim + colour ring, small = filled white dot, below threshold = thin
+    frame = np.zeros((480, 640, 3), np.uint8)
+    draw_aicircle(frame, cx=200, cy=200, radius=60, confidence=0.9, confidence_achieved=True,
+                  size_multiplier=1.0, minimum_radius=1)
+    assert (frame[200, 200 - 60] == 255).all() and not (frame[200, 200 - 56] == 255).all()  # rim + colour ring
+    small = np.zeros((480, 640, 3), np.uint8)
+    draw_aicircle(small, cx=100, cy=100, radius=5, confidence=0.9, confidence_achieved=True,
+                  size_multiplier=1.0, minimum_radius=1)
+    assert (small[100, 100] == 255).all()  # filled white dot
+    thin = np.zeros((480, 640, 3), np.uint8)
+    draw_aicircle(thin, cx=100, cy=100, radius=30, confidence=0.9, confidence_achieved=False,
+                  size_multiplier=1.0, minimum_radius=1)
+    assert not (thin == 255).all(axis=2).any() and thin[100, 130].any()  # colour ring only, no white
+
+    def render(mode: str) -> np.ndarray:
+        canvas = np.zeros((480, 640, 3), np.uint8)
+        draw_poses(canvas, [_organ_pose()], skeleton, DrawOptions(overlay_mode=mode, show_scores=False))
+        return canvas
+
+    def has_colour(img: np.ndarray, bgr) -> bool:
+        return bool((img == np.array(bgr, np.uint8)).all(axis=2).any())
+
+    organs, keypoints, both = render("organs"), render("keypoints"), render("both")
+    assert not has_colour(organs, SIDE_COLORS["l"]) and not has_colour(organs, SIDE_COLORS["r"])
+    assert (organs == 255).all(axis=2).any()  # the brain's white rim
+    assert has_colour(keypoints, SIDE_COLORS["l"]) and not (keypoints[120, 300 - 37] == 255).all()
+    assert has_colour(both, SIDE_COLORS["l"]) and (both == 255).all(axis=2).any()
+    hidden = np.zeros((480, 640, 3), np.uint8)
+    draw_poses(hidden, [_organ_pose()], skeleton,
+               DrawOptions(overlay_mode="organs", show_scores=False, brain_enabled=False, chest_enabled=False))
+    assert not hidden.any()
+
+
 def test_every_builtin_preset_applies_to_a_valid_combination(config) -> None:
     base = st.config_defaults(config)
     for preset in config.presets:
@@ -187,6 +263,16 @@ def test_gui_smoke(config, image_path: str, tmp_path: Path, monkeypatch) -> None
         assert app._result is not None and app.display_rate._count + app.display_rate.value > 0  # frames shown
         assert not app._placeholder
         assert app.pose_tree.get_children(), "pose table filled"
+        assert app.engine.settings.overlay_mode == "organs"
+        assert all(p.organs is not None for p in app._result.poses)
+        app.vars["overlay_mode"].set("both")
+        app.vars["chest_size_multiplier"].set(1.5)
+        pump(0.3)
+        assert app._display_settings().overlay_mode == "both"
+        app.selected_pose = 0
+        app._update_pose_tables()
+        names = [app.kpt_tree.item(i, "values")[0] for i in app.kpt_tree.get_children()]
+        assert names[-2:] == ["brain", "chest"]
 
         # Model / detection / display changes go through the widgets' variables.
         app.vars["size"].set(384)
@@ -211,6 +297,8 @@ def test_gui_smoke(config, image_path: str, tmp_path: Path, monkeypatch) -> None
         app.screenshot()
         shots = list((tmp_path / "shots").glob("*.json"))
         assert len(shots) == 1 and "poses" in json.loads(shots[0].read_text(encoding="utf-8"))
+        shot_poses = json.loads(shots[0].read_text(encoding="utf-8"))["poses"]
+        assert not shot_poses or [o["name"] for o in shot_poses[0]["organs"]] == ["brain", "chest"]
         app.toggle_record()
         pump(0.5)
         app.toggle_record()

@@ -293,6 +293,28 @@ def _dataclass_from(cls: type, data: dict[str, Any]) -> Any:
     return cls(**{k: v for k, v in data.items() if k in names})
 
 
+# FreeSentry ``ai_setup.organs`` keys -> ``Settings`` field suffixes.
+ORGAN_SETTING_KEYS = {"enabled": "enabled", "sizeMultiplier": "size_multiplier",
+                      "confidenceThreshold": "conf_threshold", "minimumRadius": "min_radius"}
+
+
+def flatten_organs(organs: Any) -> dict[str, Any]:
+    """``{"brain": {"enabled": true, "sizeMultiplier": 1, ...}, "chest": {...}}`` (the server's
+    ``ai_setup.organs`` shape) -> flat ``Settings`` keys (``brain_enabled``, ``chest_conf_threshold``, ...)."""
+
+    if not isinstance(organs, dict):
+        return {}
+    out: dict[str, Any] = {}
+    for organ, values in organs.items():
+        if organ not in ("brain", "chest") or not isinstance(values, dict):
+            continue
+        for key, value in values.items():
+            suffix = ORGAN_SETTING_KEYS.get(key)
+            if suffix is not None:
+                out[f"{organ}_{suffix}"] = value
+    return out
+
+
 def load_config(path: str | Path | None = None) -> AppConfig:
     """Load and validate ``config.json``."""
 
@@ -311,6 +333,7 @@ def load_config(path: str | Path | None = None) -> AppConfig:
     if len(ids) != len(set(ids)):
         raise ConfigError(f"Duplicate network ids in config.json: {ids}")
     display_raw = dict(raw.get("display", {}))
+    display_raw.update(flatten_organs(display_raw.pop("organs", None)))
     display = DisplayConfig(window_title=str(display_raw.pop("window_title", DisplayConfig.window_title)),
                             defaults=display_raw)
     return AppConfig(

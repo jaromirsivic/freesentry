@@ -37,6 +37,7 @@ from xtx4.runtime import (
     LatestFrameQueue,
     NcnnPoseRunner,
     Pose,
+    anchor_count,
     build_anchors,
     decode_raw,
     letterbox,
@@ -267,6 +268,7 @@ def bench_runner():
 def test_ncnn_runner_detect_on_bench_graph(bench_runner: NcnnPoseRunner) -> None:
     assert bench_runner.strides == (8, 16, 32) and bench_runner.num_anchors == N320
     assert bench_runner.output_blobs == ("out0", "out1")
+    assert bench_runner.organ_source == "host"  # bench graphs predate the organ layer: host fallback
     image = _smoke_image()
     random_frame = np.random.default_rng(1).integers(0, 256, size=(720, 1280, 3), dtype=np.uint8)
     for frame in (image, random_frame):
@@ -277,6 +279,7 @@ def test_ncnn_runner_detect_on_bench_graph(bench_runner: NcnnPoseRunner) -> None
         assert res.raw_candidates == N320 and len(res.poses) == 30
         assert res.timings.preprocess_ms > 0 and res.timings.inference_ms > 0 and res.timings.postprocess_ms > 0
         assert all(p.keypoints.shape == (K, 3) and p.visibility.shape == (K,) for p in res.poses)
+        assert all(p.organs is not None and p.organs.shape == (2, 4) for p in res.poses)
         # Frame-space poses == network decode mapped through T.
         scores, kpts, vis, sig = decode_raw(person, pose, network_size=320, strides=(8, 16, 32), num_keypoints=K,
                                             conf_threshold=0.0, max_detections=30)
@@ -380,8 +383,13 @@ def test_manifest_round_trip(artefact_dir: Path) -> None:
         assert key in manifest
     assert manifest["decode_version"] == DECODE_VERSION == 1
     assert manifest["keypoints"]["names"][0] == "nose" and len(manifest["keypoints"]["skeleton_edges"]) == 8
-    assert manifest["outputs"]["ncnn"]["files"]["256"]["shapes"] == {"person": [1344, 1], "pose": [1344, 45]}
+    assert manifest["outputs"]["ncnn"]["files"]["256"]["shapes"] == {
+        "person": [1344, 1], "pose": [1344, 45], "organs": [1344, 8]}
     assert manifest["outputs"]["onnx"]["files"]["320"]["shapes"]["pose"] == [1, 2100, 45]
+    assert manifest["outputs"]["onnx"]["files"]["320"]["shapes"]["organs"] == [1, 2100, 8]
+    assert manifest["outputs"]["ncnn"]["blobs"]["organs"] == "out2" and manifest["schema_version"] == 2
+    assert manifest["organs"]["names"] == ["brain", "chest"]
+    assert manifest["organs"]["constants"]["chest_conf_divisor"] == 7.0
     assert manifest["decode"]["conf_threshold"] == 0.3 and manifest["decode"]["sigma_conf_coeff"] == 0.1
     path = write_manifest(artefact_dir / "manifest.json", manifest)
     assert load_manifest(path) == json.loads(json.dumps(manifest))
@@ -394,6 +402,53 @@ def test_manifest_round_trip(artefact_dir: Path) -> None:
     (artefact_dir / "missing.json").write_text(json.dumps(missing), encoding="utf-8")
     with pytest.raises(ManifestError):
         load_manifest(artefact_dir / "missing.json")
+
+
+def test_manifest_without_organs_and_schema_1(artefact_dir: Path) -> None:
+    from xtx4.export.manifest import manifest_has_organs
+
+    plain = build_manifest(
+        model_id="plain", variant_spec={"name": "u_a"}, strides=[8, 16, 32], levels="P3P4P5", sizes=[256],
+        onnx_output_names=("person", "pose"), tools={"pnnx": "x"},
+    )
+    assert "organs" not in plain and not manifest_has_organs(plain)
+    assert plain["outputs"]["ncnn"]["blobs"] == {"person": "out0", "pose": "out1"}
+    assert manifest_has_organs(_manifest())
+    old = dict(plain, schema_version=1)  # manifests exported before the organ layer stay loadable
+    (artefact_dir / "old.json").write_text(json.dumps(old), encoding="utf-8")
+    assert load_manifest(artefact_dir / "old.json")["schema_version"] == 1
+
+
+def test_to_frame_poses_maps_organs() -> None:
+    from xtx4.runtime import decode_organs_selected, organs_from_pose_selected
+
+    scores = np.array([0.9], np.float32)
+    kpts = np.zeros((1, K, 3), np.float32)
+    vis = np.full((1, K), 2, np.int64)
+    sig = np.ones((1, K), np.float32)
+    organs = np.array([[[10.0, 20.0, 5.0, 0.7], [30.0, 60.0, 12.0, 0.4]]], np.float32)
+    transform = np.array([[2.0, 0.0, -8.0], [0.0, 2.0, 100.0]])
+    (pose,) = to_frame_poses(scores, kpts, vis, sig, transform=transform, organs=organs)
+    np.testing.assert_allclose(pose.organs, [[12.0, 140.0, 10.0, 0.7], [52.0, 220.0, 24.0, 0.4]], rtol=1e-6)
+    (plain,) = to_frame_poses(scores, kpts, vis, sig, transform=transform)
+    assert plain.organs is None
+
+    # graph output decode == host fallback for the same raw rows (organ layer == NumPy reference)
+    from xtx4.models.organs import OrganLayer
+
+    rng = np.random.default_rng(3)
+    n = anchor_count(256, (8, 16, 32))
+    pose_raw = rng.normal(0.0, 2.0, size=(n, K * 5)).astype(np.float32)
+    with torch.no_grad():
+        organs_raw = OrganLayer()(torch.from_numpy(pose_raw)).numpy()
+    keep = np.array([0, 5, n - 1, 1000])
+    geo = dict(network_size=256, strides=(8, 16, 32))
+    graph = decode_organs_selected(organs_raw, keep, **geo)
+    host = organs_from_pose_selected(pose_raw, keep, num_keypoints=K, **geo)
+    assert graph.shape == (4, 2, 4)
+    np.testing.assert_allclose(graph, host, atol=2e-3, rtol=1e-4)
+    with pytest.raises(ValueError):
+        decode_organs_selected(organs_raw[:-1], keep, **geo)
 
 
 # ------------------------------------------------------------------- deploy
@@ -433,7 +488,7 @@ def test_deploy_export_model_writes_graphs_manifest_and_parity(artefact_dir: Pat
     assert not list(artefact_dir.glob("*pnnx*"))  # intermediates removed
     manifest = load_manifest(artefact_dir / "manifest.json")
     assert manifest["strides"] == [8, 16, 32] and manifest["input"]["sizes"] == [256]
-    assert manifest["outputs"]["ncnn"]["blobs"] == {"person": "out0", "pose": "out1"}
+    assert manifest["outputs"]["ncnn"]["blobs"] == {"person": "out0", "pose": "out1", "organs": "out2"}
     parity = json.loads((artefact_dir / "parity.json").read_text(encoding="utf-8"))
     summary = parity["sizes"]["256"]["summary"]
     assert parity["pass"] and summary["pass"], summary
@@ -443,8 +498,24 @@ def test_deploy_export_model_writes_graphs_manifest_and_parity(artefact_dir: Pat
     print("deploy parity @256:", json.dumps(summary))
     with NcnnPoseRunner.from_manifest(artefact_dir / "manifest.json", 256) as runner:
         assert runner.strides == (8, 16, 32)
+        assert runner.organ_source == "graph" and runner.organs_output == "out2"
         res = runner.detect(_smoke_image(), conf_threshold=0.0, max_detections=5)
         assert len(res.poses) == 5
+        assert all(p.organs is not None and p.organs.shape == (2, 4) for p in res.poses)
+        runner.compute_organs = False
+        assert all(p.organs is None for p in runner.detect(_smoke_image(), conf_threshold=0.0,
+                                                           max_detections=5).poses)
+        runner.compute_organs = True
+        # the graph's organs agree with the host fallback computed from the same pose rows
+        from xtx4.runtime import decode_organs_selected, organs_from_pose_selected
+
+        view = np.full((256, 256, 3), 90, np.uint8)
+        person, pose, organs_raw = runner.forward_all(view)
+        assert organs_raw is not None and organs_raw.size == runner.num_anchors * 8
+        keep = np.argsort(-person.reshape(-1))[:20]
+        geo = dict(network_size=256, strides=runner.strides)
+        np.testing.assert_allclose(decode_organs_selected(organs_raw, keep, **geo),
+                                   organs_from_pose_selected(pose, keep, num_keypoints=K, **geo), atol=0.05)
         runner.mode = "pyramid"  # view mode is a plain attribute: no reload needed
         pyramid = runner.detect(_smoke_image(), conf_threshold=0.0, max_detections=5)
         assert sorted(pyramid.prepared.views) == [1, 2, 3] and pyramid.raw_candidates == 3 * runner.num_anchors
@@ -464,6 +535,8 @@ def test_deploy_export_model_writes_graphs_manifest_and_parity(artefact_dir: Pat
         other = by_anchor[pose.anchor_index]
         assert abs(pose.score - other.score) < 0.01
         assert np.abs(pose.keypoints[:, :2] - other.keypoints[:, :2]).max() < 2.0
+        assert np.abs(pose.organs[:, :3] - other.organs[:, :3]).max() < 2.0
+        assert np.abs(pose.organs[:, 3] - other.organs[:, 3]).max() < 0.01
 
 
 # -------------------------------------------------------------- torch-free

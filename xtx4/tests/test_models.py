@@ -235,7 +235,11 @@ def test_fuse_parity_idempotent_and_param_counts(variant: str, overrides: dict) 
 
 
 def test_fused_graph_op_allowlist() -> None:
-    allowed_leaves = (nn.Conv2d, nn.ReLU, nn.Hardswish, nn.SiLU, nn.Identity, nn.MaxPool2d, nn.Upsample, SpaceToDepth)
+    from xtx4.models.organs import OrganLayer
+
+    # OrganLayer: the parameter-free brain/chest layer (constants only, see test_export allowlists)
+    allowed_leaves = (nn.Conv2d, nn.ReLU, nn.Hardswish, nn.SiLU, nn.Identity, nn.MaxPool2d, nn.Upsample, SpaceToDepth,
+                      OrganLayer)
     for variant, overrides in (("u_b", {"p2_assist": True}), ("xtx3u_ctrl", {}), ("u_a", {"act": "hswish"})):
         model = _model(variant, **overrides).fuse()
         for name, module in model.named_modules():
@@ -319,3 +323,50 @@ def test_u_b_budget_near_plan() -> None:
     assert model.mac_count(256) < gmac < model.mac_count(384)
     assert 1.5e6 <= model.num_parameters(deploy=True) <= 2.3e6
     assert 0.3 <= _model("u_a").mac_count(320) <= 0.5
+
+
+# ----------------------------------------------------------------------------- organ layer
+
+
+def test_organ_layer_matches_numpy_reference() -> None:
+    import numpy as np
+
+    from xtx4.models.organs import OrganLayer
+    from xtx4.utils.organs import compute_organs
+
+    torch.manual_seed(0)
+    pose = torch.randn(2, 300, 9 * KPT_CHANNELS_PER_POINT) * 3.0
+    out = OrganLayer()(pose)
+    assert out.shape == (2, 300, 8)
+    p = pose.reshape(2, 300, 9, KPT_CHANNELS_PER_POINT).double().numpy()
+    ref = compute_organs(p[..., 0:2], 1.0 / (1.0 + np.exp(-p[..., 3])))
+    np.testing.assert_allclose(out.reshape(2, 300, 2, 4).double().numpy(), ref, atol=2e-5, rtol=1e-5)
+
+
+def test_organ_layer_keeps_checkpoint_and_budget() -> None:
+    model = _model("u_a")
+    assert model.organs is not None
+    assert not any(k.startswith("organs.") for k in model.state_dict())
+    assert sum(p.numel() for p in model.organs.parameters()) == 0
+    fresh = _model("u_a")
+    fresh.load_state_dict(model.state_dict(), strict=True)
+
+
+def test_predict_with_organs() -> None:
+    model = _model("u_a").eval()
+    x = torch.rand(2, 3, 256, 256)
+    dets, vis, sigma, organs = model.predict(x, conf_threshold=0.0, max_detections=5, with_organs=True)
+    plain = model.predict(x, conf_threshold=0.0, max_detections=5)
+    assert len(organs) == 2
+    for d, d0, o in zip(dets, plain[0], organs):
+        assert torch.equal(d, d0)
+        assert o.shape == (5, 2, 4)
+        assert torch.all((o[..., 3] >= 0) & (o[..., 3] <= 1)) and torch.all(o[..., 2] >= 0)
+    # the brain/chest centres agree with the decoded keypoints (affine combination of the same points)
+    from xtx4.utils.organs import compute_organs
+
+    kp = dets[0][:, 1:].reshape(-1, 9, 3).double().numpy()
+    ref = compute_organs(kp[..., :2], kp[..., 2])
+    import numpy as np
+
+    np.testing.assert_allclose(organs[0].double().numpy(), ref, atol=1e-3, rtol=1e-4)

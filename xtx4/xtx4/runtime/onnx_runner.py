@@ -45,6 +45,7 @@ class OnnxPoseRunner(PoseRunnerBase):
         manifest: Mapping[str, Any] | Path | str | None = None,
         num_threads: int = 4,
         output_names: Sequence[str] = ("person", "pose"),
+        organs_name: str | None = FROM_MANIFEST,
         num_keypoints: int | None = None,
         mode: str = "whole",
         sigma_conf_coeff: float | None = None,
@@ -73,6 +74,8 @@ class OnnxPoseRunner(PoseRunnerBase):
             names = self.manifest.get("outputs", {}).get("onnx", {}).get("names")
             if names:
                 output_names = (names["person"], names["pose"])
+                if organs_name == FROM_MANIFEST:
+                    organs_name = names.get("organs")
 
         self.num_threads = max(1, int(num_threads))
         options = ort.SessionOptions()
@@ -96,12 +99,20 @@ class OnnxPoseRunner(PoseRunnerBase):
         wanted = [str(n) for n in output_names]
         if all(n in outputs for n in wanted):
             self.output_names = (wanted[0], wanted[1])
-        elif len(outputs) == 2:
+        elif len(outputs) in (2, 3):  # person, pose (, organs) in graph order
             logger.warning("Outputs %s not in %s; using graph outputs %s (person, pose)", wanted,
-                           self.onnx_path.name, outputs)
+                           self.onnx_path.name, outputs[:2])
             self.output_names = (outputs[0], outputs[1])
         else:
             raise RunnerError(f"Outputs {wanted} not found; graph outputs: {outputs}")
+        if organs_name not in (None, FROM_MANIFEST):
+            self.organs_output = str(organs_name) if organs_name in outputs else None
+            if self.organs_output is None:
+                logger.warning("Output %r not in %s; organs are computed on the host", organs_name,
+                               self.onnx_path.name)
+        else:
+            extra = [o for o in outputs if o not in self.output_names]
+            self.organs_output = extra[0] if len(extra) == 1 else None
 
         self.strides = self._validate_shapes(strides)
         self.num_anchors = anchor_count(self.size, self.strides)
@@ -124,21 +135,43 @@ class OnnxPoseRunner(PoseRunnerBase):
     def forward_blob(self, blob: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """Raw outputs for an already normalised ``(1, 3, S, S)`` / ``(3, S, S)`` float32 tensor."""
 
+        person, pose, _ = self._run(blob, with_organs=False)
+        return person, pose
+
+    def forward_blob_all(self, blob: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
+        """Like :meth:`forward_blob` plus the organs output ``(N, 8)`` (``None`` without it)."""
+
+        return self._run(blob, with_organs=True)
+
+    def _run(self, blob: np.ndarray, *, with_organs: bool) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
         if self.session is None:
             raise RunnerError("runner is closed")
         arr = np.asarray(blob, dtype=np.float32)
         if arr.ndim == 3:
             arr = arr[None]
-        person, pose = self.session.run(list(self.output_names), {self.input_name: np.ascontiguousarray(arr)})
-        return (np.asarray(person, dtype=np.float32).reshape(-1, 1),
-                np.asarray(pose, dtype=np.float32).reshape(person.size, -1))
+        names = list(self.output_names)
+        if with_organs and self.organs_output:
+            names.append(self.organs_output)
+        outs = self.session.run(names, {self.input_name: np.ascontiguousarray(arr)})
+        person = np.asarray(outs[0], dtype=np.float32).reshape(-1, 1)
+        pose = np.asarray(outs[1], dtype=np.float32).reshape(person.size, -1)
+        organs = np.asarray(outs[2], dtype=np.float32).reshape(person.size, -1) if len(outs) > 2 else None
+        return person, pose, organs
+
+    @staticmethod
+    def _view_blob(view_bgr: np.ndarray) -> np.ndarray:
+        view = np.asarray(view_bgr, dtype=np.uint8)
+        return view.transpose(2, 0, 1).astype(np.float32) * np.float32(1.0 / 255.0)
 
     def forward(self, view_bgr: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """Raw outputs ``(person (N, 1), pose (N, K*5))`` for one letterboxed uint8 BGR view."""
 
-        view = np.asarray(view_bgr, dtype=np.uint8)
-        blob = view.transpose(2, 0, 1).astype(np.float32) * np.float32(1.0 / 255.0)
-        return self.forward_blob(blob)
+        return self.forward_blob(self._view_blob(view_bgr))
+
+    def forward_all(self, view_bgr: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
+        """``(person, pose, organs (N, 8) | None)`` for one letterboxed uint8 BGR view."""
+
+        return self.forward_blob_all(self._view_blob(view_bgr))
 
     # ------------------------------------------------------------- lifetime
     def close(self) -> None:

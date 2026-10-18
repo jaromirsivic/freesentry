@@ -116,7 +116,7 @@ def resolve_settings(args: argparse.Namespace, config: AppConfig, *, use_last: b
 
 
 def run_image(settings: Settings, config: AppConfig, save: str) -> int:
-    from livetest.draw import DrawOptions, draw_poses
+    from livetest.draw import draw_poses, options_from_settings
     from livetest.gui import pose_to_dict
 
     image = cv2.imread(settings.source_path, cv2.IMREAD_COLOR)
@@ -137,10 +137,7 @@ def run_image(settings: Settings, config: AppConfig, save: str) -> int:
     for i, pose in enumerate(res.poses):
         vis = "".join(str(int(v)) for v in pose.visibility)
         print(f"  #{i} score={pose.score:.3f} visibility={vis}")
-    draw_poses(image, res.poses, network.skeleton, DrawOptions(
-        kpt_threshold=settings.kpt_threshold, show_scores=settings.show_scores, show_labels=settings.show_labels,
-        show_sigma=settings.show_sigma, color_mode=settings.color_mode, point_radius=settings.point_radius,
-        line_thickness=settings.line_thickness))
+    draw_poses(image, res.poses, network.skeleton, options_from_settings(settings))
     cv2.imwrite(save, image)
     with open(save + ".json", "w", encoding="utf-8") as handle:
         json.dump({"runner": description, "settings": settings.to_dict(),

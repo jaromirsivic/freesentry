@@ -12,6 +12,13 @@ Construction validates the graph against the decode contract:
 2. a dummy pass checks the anchor count ``N`` and ``pose = N x K x 5``;
    strides are inferred from ``N`` when not given (or when the given ones do
    not match, with a warning).
+
+Organs (brain, chest; ``extradetection.md``): a graph exported with the organ
+layer has a third output (manifest ``blobs.organs``, normally ``out2``); its rows
+of the selected anchors are decoded (``organ_source == "graph"``). Older graphs
+get the same values from the selected raw pose rows on the host
+(``organ_source == "host"``). ``compute_organs = False`` skips both (ncnn then
+does not even evaluate the organ layers).
 """
 
 from __future__ import annotations
@@ -33,9 +40,11 @@ from .decode import (
     VISIBLE_THRESHOLD,
     Pose,
     anchor_count,
+    decode_organs_selected,
     decode_selected,
     infer_strides,
     merge_views,
+    organs_from_pose_selected,
     person_scores,
     select_candidates,
     to_frame_poses,
@@ -140,6 +149,14 @@ class PoseRunnerBase:
     fp16 = False
     vulkan_active = False
     num_threads = 1
+    compute_organs = True  # decode brain/chest per pose (graph output, else host fallback)
+    organs_output: str | None = None  # name of the graph's organs output (None = host fallback)
+
+    @property
+    def organ_source(self) -> str:
+        """``"graph"`` when the graph emits the organs output, else ``"host"``."""
+
+        return "graph" if self.organs_output else "host"
 
     def _init_decode(
         self,
@@ -211,6 +228,13 @@ class PoseRunnerBase:
                 f"Pose output has {pose.size} values, expected N x K x 5 = {num_anchors} x {self.num_keypoints} x 5 "
                 f"(are the output blobs swapped or K wrong?)"
             )
+        if self.organs_output:
+            organs = self.forward_all(np.zeros((self.size, self.size, 3), dtype=np.uint8))[2]
+            if organs is None or organs.size != num_anchors * 8:
+                raise RunnerError(
+                    f"Organs output {self.organs_output!r} has {None if organs is None else organs.size} values, "
+                    f"expected N x 8 = {num_anchors} x 8"
+                )
         if strides is not None and anchor_count(self.size, strides) == num_anchors:
             return strides
         guessed = infer_strides(num_anchors, self.size)
@@ -230,6 +254,12 @@ class PoseRunnerBase:
         """Raw outputs ``(person (N, 1), pose (N, K*5))`` for one letterboxed uint8 BGR view."""
 
         raise NotImplementedError
+
+    def forward_all(self, view_bgr: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
+        """``(person, pose, organs (N, 8) | None)``; ``None`` when the graph has no organs output."""
+
+        person, pose = self.forward(view_bgr)
+        return person, pose, None
 
     def detect(
         self,
@@ -262,7 +292,10 @@ class PoseRunnerBase:
         infer_s = post_s = 0.0
         for key, view in prepared.views.items():
             ti = time.perf_counter()
-            person, pose = self.forward(view)
+            if self.compute_organs:
+                person, pose, organs_raw = self.forward_all(view)
+            else:
+                (person, pose), organs_raw = self.forward(view), None
             tp = time.perf_counter()
             scores = person_scores(person)
             keep, num_above = select_candidates(scores, conf_threshold=conf, max_detections=max_det)
@@ -271,10 +304,15 @@ class PoseRunnerBase:
                 sigma_conf_coeff=self.sigma_conf_coeff, sigma_floor=self.sigma_floor,
                 present_threshold=self.present_threshold, visible_threshold=self.visible_threshold,
             )
+            organs = None
+            if self.compute_organs:
+                geo = dict(network_size=self.size, strides=self.strides)
+                organs = (decode_organs_selected(organs_raw, keep, **geo) if organs_raw is not None
+                          else organs_from_pose_selected(pose, keep, num_keypoints=self.num_keypoints, **geo))
             raw_candidates += num_above
             by_view[key] = to_frame_poses(
                 scores[keep], keypoints, visibility, sigma_px, transform=prepared.transforms[key], view=key,
-                anchor_indices=keep,
+                anchor_indices=keep, organs=organs,
             )
             infer_s += tp - ti
             post_s += time.perf_counter() - tp
@@ -328,6 +366,7 @@ class NcnnPoseRunner(PoseRunnerBase):
         fp16: bool = True,
         input_blob: str = "in0",
         output_blobs: Sequence[str] = ("out0", "out1"),
+        organs_blob: str | None = FROM_MANIFEST,
         num_keypoints: int | None = None,
         mode: str = "whole",
         sigma_conf_coeff: float | None = None,
@@ -360,6 +399,8 @@ class NcnnPoseRunner(PoseRunnerBase):
             blobs = ncnn_out.get("blobs")
             if blobs:
                 output_blobs = (blobs["person"], blobs["pose"])
+                if organs_blob == FROM_MANIFEST:
+                    organs_blob = blobs.get("organs")
             input_blob = ncnn_out.get("input", input_blob)
 
         self.vulkan_active = bool(use_vulkan and vulkan_device_count() > 0)
@@ -383,6 +424,7 @@ class NcnnPoseRunner(PoseRunnerBase):
             raise RunnerError(f"ncnn failed to load bin file {self.bin_path}")
 
         self.input_blob, self.output_blobs = self._resolve_blobs(input_blob, tuple(output_blobs))
+        self.organs_output = self._resolve_organs_blob(organs_blob)
         self.strides = self._validate_shapes(strides)
         self.num_anchors = anchor_count(self.size, self.strides)
         logger.info(
@@ -418,44 +460,80 @@ class NcnnPoseRunner(PoseRunnerBase):
             raise RunnerError(f"Expected two output blobs (person, pose), got {output_blobs}")
         if all(b in outputs for b in output_blobs):
             return input_blob, (output_blobs[0], output_blobs[1])
-        if len(outputs) == 2:
+        if len(outputs) in (2, 3):  # person, pose (, organs) in graph order
             logger.warning(
                 "Output blobs %s not in %s; using graph outputs %s (person, pose)",
-                list(output_blobs), self.param_path.name, outputs,
+                list(output_blobs), self.param_path.name, outputs[:2],
             )
             return input_blob, (outputs[0], outputs[1])
         raise RunnerError(f"Output blobs {list(output_blobs)} not found; graph outputs: {outputs}")
 
+    def _resolve_organs_blob(self, organs_blob: str | None) -> str | None:
+        """The organs output blob: the configured / manifest name, else the graph's one extra output."""
+
+        _, outputs = parse_param_blobs(self.param_path)
+        if organs_blob not in (None, FROM_MANIFEST):
+            if organs_blob in outputs:
+                return str(organs_blob)
+            logger.warning("Organs blob %r not in %s; organs are computed on the host", organs_blob,
+                           self.param_path.name)
+            return None
+        extra = [b for b in outputs if b not in self.output_blobs]
+        return extra[0] if len(extra) == 1 else None
+
     # ------------------------------------------------------------ inference
-    def _run(self, mat: Any) -> tuple[np.ndarray, np.ndarray]:
+    def _run(self, mat: Any, with_organs: bool = False) -> tuple[np.ndarray, ...]:
         if self.net is None:
             raise RunnerError("runner is closed")
+        names = list(self.output_blobs)
+        if with_organs and self.organs_output:
+            names.append(self.organs_output)
         with self.net.create_extractor() as extractor:
             extractor.input(self.input_blob, mat)
             outputs = []
-            for name in self.output_blobs:
+            for name in names:
                 ret, out = extractor.extract(name)
                 if ret != 0:
                     raise RunnerError(f"ncnn extract of blob {name!r} failed ({ret})")
                 outputs.append(np.array(out, dtype=np.float32, copy=True))
-        return outputs[0], outputs[1]
+        return tuple(outputs)
 
-    def forward(self, view_bgr: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        """Raw outputs ``(person (N, 1), pose (N, K*5))`` for one letterboxed uint8 BGR view."""
-
+    def _view_mat(self, view_bgr: np.ndarray) -> Any:
         ncnn = self._ncnn
         view = np.ascontiguousarray(view_bgr, dtype=np.uint8)
         mat = ncnn.Mat.from_pixels(view, ncnn.Mat.PixelType.PIXEL_BGR, view.shape[1], view.shape[0])
         mat.substract_mean_normalize([], _NORM)
-        return self._run(mat)
+        return mat
+
+    def _blob_mat(self, blob: np.ndarray) -> Any:
+        arr = np.asarray(blob, dtype=np.float32)
+        if arr.ndim == 4:
+            arr = arr[0]
+        return self._ncnn.Mat(np.ascontiguousarray(arr))
+
+    def forward(self, view_bgr: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Raw outputs ``(person (N, 1), pose (N, K*5))`` for one letterboxed uint8 BGR view."""
+
+        person, pose = self._run(self._view_mat(view_bgr))
+        return person, pose
+
+    def forward_all(self, view_bgr: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
+        """``(person, pose, organs (N, 8) | None)`` for one letterboxed uint8 BGR view."""
+
+        out = self._run(self._view_mat(view_bgr), with_organs=True)
+        return out[0], out[1], (out[2] if len(out) > 2 else None)
 
     def forward_blob(self, blob: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """Raw outputs for an already normalised ``(1, 3, S, S)`` / ``(3, S, S)`` float32 tensor."""
 
-        arr = np.asarray(blob, dtype=np.float32)
-        if arr.ndim == 4:
-            arr = arr[0]
-        return self._run(self._ncnn.Mat(np.ascontiguousarray(arr)))
+        person, pose = self._run(self._blob_mat(blob))
+        return person, pose
+
+    def forward_blob_all(self, blob: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
+        """Like :meth:`forward_blob` plus the organs output (``None`` without it)."""
+
+        out = self._run(self._blob_mat(blob), with_organs=True)
+        return out[0], out[1], (out[2] if len(out) > 2 else None)
 
     # ------------------------------------------------------------- lifetime
     def close(self) -> None:

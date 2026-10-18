@@ -99,8 +99,9 @@
     },
     {
       "name": "Debug overlay (sigma, NMS extents, labels, network input)",
-      "description": "Shows everything the network outputs: sigma circles, the extent boxes OKS-NMS uses, person numbers, keypoint names and the letterboxed network input.",
+      "description": "Shows everything the network outputs: keypoints with sigma circles, the organ circles, the extent boxes OKS-NMS uses, person numbers, keypoint names and the letterboxed network input.",
       "settings": {
+        "overlay_mode": "both",
         "show_sigma": true, "show_extent": true, "show_ids": true, "show_labels": true, "show_debug_view": true,
         "show_occluded": true, "kpt_threshold": 0.0
       }
@@ -109,9 +110,28 @@
       "name": "Clean overlay",
       "description": "Only skeletons and visible keypoints, no texts.",
       "settings": {
+        "overlay_mode": "keypoints",
         "show_sigma": false, "show_extent": false, "show_ids": false, "show_labels": false, "show_debug_view": false,
         "show_scores": false, "show_occluded": false, "show_hud": false, "kpt_threshold": 0.3
       }
+    },
+    {
+      "name": "Organs (FreeSentry style)",
+      "description": "Only the brain and chest circles, drawn like FreeSentry (white rim, colour = confidence, thin ring below the threshold), no texts.",
+      "settings": {
+        "overlay_mode": "organs", "show_scores": false, "show_ids": false, "show_labels": false,
+        "show_sigma": false, "show_extent": false, "show_debug_view": false
+      }
+    },
+    {
+      "name": "Keypoints + organs",
+      "description": "Skeleton, keypoints and the brain / chest circles together (circles below the points).",
+      "settings": { "overlay_mode": "both" }
+    },
+    {
+      "name": "Keypoints only",
+      "description": "The skeleton and keypoints without organ circles (the overlay before the organ layer).",
+      "settings": { "overlay_mode": "keypoints" }
     }
   ],
   "camera": {
@@ -143,6 +163,11 @@
     "show_labels": false,
     "show_hud": true,
     "point_radius": 4,
-    "line_thickness": 2
+    "line_thickness": 2,
+    "overlay_mode": "organs",
+    "organs": {
+      "brain": { "enabled": true, "sizeMultiplier": 1.0, "confidenceThreshold": 0.25, "minimumRadius": 1 },
+      "chest": { "enabled": true, "sizeMultiplier": 1.0, "confidenceThreshold": 0.143, "minimumRadius": 1 }
+    }
   }
 }

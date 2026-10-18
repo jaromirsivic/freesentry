@@ -54,8 +54,8 @@ Další síť přidáte záznamem do `networks` v `config.json`. Stačí `id`, `
 | **Model** | síť; backend **ncnn** (nasazení) nebo **ONNX Runtime FP32** (reference); vstupní velikost 256 / 320 / 384; režim **whole** (1 průchod) nebo **pyramid** (3 průchody, ablace z XTX3); počet CPU vláken; FP16 úložiště a aritmetika v ncnn; Vulkan GPU. Pod tím je info o modelu: varianta, přesnost, checkpoint, parita, počet anchorů a soubory. |
 | **Detection** | práh detekce; max. počet osob; prahy present a visible (nepřítomný / zakrytý / viditelný bod); práh kreslení bodů; **OKS-NMS** (zapnutí, práh OKS, scale faktor, conf bodů pro NMS, volitelně IoU extent boxů); pokročilé dekódování (`sigma_conf_coeff`, `sigma_floor`); tlačítko „Reset to manifest defaults“. |
 | **Source** | kamera (výběr, Media Foundation nebo DirectShow, rozlišení, FPS, MJPG); video soubor nebo RTSP/HTTP URL (smyčka v reálném čase); obrázek (posílá se opakovaně, takže každá změna je hned vidět); zrcadlení. Změny zdroje se projeví až tlačítkem **Open source**. |
-| **Display** | čáry kostry, body, zakryté body, skóre, čísla osob, jména bodů, **sigma kruhy** (nejistota polohy z RLE hlavy), **extent boxy NMS**, barvy podle strany těla nebo podle osoby, velikost bodů a čar, HUD, **vstupní pohled sítě** (letterbox s body v pixelech sítě). |
-| **Poses** | tabulka osob (skóre, pohled, počet viditelných / zakrytých / nepřítomných bodů, anchor) a pro vybranou osobu všech 9 bodů (x, y, conf, viditelnost, sigma v px). Osobu vyberete kliknutím do tabulky nebo do videa. |
+| **Display** | **Show: Keypoints / Organs / Both** (klíčové body, kruhy orgánů, nebo obojí; výchozí jsou orgány); **Organs (FreeSentry style)**: pro mozek a hrudník zapnutí, násobič velikosti, práh konfidence a minimální poloměr; čáry kostry, body, zakryté body, skóre, čísla osob, jména bodů, **sigma kruhy** (nejistota polohy z RLE hlavy), **extent boxy NMS**, barvy podle strany těla nebo podle osoby, velikost bodů a čar, HUD, **vstupní pohled sítě** (letterbox s body v pixelech sítě). |
+| **Poses** | tabulka osob (skóre, pohled, počet viditelných / zakrytých / nepřítomných bodů, anchor) a pro vybranou osobu všech 9 bodů (x, y, conf, viditelnost, sigma v px) a pod nimi mozek a hrudník (x, y, conf, poloměr). Osobu vyberete kliknutím do tabulky nebo do videa. |
 | **Stats** | p50 / p95 / mean / max časů preprocess / síť / postprocess / celkem, čekání ve frontě, stáří snímku, FPS zdroje a inference, zahozené snímky, RSS a CPU procesu; reset a kopírování. |
 | **Help** | klávesové zkratky. |
 
@@ -81,7 +81,9 @@ Předvolba je částečné nastavení. Vestavěné předvolby jsou v `config.jso
 | ncnn pure FP32 | u_b s FP32 vahami a FP32 aritmetikou |
 | Crowd / small people | u_c @384, práh 0,10, 100 osob, NMS scale 2,0 + IoU 0,5 |
 | Pyramid mode | 3 pohledy |
-| Debug overlay / Clean overlay | všechny ladicí vrstvy / jen kostry |
+| Debug overlay / Clean overlay | všechny ladicí vrstvy včetně orgánů / jen kostry |
+| Organs (FreeSentry style) | jen kruhy mozku a hrudníku, bez textů |
+| Keypoints + organs / Keypoints only | kostra s kruhy orgánů / jen kostra (zobrazení před vrstvou orgánů) |
 
 Vlastní předvolbu uložíte tlačítkem **Save current as…** do `user_presets.json`.
 Uloží se všechno kromě zdroje. Klíč `"decode": "manifest"` v předvolbě nejdřív vrátí
@@ -92,8 +94,21 @@ dekódovací hodnoty na hodnoty z manifestu.
 `mezerník` pauza · `.` další snímek · `+`/`-` práh detekce · `[`/`]` práh kreslení ·
 `1`–`3` velikost vstupu · `b` ncnn ↔ ONNX Runtime · `w` whole ↔ pyramid · `n` OKS-NMS ·
 `m` zrcadlení · `d` vstup sítě · `e` extent boxy · `g` sigma · `l` jména bodů ·
-`c` skóre · `i` HUD · `s` screenshot · `r` nahrávání · `Tab` skrýt panel ·
+`c` skóre · `o` keypoints → organs → both · `i` HUD · `s` screenshot · `r` nahrávání · `Tab` skrýt panel ·
 `F11`/`f` celá obrazovka (`Esc` zpět) · `q` konec
+
+### Orgány (mozek, hrudník)
+
+Síť vrací pro každou osobu kromě 9 bodů i kruh **mozku** a **hrudníku** `(x, y, poloměr, conf)`.
+Počítá je netrénovaná vrstva s pevnými parametry na konci sítě podle vzorců FreeSentry serveru
+(`server/cameraai.py`, podrobnosti v `../extradetection.md`). Kruhy se kreslí stejně jako ve FreeSentry:
+bílý okraj a barevný prstenec, jehož barva odpovídá konfidenci; pod prahem konfidence nebo pod minimálním
+poloměrem jen tenký kruh. Konfidence hrudníku se dělí 7 (server dělí 5), proto je výchozí práh hrudníku
+0,143 = 0,20 · 5/7. Výchozí hodnoty jsou v `config.json` → `display.organs` ve stejném tvaru jako
+`ai_setup.organs` serveru (`enabled`, `sizeMultiplier`, `confidenceThreshold`, `minimumRadius`).
+
+Starší grafy bez výstupu `organs` (např. `u_b-random`) fungují dál: orgány se dopočítají na hostu ze
+stejných surových bodů. Odkud pocházejí, ukazuje HUD (`organs from graph` / `organs from host`).
 
 ## Příkazová řádka
 

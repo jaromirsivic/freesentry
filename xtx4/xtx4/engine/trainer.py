@@ -1095,6 +1095,8 @@ def export_checkpoint_model(
         "outputs": [
             {"role": "person", "shape": "[1, N, 1]", "layout": "logit"},
             {"role": "pose", "shape": f"[1, N, {model.num_keypoints * 5}]", "layout": "K*5 (dx, dy, log_sigma, present_logit, visible_logit)"},
+            {"role": "organs", "shape": "[1, N, 8]",
+             "layout": "brain, chest x (dx, dy, r_units, conf); parameter-free organ layer (extradetection.md)"},
         ],
         "decode_version": 1,
         "decode": {

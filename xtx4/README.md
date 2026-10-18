@@ -83,6 +83,15 @@ python scripts/summarize_pi_latency.py reports/pi_latency.csv --e2e reports/pi_l
 
 Živý test z kamery (bez torch): `live_test/start.bat` (viz `live_test/README.md`).
 
+### Orgány (mozek, hrudník)
+
+Exportovaný graf má kromě `person` a `pose` třetí výstup `organs [1, N, 8]`: pro každý anchor kruh
+**mozku** a **hrudníku** `(dx, dy, r, conf)`. Počítá ho netrénovaná vrstva s pevnými parametry
+(`xtx4/models/organs.py`) z již detekovaných bodů podle vzorců FreeSentry serveru (`server/cameraai.py`).
+Váhy ani checkpointy se tím nemění. Runtime vrací `Pose.organs` `(2, 4)` `[x, y, poloměr, conf]` ve snímkových
+pixelech. Pro starší grafy bez tohoto výstupu se orgány dopočítají na hostu stejným kódem
+(`xtx4/utils/organs.py`). Návrh a rozhodnutí: `extradetection.md`.
+
 ## Testy
 
 ```bat

@@ -11,6 +11,10 @@ Raw tensors per anchor (``N`` anchors over all pyramid levels, ``K`` keypoints):
 * ``person`` ``[1, N, 1]`` (ONNX) or ``(N, 1)`` (ncnn): person logit.
 * ``pose`` ``[1, N, K*5]`` / ``(N, K*5)``: keypoint-major
   ``(dx, dy, log_sigma, present_logit, visible_logit)`` per keypoint.
+* ``organs`` ``[1, N, 8]`` / ``(N, 8)`` (graphs with the organ layer, extradetection.md):
+  brain, chest, each ``(dx, dy, r_units, conf)``; ``x, y = anchor + (dx, dy) * stride``,
+  ``radius = r_units * stride``. Graphs without it get the same values on the host
+  (:func:`organs_from_pose_selected`).
 
 Decode (``decode_version = 1``)::
 
@@ -41,6 +45,7 @@ from typing import Final, Iterable, Sequence
 import numpy as np
 
 from ..utils.keypoints import OKS_SIGMAS
+from ..utils.organs import ORGAN_CHANNELS_PER_ORGAN, NUM_ORGANS, compute_organs
 
 KPT_CHANNELS_PER_POINT: Final[int] = 5
 SIGMA_FLOOR_UNITS: Final[float] = 0.05
@@ -71,6 +76,8 @@ class Pose:
         sigma_px: ``(K,)`` float32 RLE scale in the same pixel space as ``keypoints``.
         source_view: 0 whole-frame, 1|2|3 pyramid view.
         anchor_index: index of the emitting anchor in the raw output (-1 if unknown).
+        organs: ``(2, 4)`` float32 ``[x, y, radius, conf]`` of brain and chest in the same pixel
+            space as ``keypoints`` (``None`` when not decoded).
     """
 
     score: float
@@ -80,6 +87,7 @@ class Pose:
     source_view: int = 0
     anchor_index: int = -1
     extras: dict = field(default_factory=dict)
+    organs: np.ndarray | None = None
 
     def extent(self, kpt_threshold: float = 0.0) -> tuple[float, float, float, float] | None:
         """Axis-aligned extent ``(x0, y0, x1, y1)`` of the points with ``conf >= kpt_threshold``."""
@@ -238,6 +246,63 @@ def decode_selected(
     return keypoints, visibility, sigma_px
 
 
+# ----------------------------------------------------------------------- organs
+def decode_organs_selected(
+    organs: np.ndarray,
+    keep: np.ndarray,
+    *,
+    network_size: int,
+    strides: Sequence[int],
+) -> np.ndarray:
+    """Decode the graph's ``organs`` output for the anchors ``keep``.
+
+    ``organs`` is ``[1, N, 8]`` / ``(N, 8)``: per organ (brain, chest) ``(dx, dy, r_units, conf)``.
+    Returns ``(D, 2, 4)`` float32 ``[x, y, radius, conf]`` in network pixels.
+    """
+
+    anchors, stride_arr = build_anchors(network_size, strides)
+    num_anchors = anchors.shape[0]
+    arr = np.asarray(organs, dtype=np.float32)
+    expected = num_anchors * NUM_ORGANS * ORGAN_CHANNELS_PER_ORGAN
+    if arr.size != expected:
+        raise ValueError(f"organs output has {arr.size} values, expected N x 2 x 4 = {num_anchors} x 2 x 4")
+    if keep.size == 0:
+        return np.zeros((0, NUM_ORGANS, ORGAN_CHANNELS_PER_ORGAN), np.float32)
+    o = arr.reshape(num_anchors, NUM_ORGANS, ORGAN_CHANNELS_PER_ORGAN)[keep]
+    return _organs_to_px(o, anchors[keep], stride_arr[keep])
+
+
+def organs_from_pose_selected(
+    pose: np.ndarray,
+    keep: np.ndarray,
+    *,
+    network_size: int,
+    strides: Sequence[int],
+    num_keypoints: int,
+) -> np.ndarray:
+    """Host fallback for graphs without the ``organs`` output: the same values as the graph's organ
+    layer, computed from the selected raw pose rows (``xtx4.utils.organs.compute_organs`` on the
+    anchor-relative ``(dx, dy)`` and ``sigmoid(present_logit)``). ``(D, 2, 4)`` in network pixels."""
+
+    anchors, stride_arr = build_anchors(network_size, strides)
+    kp_all = _as_pose(pose, anchors.shape[0], num_keypoints)
+    if keep.size == 0:
+        return np.zeros((0, NUM_ORGANS, ORGAN_CHANNELS_PER_ORGAN), np.float32)
+    kp = kp_all[keep]
+    units = compute_organs(kp[..., 0:2], _sigmoid(kp[..., 3]))  # (D, 2, 4) stride units
+    return _organs_to_px(units, anchors[keep], stride_arr[keep])
+
+
+def _organs_to_px(units: np.ndarray, anchors: np.ndarray, strides: np.ndarray) -> np.ndarray:
+    st = strides[:, None].astype(np.float32)  # (D, 1)
+    out = np.empty(units.shape, dtype=np.float32)
+    out[..., 0] = anchors[:, 0:1] + units[..., 0] * st
+    out[..., 1] = anchors[:, 1:2] + units[..., 1] * st
+    out[..., 2] = units[..., 2] * st
+    out[..., 3] = units[..., 3]
+    return out
+
+
 def decode_raw(
     person: np.ndarray,
     pose: np.ndarray,
@@ -280,10 +345,12 @@ def to_frame_poses(
     transform: np.ndarray,
     view: int = 0,
     anchor_indices: np.ndarray | None = None,
+    organs: np.ndarray | None = None,
 ) -> list[Pose]:
     """Map network-pixel detections to frame pixels with the view affine ``T`` (2x3,
-    network px -> frame px). ``sigma_px`` is scaled by the mean absolute axis scale
-    of ``T`` (the letterbox is isotropic up to +-0.5 px rounding)."""
+    network px -> frame px). ``sigma_px`` and the organ radii are scaled by the mean
+    absolute axis scale of ``T`` (the letterbox is isotropic up to +-0.5 px rounding);
+    ``organs`` ``(D, 2, 4)`` centres go through ``T`` like the keypoints."""
 
     if scores.shape[0] == 0:
         return []
@@ -294,6 +361,12 @@ def to_frame_poses(
     kpts[..., :2] = keypoints[..., :2].astype(np.float64) @ lin.T + offset
     sigma_scale = 0.5 * (abs(lin[0, 0]) + abs(lin[1, 1]))
     sig = sigma_px.astype(np.float64) * sigma_scale
+    org = None
+    if organs is not None:
+        org = np.asarray(organs, dtype=np.float64).copy()
+        org[..., :2] = org[..., :2] @ lin.T + offset
+        org[..., 2] *= sigma_scale
+        org = org.astype(np.float32)
     return [
         Pose(
             score=float(scores[i]),
@@ -302,6 +375,7 @@ def to_frame_poses(
             sigma_px=sig[i].astype(np.float32),
             source_view=int(view),
             anchor_index=int(anchor_indices[i]) if anchor_indices is not None else -1,
+            organs=org[i] if org is not None else None,
         )
         for i in range(scores.shape[0])
     ]

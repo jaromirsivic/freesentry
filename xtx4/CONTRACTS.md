@@ -5,8 +5,8 @@ implementer (human or agent) reads it before writing code and updates it in the
 same change when an interface has to move. The design rationale lives in
 `implementation_plan_fable.md`; this file only fixes *what* the code exposes.
 
-Repository root for all paths below: `C:/git/freesentry/xtx4/`. The XTX3 project
-(`C:/git/freesentry/xtx3/`) is **read-only** reference code and the baseline.
+Repository root for all paths below: the `xtx4/` folder that contains this file. The XTX3 project
+(`../xtx3/`, sibling folder) is **read-only** reference code and the baseline.
 
 ---
 
@@ -35,7 +35,7 @@ xtx4/
 - Style as in XTX3: `from __future__ import annotations`, type hints, keyword-only constructor
   arguments, module docstrings explaining *why*, loggers via `xtx4.utils.logging.get_logger(__name__)`,
   no `print` outside interactive prompts. Deterministic seeds in tests.
-- Smoke data for tests (read-only): `C:/git/freesentry/xtx3/.smoke_dataset/{train,test}/annotations.json`
+- Smoke data for tests (read-only): `../xtx3/.smoke_dataset/{train,test}/annotations.json`
   (COCO-style `images`/`annotations`, 17-point keypoints in **absolute pixels**, 120 train / 40 test
   images). Never write into `xtx3/`.
 - Units: network pixels unless stated. Image tensors are BGR, float32, `/255`, NCHW. Letterbox =
@@ -84,6 +84,14 @@ defaults 0.5 / 0.5; calibrated per run).
   `dets (D, 1 + 3K) = [score, K*(x, y, conf)]` sorted by score, `vis (D,K)` int64, `sigma_px (D,K)`.
 - Exported graph outputs (see §12): `person [1,N,1]` raw logits, `pose [1,N,K*5]` raw, flattened
   as `kpt.reshape(1, N, K*5)` (keypoint-major: all 5 values of keypoint 0, then keypoint 1, ...).
+- Organ output (`extradetection.md`): third exported output `organs [1,N,2*4]`, organ-major
+  `brain, chest`, per organ `(dx, dy, r_units, conf)`. Computed by the parameter-free
+  `xtx4/models/organs.py::OrganLayer` from the raw `pose` tensor (anchor-relative stride units, so the
+  graph needs no anchors and stays FP16-safe); `conf` is a probability in `[0, 1]`, not a logit. Decode
+  like keypoints: `x = ax + dx * stride`, `y = ay + dy * stride`, `r_px = r_units * stride`. The
+  formulas and constants live in `xtx4/utils/organs.py` (single source of truth, ported from
+  `server/cameraai.py`; chest confidence divided by 7 instead of 5). `person` and `pose` are unchanged;
+  `HeadOutput` / `RawPredictions` do not carry organs (training never sees them).
 
 ---
 
@@ -354,7 +362,8 @@ Files written by the trainer into the run directory:
 
 ## 12. Export and runtime contract
 
-- `xtx4/export/onnx_ncnn.py`: `ExportModel(model)` → outputs `person [1,N,1]`, `pose [1,N,K*5]` (§3);
+- `xtx4/export/onnx_ncnn.py`: `ExportModel(model, with_organs=True)` → outputs `person [1,N,1]`,
+  `pose [1,N,K*5]` and (with organs) `organs [1,N,8]` (§3); pnnx names the organ output `out2`;
   `export_onnx(model, path, input_size, opset=17)` (static shape, `dynamo=False`, onnxsim, `onnx.checker`);
   `verify_onnx(model, path, input_size)` → max abs diff (tolerance 1e-3 raw) on a deterministic input;
   `convert_onnx_to_ncnn(onnx_path, prefix, converter="pnnx", fp16=True)` → `<prefix>.ncnn.param/.bin`.
@@ -364,7 +373,12 @@ Files written by the trainer into the run directory:
   (`layout NCHW`, `color BGR`, `scale 1/255`, `letterbox` description, sizes), `strides`, `levels`,
   `anchor_order`, `outputs` (names, shapes, layout `K*5`), `decode_version` (= 1), `decode`
   (sigma_floor, sigma_conf_coeff, conf_threshold, max_detections, present_threshold, visible_threshold,
-  oks_nms, oks_nms_threshold, oks_nms_iou_threshold, oks_nms_scale_factor), `precision`, tool versions.
+  oks_nms, oks_nms_threshold, oks_nms_iou_threshold, oks_nms_scale_factor), `precision`, tool versions;
+  schema 2 adds the `organs` output (names/shapes/blobs) and an `organs` block (version, names,
+  channels, units, constants). Schema-1 manifests (no organ output) stay valid.
+- Runtime organs: `Pose.organs (2, 4) [x, y, radius_px, conf]` (brain, chest) in frame pixels. Runners
+  read the `organs` output when the graph has it (`organ_source = "graph"`), otherwise they compute the
+  same values on the host from the selected raw `pose` rows (`organ_source = "host"`).
 - `xtx4/runtime/decode.py` (NumPy only): `build_anchors(S, strides)`, `decode_raw(person, pose, S,
   strides, K, conf_threshold, max_detections, sigma_conf_coeff, sigma_floor, present_threshold=0.5,
   visible_threshold=0.5) -> (scores (D,), keypoints (D,K,3), visibility (D,K), sigma_px (D,K))` – filter by

@@ -30,6 +30,7 @@ from .head_types import (
     decode_detections,
 )
 from .neck import P2Assist, PANNeck
+from .organs import OrganLayer, decode_organs
 from .scaling import VariantSpec, resolve_spec
 
 logger = get_logger(__name__)
@@ -55,6 +56,8 @@ class XTX4Model(nn.Module):
             strides=self.neck.out_strides,
             assist_channels=self.p2_assist.out_channels if self.p2_assist is not None else 0,
         )
+        # Parameter-free brain/chest layer after the one2one head (export and predict only, never trained).
+        self.organs: OrganLayer | None = OrganLayer(spec.num_keypoints) if spec.num_keypoints == 9 else None
 
     # ------------------------------------------------------------------ API
     @property
@@ -87,8 +90,11 @@ class XTX4Model(nn.Module):
         sigma_floor: float = SIGMA_FLOOR_UNITS,
         present_threshold: float = PRESENT_THRESHOLD,
         visible_threshold: float = VISIBLE_THRESHOLD,
-    ) -> tuple[list[torch.Tensor], list[torch.Tensor], list[torch.Tensor]]:
-        """Eval-mode inference: per-image ``(dets, vis, sigma_px)`` (see head_types)."""
+        with_organs: bool = False,
+    ) -> tuple[list[torch.Tensor], ...]:
+        """Eval-mode inference: per-image ``(dets, vis, sigma_px)`` (see head_types); with
+        ``with_organs`` also ``organs`` ``(D, 2, 4)`` ``(x, y, radius, conf)`` in network pixels for the
+        same detections (brain, chest)."""
 
         was_training = self.training
         self.eval()
@@ -97,7 +103,7 @@ class XTX4Model(nn.Module):
         finally:
             if was_training:
                 self.train()
-        return decode_detections(
+        dets, vis, sigma = decode_detections(
             output.one2one,
             conf_threshold=conf_threshold,
             max_detections=max_detections,
@@ -106,6 +112,21 @@ class XTX4Model(nn.Module):
             present_threshold=present_threshold,
             visible_threshold=visible_threshold,
         )
+        if not with_organs:
+            return dets, vis, sigma
+        if self.organs is None:
+            raise ValueError("Organs need the nine XTX4 landmarks")
+        raw = output.one2one
+        b, n = raw.kpt.shape[0], raw.kpt.shape[1]
+        organs_px = decode_organs(self.organs(raw.kpt.reshape(b, n, -1)), raw.anchors, raw.strides)
+        scores = torch.sigmoid(raw.person).squeeze(-1)
+        organs: list[torch.Tensor] = []
+        for i in range(b):
+            # the same selection as decode_detections (threshold, stable descending sort, top-k)
+            keep = torch.nonzero(scores[i] >= conf_threshold).flatten()
+            order = torch.argsort(scores[i][keep], descending=True, stable=True)[:max_detections]
+            organs.append(organs_px[i][keep[order]])
+        return dets, vis, sigma, organs
 
     @torch.no_grad()
     def fuse(self) -> "XTX4Model":
